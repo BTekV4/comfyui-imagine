@@ -268,6 +268,21 @@ Help is welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for how to run it in
 development, the tests, and the few rules the code follows. Bugs and ideas go to
 [GitHub issues](https://github.com/BTekV4/comfyui-imagine/issues).
 
+## Acknowledgements
+
+Imagine was built with a lot of help, and it shows in the code and in the studio:
+
+- **[Claude](https://www.anthropic.com/claude)** (Anthropic) — pair programmer for
+  most of the code, the reviews and the tests.
+- **[Grok](https://grok.com)** (xAI) — Grok Imagine is the model for the studio's
+  look and flow: the canvas, the photo viewer and its tools, Segments.
+- **[DeepSeek](https://www.deepseek.com)** — the studio started inside DeepSeek
+  Harness (see `NOTICE`), and DeepSeek models drive its chat.
+- **[Qwen](https://qwen.ai)** (Alibaba) — Qwen-Image and the Qwen3-VL text and
+  vision encoders behind Krea 2, MiniMax H3 and FLUX.3 Klein in these graphs.
+
+And to everyone behind ComfyUI and the open models the graphs run on.
+
 ## License
 
 MIT — see `LICENSE`. Portions derive from DeepSeek Harness (MIT); the notice is
