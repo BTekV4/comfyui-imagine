@@ -57,6 +57,28 @@ def _model_present(name, model):
     return folder_paths.get_full_path(model["folder"], name) is not None
 
 
+def _options(class_name, input_name):
+    """The files a node's input accepts, when it declares a list (a combo); None when it does not.
+
+    ComfyUI itself refuses a graph whose combo value is not in the list, so a
+    file is missing exactly when this says so. An input without a list (a
+    path a node resolves on its own, like an RVC voice) is never called missing.
+    """
+    try:
+        spec = nodes.NODE_CLASS_MAPPINGS[class_name].INPUT_TYPES()
+    except Exception:
+        return None
+    for group in ("required", "optional"):
+        entry = (spec.get(group) or {}).get(input_name)
+        if not entry:
+            continue
+        if isinstance(entry[0], list):
+            return entry[0]
+        if entry[0] == "COMBO" and len(entry) > 1 and isinstance(entry[1], dict) and isinstance(entry[1].get("options"), list):
+            return entry[1]["options"]
+    return None
+
+
 def _check(prompt):
     missing_packs, missing_models, unknown_classes, unknown_files = set(), set(), set(), set()
     for node in prompt.values():
@@ -66,15 +88,21 @@ def _check(prompt):
         if cls not in nodes.NODE_CLASS_MAPPINGS:
             pack = next((key for key, entry in MANIFEST["packs"].items() if cls in entry["classes"]), None)
             (missing_packs if pack else unknown_classes).add(pack or cls)
-        for value in (node.get("inputs") or {}).values():
+        for key, value in (node.get("inputs") or {}).items():
             if not isinstance(value, str) or not MODEL_FILE.search(value):
                 continue
-            model = MANIFEST["models"].get(value)
+            # A graph saved on Windows writes `krea2\\x.safetensors`; Imagine's client
+            # turns the separators into this machine's before submitting.
+            spellings = {value, value.replace("\\", "/"), value.replace("/", "\\")}
+            name = value.replace("\\", "/")
+            model = MANIFEST["models"].get(name)
             if model is not None:
-                if not _model_present(value, model):
-                    missing_models.add(value)
-            elif not any(folder_paths.get_full_path(folder, value) for folder in folder_paths.folder_names_and_paths):
-                unknown_files.add(value)
+                if not _model_present(name, model):
+                    missing_models.add(name)
+            elif cls in nodes.NODE_CLASS_MAPPINGS:
+                options = _options(cls, key)
+                if options is not None and not spellings.intersection(options):
+                    unknown_files.add(value)
     size = sum(MANIFEST["models"][name]["size"] for name in missing_models)
     return {
         "ready": not (missing_packs or missing_models or unknown_classes or unknown_files),
