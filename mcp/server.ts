@@ -24,7 +24,7 @@ import {
 } from '../shared/imagine-types.ts'
 import { IMAGINE_ASPECTS, IMAGE_RESOLUTIONS, type ImagineAspect, type ImagineResolution } from '../shared/imagine-media.ts'
 import {
-  VIDEO_RESOLUTIONS, clampSeconds, megapixelsFor, sizeFor, videoAspectLabel,
+  SWAP_RESOLUTIONS, VIDEO_RESOLUTIONS, megapixelsFor, sizeFor, swapMegapixelsFor, videoAspectLabel,
 } from '../shared/imagine-sizing.ts'
 import type { ImagineSegmentsIndex, ImagineSegmentsStatus } from '../shared/imagine-segments.ts'
 import { checkedZone, growMask, joinMasks, maskDataUrl, readMask, rectangleMask, type Fractions } from './masks.ts'
@@ -284,7 +284,8 @@ const segmentsArg = z.array(z.number().int().min(0)).min(1)
 function buildServer(): McpServer {
   const server = new McpServer({ name: 'imagine', version: '1.0.0' }, {
     instructions: [
-      'ComfyUI Imagine: a local studio that runs ComfyUI graphs (Krea 2 images, Pika/H3 videos and object swaps, music, voice, upscaling).',
+      'ComfyUI Imagine: a local studio that runs ComfyUI graphs (Krea 2 images, Pika/H3 videos, character and object swaps, music, voice, upscaling).',
+      'Videos past 6 seconds are rendered as one continuous take, a chain of scenes of at most 6 s each (make video, extend, loop, up to 60 s): longer runs, so poll imagine_job patiently.',
       'Files are referred to by their gallery name. Jobs are asynchronous: start one, then poll imagine_job (it can wait).',
       'Put work in a project (the `project` argument) so it shows on the studio board. Prompts are written in English.',
       'To look at a result yourself, call imagine_view: it returns the picture (or a video frame).',
@@ -514,11 +515,11 @@ function buildServer(): McpServer {
 
   server.registerTool('imagine_make_video', {
     title: 'Make a video from a picture',
-    description: 'Animate a picture into a short clip (image to video). Optionally the clip arrives at a second picture.',
+    description: 'Animate a picture into a video (image to video). Up to 6 s it is one clip; past that, up to 60 s, one continuous take rendered as chained scenes of at most 6 s, each continuing the last (the studio writes one prompt per scene). With last_frame the clip arrives at a second picture (one clip, up to 6 s).',
     inputSchema: {
       source: fileName('The starting picture'),
       prompt: z.string().default('').describe('What happens, in English (motion, camera). Empty lets the studio write it from the picture.'),
-      seconds: z.number().int().min(2).max(20).default(5),
+      seconds: z.number().int().min(2).max(60).default(5).describe('Length in seconds: up to 6 one clip, up to 60 chained scenes.'),
       aspect,
       resolution: z.enum(VIDEO_RESOLUTIONS).default('720p'),
       speed: z.enum(IMAGINE_SPEEDS).default('fast').describe('slow = the high-quality graph (several times longer).'),
@@ -530,10 +531,52 @@ function buildServer(): McpServer {
     return await startJob({
       action: 'video', prompt, source,
       aspectRatio: videoAspectLabel(shape as ImagineAspect),
-      seconds: clampSeconds('video', resolution as ImagineResolution, seconds),
+      seconds: last_frame === undefined ? seconds : Math.min(seconds, 6),
       megapixels: megapixelsFor(resolution as ImagineResolution),
       speed, quality: speed === 'slow' ? 'high' : 'standard',
       ...last_frame === undefined ? {} : { lastSource: last_frame },
+    }, project)
+  }))
+
+  server.registerTool('imagine_swap_person', {
+    title: 'Character swap in a video',
+    description: 'Replace the main person of a video (the one who fills most of the frame) with the person in a photo, keeping the motion, framing, setting and soundtrack. Openjutsu\'s one-click recipe: the studio describes the photo and writes the shots, and the whole clip is rendered in chained 6 s scenes. Lip-sync on: the new person mouths the clip\'s voices and singing; off for music the people only move to.',
+    inputSchema: {
+      video: fileName('The video whose main person is replaced'),
+      photo: fileName('A clear photo of the new character, face and outfit visible'),
+      lip_sync: z.boolean().default(true).describe('false when the people in the clip do not sing or talk along.'),
+      resolution: z.enum(SWAP_RESOLUTIONS).default('720p').describe('480p is fastest; 1080p needs much more time and memory.'),
+      prompt: z.string().default('').describe('An optional note; the shots are written by the studio.'),
+      project: projectArg,
+    },
+  }, async ({ video, photo, lip_sync, resolution, prompt, project }) => guarded(async () => {
+    await requireFiles([video, photo])
+    return await startJob({
+      action: 'swapPerson', prompt, source: video, reference: photo,
+      megapixels: swapMegapixelsFor(resolution as ImagineResolution),
+      ...lip_sync ? {} : { lipSync: false },
+    }, project)
+  }))
+
+  server.registerTool('imagine_object_swap', {
+    title: 'Edit an object in a video',
+    description: `Change, remove or add an object in a video, or change the setting around the subject; only that area is regenerated, the rest of the shot, the camera and the soundtrack stay. Openjutsu\'s object recipe, rendered in chained 6 s scenes. Modes: change (the object of \`photo\` replaces the tracked one: photo required), remove (the tracked object disappears), background (the setting around the subject becomes what \`prompt\` says), add (a new object, from \`prompt\` or \`photo\`, inside \`box\`). The studio finds what to track from the video and the prompt.`,
+    inputSchema: {
+      video: fileName('The video to edit'),
+      mode: z.enum(IMAGINE_OBJECT_MODES).default('change'),
+      prompt: z.string().describe('What to do, in a sentence: what to remove, the new setting, the object to add, or a note for change.'),
+      photo: z.string().optional().describe('change: the new object (required); add: the look of the object to add. A gallery file name.'),
+      box: zoneArg.optional().describe('add only: where the new object goes, in fractions of the frame (default: the centre).'),
+      resolution: z.enum(SWAP_RESOLUTIONS).default('720p').describe('480p is fastest; 1080p needs much more time and memory.'),
+      project: projectArg,
+    },
+  }, async ({ video, mode, prompt, photo, box, resolution, project }) => guarded(async () => {
+    await requireFiles([video, photo])
+    return await startJob({
+      action: 'objectSwap', objectMode: mode, prompt, source: video,
+      ...photo === undefined ? {} : { reference: photo },
+      ...mode === 'add' && box !== undefined ? { placement: { x: box.x, y: box.y, width: box.w, height: box.h } } : {},
+      megapixels: swapMegapixelsFor(resolution as ImagineResolution),
     }, project)
   }))
 
@@ -541,10 +584,9 @@ function buildServer(): McpServer {
     title: 'Run any studio action',
     description: [
       'Every other studio action, with the request fields the studio itself sends. `source` is the main file, `reference` the second one.',
-      'upscale: source photo/video (extras.upscaleTo: short side). bg: remove background from a photo. loop: photo → seamless looping clip (extras.seconds up to 60, aspectRatio). extend: continue a video.',
+      'upscale: source photo/video (extras.upscaleTo: short side). bg: remove background from a photo. loop: photo → seamless looping clip (extras.seconds up to 60; past 6 s chained scenes, the last landing back on the first frame). extend: continue a video (extras.seconds up to 60; past 6 s chained scenes, the result is the whole clip with its continuation).',
       'music: prompt = style (extras.lyrics, extras.seconds). speak: prompt = text to read. voice: source audio re-sung by the RVC voice. relight: source photo, extras.light = look id.',
-      `objectSwap: source video, prompt required, extras.objectMode one of ${IMAGINE_OBJECT_MODES.join('/')} (change needs reference photo).`,
-      'swapPerson: source video + reference photo of the new character; the main person of the clip is replaced, prompt optional (extras.lipSync: false when nobody sings or talks along).',
+      'objectSwap and swapPerson have their own tools: imagine_object_swap, imagine_swap_person.',
       'compose: source person photo + reference costume/setting photo (Qwen). recreate: source video redrawn and shot again (extras.keepAudio). regenerate: source video rebuilt at 1.5x.',
       'scanFrame: source video → candidate opening frames for a recreate (extras.candidates). custom: extras.customWorkflowId from imagine_custom_workflows, extras.customFields/customFiles.',
     ].join(' '),

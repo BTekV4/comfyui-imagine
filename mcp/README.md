@@ -51,8 +51,10 @@ header.
 | `imagine_segments` | Find the objects in a photo (Segments: vision model + SAM 3): index, label, box, share of the photo, cut-out and mask links |
 | `imagine_remove_object` | Erase segments or a rectangle and fill from around them (LaMa, via the IOPaint plugin) |
 | `imagine_crop` | Keep a rectangle of a photo as a new file |
-| `imagine_make_video` | Picture to video (length, aspect, speed, last frame) |
-| `imagine_run_action` | Any other studio action (upscale, background, music, voice, loop, …) |
+| `imagine_make_video` | Picture to video (aspect, speed, last frame); up to 60 s, past 6 s one take of chained scenes |
+| `imagine_swap_person` | Character swap: the main person of a video becomes the one in a photo (lip-sync on or off, 480p/720p/1080p) |
+| `imagine_object_swap` | Change, remove or add an object in a video, or change its setting (480p/720p/1080p) |
+| `imagine_run_action` | Any other studio action (upscale, background, music, voice, loop and extend up to 60 s, …) |
 | `imagine_custom_workflows` | The user's uploaded workflows, run with `imagine_run_action` `custom` |
 | `imagine_job` | A job's state, waiting up to 50 s per call; finished jobs return their files |
 | `imagine_list_jobs` | Queued and running jobs |

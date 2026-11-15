@@ -92,39 +92,39 @@ const OBJECT_SWAP_FIELDS = {
  */
 export const WORKFLOW_ROWS = [
   /** Text-to-image: the "generate" action. */
-  { config: 'generateImage', run: 'generate', key: 'generate', label: 'generazione immagini', fields: {} },
+  { config: 'generateImage', run: 'generate', key: 'generate', label: 'image generation', fields: {} },
   /**
    * The Krea 2 graph that redraws the opening frame of a `recreate` from the
    * paragraph the vision pass wrote about the reference clip.
    */
   {
     config: 'recreateFrame', run: 'recreateFrame', key: 'recreate-frame',
-    label: 'primo fotogramma da ridisegnare (Krea 2)', fields: {},
+    label: 'opening frame to redraw (Krea 2)', fields: {},
   },
   /** Image-to-image: the "remix" action. */
-  { config: 'editImage', run: 'edit', key: 'edit', label: 'modifica immagini', fields: {} },
+  { config: 'editImage', run: 'edit', key: 'edit', label: 'image editing', fields: {} },
   /**
    * «Componi con riferimenti»: Qwen-Image 2.1 takes two photos — the person
    * and a reference (costume, setting) — and makes one of them. The graph
    * wants them in `image_1` and `image_2` of its encoder, which is also the
    * prompt node.
    */
-  { config: 'composeRefs', run: 'compose', key: 'compose', label: 'componi con riferimenti (Qwen 2.1)', fields: {} },
+  { config: 'composeRefs', run: 'compose', key: 'compose', label: 'compose with references (Qwen 2.1)', fields: {} },
   /**
    * The same edit confined to a zone the user marked: the graph crops it,
    * edits the crop and stitches it back, so the rest of the photo is the
    * source's own pixels. The mask rides in `lastImageNodeId`.
    */
-  { config: 'editImageRegion', run: 'editRegion', key: 'edit-region', label: 'modifica precisa', fields: {} },
+  { config: 'editImageRegion', run: 'editRegion', key: 'edit-region', label: 'precise edit', fields: {} },
   /**
    * «Illumina la foto»: openjutsu's relight recipe, on a FLUX.3 Klein graph
    * that relights the photo. All the pins are the basic ones — the image, the
    * text (`promptNodeId`), the seed and the output prefix — and the text is
    * the sentence of the chosen look, written by `readJobRequest`.
    */
-  { config: 'relight', run: 'relight', key: 'relight', label: 'illumina la foto', fields: {} },
+  { config: 'relight', run: 'relight', key: 'relight', label: 'relight a photo', fields: {} },
   /** Image-to-video: the "video" action. */
-  { config: 'createVideo', run: 'video', key: 'video', label: 'immagine → video', fields: CLIP_FIELDS },
+  { config: 'createVideo', run: 'video', key: 'video', label: 'image → video', fields: CLIP_FIELDS },
   /**
    * The same action past six seconds (2026-11-15): the Context Loop's I2V
    * chain, one scene of at most 6 s after the other, each carrying the last
@@ -132,7 +132,7 @@ export const WORKFLOW_ROWS = [
    * the plan (`planJson`) and the run name its checkpoints go under.
    */
   {
-    config: 'createVideoChain', run: 'videoChain', key: 'video-chain', label: 'immagine → video (lungo)',
+    config: 'createVideoChain', run: 'videoChain', key: 'video-chain', label: 'image → video (long)',
     fields: { ...CLIP_FIELDS, planJson: PIN, runName: PIN },
   },
   /**
@@ -144,7 +144,7 @@ export const WORKFLOW_ROWS = [
    */
   {
     config: 'recreateVideo', run: 'recreateVideo', key: 'recreate-video',
-    label: 'ricrea video', fields: CLIP_FIELDS,
+    label: 'recreate video', fields: CLIP_FIELDS,
   },
   /**
    * The "loop" action: an animated background. Its graph samples the latent
@@ -155,25 +155,25 @@ export const WORKFLOW_ROWS = [
    * the clip (measured 2026-10-29). A length the model cannot render in one go
    * is reached by chaining such segments.
    */
-  { config: 'loopVideo', run: 'loopVideo', key: 'loop', label: 'sfondo animato', fields: CLIP_FIELDS },
+  { config: 'loopVideo', run: 'loopVideo', key: 'loop', label: 'animated loop', fields: CLIP_FIELDS },
   /**
    * A background past six seconds: the Context Loop's chain, whose last scene
    * takes the still as its last frame (a core switch on «last scene»), then
    * closed into a loop by the studio like the segment chain.
    */
   {
-    config: 'loopVideoChain', run: 'loopChain', key: 'loop-chain', label: 'sfondo animato (lungo)',
+    config: 'loopVideoChain', run: 'loopChain', key: 'loop-chain', label: 'animated loop (long)',
     fields: { ...CLIP_FIELDS, planJson: PIN, runName: PIN },
   },
   /** The "extend" action: continues an existing clip. */
-  { config: 'extendVideo', run: 'extendVideo', key: 'extend', label: 'continuazione video', fields: CLIP_FIELDS },
+  { config: 'extendVideo', run: 'extendVideo', key: 'extend', label: 'video continuation', fields: CLIP_FIELDS },
   /**
    * The continuation past six seconds: the Context Loop's external-video
    * chain. The whole clip is the first scene's context and comes back in
    * front of the new scenes, so the studio joins nothing.
    */
   {
-    config: 'extendVideoChain', run: 'extendChain', key: 'extend-chain', label: 'continuazione video (lunga)',
+    config: 'extendVideoChain', run: 'extendChain', key: 'extend-chain', label: 'video continuation (long)',
     fields: { ...CLIP_FIELDS, planJson: PIN, runName: PIN },
   },
   /**
@@ -191,28 +191,28 @@ export const WORKFLOW_ROWS = [
    * has no row here: until there is a graph, the job stops with
    * `job.objectSwapNotConfigured`.
    */
-  { config: 'objectSwap', run: 'objectSwap', key: 'object-swap', label: 'modifica oggetto', fields: OBJECT_SWAP_FIELDS },
+  { config: 'objectSwap', run: 'objectSwap', key: 'object-swap', label: 'object swap', fields: OBJECT_SWAP_FIELDS },
   {
     config: 'objectSwapRemove', run: 'objectSwapRemove', key: 'object-swap-remove',
-    label: 'modifica oggetto (togli)', fields: OBJECT_SWAP_FIELDS,
+    label: 'object swap (remove)', fields: OBJECT_SWAP_FIELDS,
   },
   {
     config: 'objectSwapBackground', run: 'objectSwapBackground', key: 'object-swap-background',
-    label: 'modifica oggetto (sfondo)', fields: OBJECT_SWAP_FIELDS,
+    label: 'object swap (background)', fields: OBJECT_SWAP_FIELDS,
   },
   {
     config: 'objectSwapAdd', run: 'objectSwapAdd', key: 'object-swap-add',
-    label: 'modifica oggetto (aggiungi)', fields: OBJECT_SWAP_FIELDS,
+    label: 'object swap (add)', fields: OBJECT_SWAP_FIELDS,
   },
   {
     config: 'objectSwapAddPhoto', run: 'objectSwapAddPhoto', key: 'object-swap-add-photo',
-    label: 'modifica oggetto (aggiungi da foto)', fields: OBJECT_SWAP_FIELDS,
+    label: 'object swap (add from a photo)', fields: OBJECT_SWAP_FIELDS,
   },
   /**
    * «Cambio personaggio»: Openjutsu's one-click graph, sent once with the
    * whole clip (it cuts its own windows). The photo goes on `imageNodeId`.
    */
-  { config: 'swapPerson', run: 'swapPerson', key: 'swap-person', label: 'cambio personaggio', fields: { noLipSync: PIN, planResolution: PIN } },
+  { config: 'swapPerson', run: 'swapPerson', key: 'swap-person', label: 'character swap', fields: { noLipSync: PIN, planResolution: PIN } },
   /**
    * The same swap without lip-sync, a graph of its own as in Openjutsu: H3
    * hears silence, the mannequins show the faces and the plan says nobody
@@ -221,7 +221,7 @@ export const WORKFLOW_ROWS = [
    */
   {
     config: 'swapPersonNoLipSync', run: 'swapPersonNoLipSync', key: 'swap-person-no-lip-sync',
-    label: 'cambio personaggio (senza lip-sync)', fields: { noLipSync: PIN, planResolution: PIN },
+    label: 'character swap (no lip-sync)', fields: { noLipSync: PIN, planResolution: PIN },
   },
   /**
    * The clip workflow that sings a track it is given.
@@ -233,7 +233,7 @@ export const WORKFLOW_ROWS = [
    * slice of the same song.
    */
   {
-    config: 'videoOnSong', run: 'videoOnSong', key: 'video-song', label: 'clip su una canzone',
+    config: 'videoOnSong', run: 'videoOnSong', key: 'video-song', label: 'clip on a song',
     fields: {
       ...CLIP_FIELDS,
       songAudio: PIN,
@@ -251,10 +251,10 @@ export const WORKFLOW_ROWS = [
     },
   },
   /** The "upscale" action on a still. */
-  { config: 'upscaleImage', run: 'upscaleImage', key: 'upscale-image', label: 'upscale immagini', fields: {} },
+  { config: 'upscaleImage', run: 'upscaleImage', key: 'upscale-image', label: 'image upscale', fields: {} },
   /** The "upscale" action on a clip at or below `shortSeconds`. */
   {
-    config: 'upscaleVideo', run: 'upscaleVideo', key: 'upscale-video', label: 'upscale video',
+    config: 'upscaleVideo', run: 'upscaleVideo', key: 'upscale-video', label: 'video upscale',
     fields: { shortSeconds: { kind: 'number', min: 0 }, metaBatchNodeId: TEXT, videoCombineNodeId: TEXT },
   },
   /**
@@ -262,7 +262,7 @@ export const WORKFLOW_ROWS = [
    * (`VHS_BatchManager` + `VHS_LoadVideo` + `VHS_VideoCombine`) that ComfyUI
    * requeues once per block; only the last request writes the file.
    */
-  { config: 'upscaleVideoLong', run: 'upscaleVideoLong', key: 'upscale-video-long', label: 'upscale video lunghi', fields: {} },
+  { config: 'upscaleVideoLong', run: 'upscaleVideoLong', key: 'upscale-video-long', label: 'long video upscale', fields: {} },
   /**
    * «Rigenera dettaglio»: the Open-H3 refiner (NVlabs) on the source clip.
    *
@@ -276,13 +276,13 @@ export const WORKFLOW_ROWS = [
    */
   {
     config: 'regenerateDetail', run: 'regenerateDetail', key: 'regenerate-detail',
-    label: 'rigenera dettaglio', fields: {},
+    label: 'regenerate detail', fields: {},
   },
   /** The "bg" action. */
-  { config: 'removeBackground', run: 'removeBackground', key: 'background', label: 'rimozione sfondo', fields: {} },
+  { config: 'removeBackground', run: 'removeBackground', key: 'background', label: 'background removal', fields: {} },
   /** Text-to-music: the "music" action. */
   {
-    config: 'generateMusic', run: 'generateMusic', key: 'music', label: 'generazione musica',
+    config: 'generateMusic', run: 'generateMusic', key: 'music', label: 'music generation',
     fields: { lyrics: PIN, duration: PIN },
   },
   /**
@@ -291,7 +291,7 @@ export const WORKFLOW_ROWS = [
    * destroys the music, so the separation lives in the graph.
    */
   {
-    config: 'changeVoice', run: 'changeVoice', key: 'voice', label: 'cambio voce',
+    config: 'changeVoice', run: 'changeVoice', key: 'voice', label: 'voice change',
     fields: { voice: PIN, pitch: PIN, voices: { kind: 'list' } },
   },
   /**
