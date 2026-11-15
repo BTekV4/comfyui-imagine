@@ -56,6 +56,7 @@ that is possible; the suite is plain `node:test`, one file per area in `test/`.
 | `shared/` | types and helpers both sides use |
 | `plugins/` | Instagram, Telegram, Openjutsu, IOPaint, and an example to copy |
 | `workflows/` | the ComfyUI graphs, in API format |
+| `comfyui-nodes/` | ComfyUI custom nodes the studio needs (Segments) |
 | `mcp/` | an MCP server that drives the studio from an agent |
 
 ## Reporting a bug

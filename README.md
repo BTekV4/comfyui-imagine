@@ -1,8 +1,26 @@
-# Imagine
+<p align="center">
+  <img src="docs/assets/logo.svg" width="112" height="112" alt="Imagine logo">
+</p>
 
-A local studio for ComfyUI: a chat that turns a sentence into the right graph, a
-queue that runs it, a gallery, and a set of ready-made recipes — image to video,
-object swap, relighting, animated loops, music, voice, upscaling.
+<h1 align="center">ComfyUI Imagine</h1>
+
+<p align="center">
+  A local studio for ComfyUI: describe what you want, get images, edits and videos.
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-3B6CF6"></a>
+  <img alt="Node 24+" src="https://img.shields.io/badge/node-%E2%89%A524-8E44F0">
+  <img alt="Languages: English, Italian" src="https://img.shields.io/badge/languages-EN%20%7C%20IT-555">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/viewer-segments.jpg" alt="A generated photo open in the viewer, with the Segments panel listing the objects found in it" width="900">
+</p>
+
+A chat that turns a sentence into the right graph, a queue that runs it, a
+canvas and a gallery, and a set of ready-made recipes — image to video, object
+swap, relighting, animated loops, music, voice, upscaling.
 
 It is a single Node process plus a React interface. It talks to ComfyUI over its
 HTTP API and to any OpenAI-compatible chat-completions endpoint for the text and
@@ -23,12 +41,53 @@ the repository ships Italian (see [Languages](#languages)).
   window.
 - **A job queue that survives.** Long renders report progress, can be cancelled,
   and a music video left half-made is picked up again after a restart.
+- **A photo viewer with tools.** Every picture opens with **Segments** (each
+  object found, cut out, ready to edit or download), **Precise edit** with a
+  brush, **Colors**, **Draw** and **Crop**, plus one-click remove background,
+  make video and upscale.
 - **Graphs as configuration.** Every action is an API-format ComfyUI graph plus a
   handful of node ids in `config.yaml`. Swap the model, keep the studio.
 - **An MCP server.** `mcp/` exposes the studio's projects, files and jobs as
   typed tools for MCP clients (Claude Code and other agents). It is a separate
   process that talks to the studio only through its HTTP API — see
   [mcp/README.md](mcp/README.md).
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Home: the composer and the action cards](docs/screenshots/home.jpg) | ![A project: the chat on the left, its pictures and video on the canvas](docs/screenshots/project.jpg) |
+| **Home** — type a request, or pick an action | **Project** — the chat explains each choice; results land on the canvas |
+| ![Library: every file, filtered by kind and searchable](docs/screenshots/library.jpg) | ![Plugins: installed, available, and language packs](docs/screenshots/plugins.jpg) |
+| **Library** — everything you made, by project | **Plugins** — optional features and language packs, installed from the page |
+
+## Supported models
+
+What `config.example.yaml` wires to each action, read from the graphs in
+`workflows/`. The file names are the ones the graphs load: put the weights in
+the matching ComfyUI folders, or edit the graph to use your own. Any action can
+point at another graph — see [The workflows](#the-workflows).
+
+| Action | Model family | Weights the graph loads |
+|---|---|---|
+| Generate image, redraw a video's first frame | **Krea 2 Turbo** ([Comfy-Org/Krea-2](https://huggingface.co/Comfy-Org/Krea-2)) | `krea2_turbo_int8_convrot`, text encoder `qwen3vl_4b_int8_convrot`, VAE `qwen_image_vae` |
+| Edit photo, precise edit (brush), reference image | **Krea 2 Turbo** + identity-edit LoRA | the three above + `krea2_identity_edit_v1_2` (LoRA) |
+| Compose a person with a reference (costume, setting) | **Qwen-Image 2.1** | `qwen_image_2.1_int8_convrot`, `qwen3vl_8b_int8_convrot`, `qwen_image_2.1_vae_bf16` |
+| Relight a photo | **FLUX.3 Klein** | `flux3-image-klein-int8-convrot`, `qwen3vl_4b_nvfp4`, `flux2-vae` |
+| Make video, loop, extend, video on a song, recreate video | **MiniMax H3** (fast and quality graphs) | `minimax_h3_fl2va` / `minimax_h3_ref2va` (int8), text encoder `qwen3vl_32b_minimax_h3_nvfp4_awq`, video and audio VAEs, Pika H3 Flex turbo LoRAs |
+| Edit object in a video: change, remove, background, add | **MiniMax H3** + **SAM 3.1** | the H3 weights + `minimax_h3_character_swap_v1.1` LoRA, `sam3.1_multiplex_fp16` |
+| Regenerate detail (video at 1.5×) | **MiniMax H3** | latent upscaler 3D + `minimax_h3_open_regenerate_2k` LoRA |
+| Segments (objects in a photo) | **SAM 3.1** + the vision model | `sam3.1_multiplex_fp16`, node in [comfyui-nodes/imagine-segments](comfyui-nodes/imagine-segments) |
+| Upscale photo / video | **SeedVR2** | `seedvr2_ema_7b_sharp_fp16` (photo), `seedvr2_3b_int8_convrot` (video), `ema_vae_fp16` |
+| Remove background | **BiRefNet** | `birefnet` |
+| Music | **MiniMax Music 3** | `minimax_music3_dit_fp16`, its text encoder and `minimax_music3_dav` |
+| Change voice / extract vocals | **RVC** / **MelBand RoFormer** | your `voice-model.pth`; `MelBandRoformer_fp16` |
+| Remove object (photo) | **LaMa** in IOPaint | through the IOPaint plugin, outside ComfyUI |
+
+**Text and vision** go to any OpenAI-compatible chat-completions endpoint
+(Ollama, vLLM, LM Studio, llama.cpp, a hosted API): the model writes the
+prompts, reads photos and frames, and names projects. One with image input is
+recommended — Segments, Recreate and the photo descriptions need it.
 
 ## Requirements
 
@@ -132,15 +191,23 @@ varies at run time is only what the pins address.
 
 ## The home covers
 
-The cards on the home page show no cover until you add your own: the artwork is
-content, not code, and this repository does not ship any. Pick an action in
+The cards on the home page come with covers made with the studio itself, from
+invented subjects (`web/public/imagine/`). To use your own, pick an action in
 **Settings → Workflows** and choose a file under "Cover for this action" (an
 image or a short video), or put files named after the card's key into
-`<data>/covers/` (for example `<data>/covers/video.webp`). Covers live in the
-data directory, so updates do not touch them. Without one a card renders as a
-plain tile and every action still works.
+`<data>/covers/` (for example `<data>/covers/video.webp`). Your covers live in
+the data directory, win over the shipped ones, and updates do not touch them.
 
 ## Languages
+
+| Language | Code | How |
+|---|---|---|
+| English | `en` | built in, the source of every text |
+| Italian | `it` | pack shipped in `locales/it.json`, installed from **Plugins → Languages** |
+
+A new language is one JSON file of the same keys — translate as much as you
+like, the rest reads English. Packs for more languages are very welcome as
+pull requests.
 
 English is the source language: it is compiled into the page and is the
 fallback for any key a pack leaves out. Every other language is a pack — one

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Imagine">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3B6CF6"/>
+      <stop offset="1" stop-color="#8E44F0"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E4DBFF"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <!-- a frame, open at the top right: a picture being made -->
+  <path d="M38 34 H58 M34 38 V90 Q34 94 38 94 H90 Q94 94 94 90 V70" fill="none" stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- the spark that makes it -->
+  <path d="M82 22 C84 36 88 40 102 42 C88 44 84 48 82 62 C80 48 76 44 62 42 C76 40 80 36 82 22 Z" fill="url(#glow)"/>
+  <path d="M60 58 C61 65 63 67 70 68 C63 69 61 71 60 78 C59 71 57 69 50 68 C57 67 59 65 60 58 Z" fill="#FFFFFF" fill-opacity="0.85"/>
+</svg>
