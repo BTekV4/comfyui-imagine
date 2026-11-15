@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/logo.svg" width="112" height="112" alt="Imagine logo">
+  <img src="docs/assets/imagine-icon.svg" width="112" height="112" alt="Imagine logo">
 </p>
 
 <h1 align="center">ComfyUI Imagine</h1>
