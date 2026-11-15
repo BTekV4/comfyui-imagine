@@ -71,7 +71,7 @@ export interface SetupHooks {
 }
 
 /** The two settings the check reads, at the moment it reads them. */
-export interface SetupSettings {
+interface SetupSettings {
   readonly hfToken: string
   readonly autoSetup: boolean
 }
@@ -106,7 +106,7 @@ const sleep = (ms: number, signal?: AbortSignal): Promise<void> => new Promise((
  * @param plan - what is missing.
  * @returns e.g. "Krea 2 Identity Edit, krea2_turbo_int8_convrot.safetensors (13.5 GB)".
  */
-export function describePlan(plan: ImagineSetupPlan): string {
+function describePlan(plan: ImagineSetupPlan): string {
   const gb = (bytes: number): string => `${(bytes / 1e9).toFixed(1)} GB`
   return [...plan.packs.map(pack => pack.name), ...plan.models.map(model => `${model.name} (${gb(model.size)})`)].join(', ')
 }

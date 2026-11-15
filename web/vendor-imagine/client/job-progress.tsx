@@ -12,6 +12,9 @@
 
 import { useCallback, useSyncExternalStore } from 'react'
 import type { ImagineJobView as ImagineJob } from '../../../shared/imagine-types.ts'
+import { formatEta } from './format.ts'
+import { progressStageLabel } from './imagine-bits.tsx'
+import { translate } from './locale-store.ts'
 import css from './JobProgress.module.css'
 
 /** The part of a job that moves while it runs. */
@@ -83,6 +86,43 @@ export function useJobProgress(id: string): JobProgressView | undefined {
   const subscribe = useCallback((listener: () => void) => jobProgress.subscribe(id, listener), [id])
   const read = useCallback(() => jobProgress.get(id), [id])
   return useSyncExternalStore(subscribe, read, read)
+}
+
+/** A running job's percentage, stage and time left, as the labels show them. */
+export interface JobStageLine {
+  percent: number | undefined
+  /** The stage in words ("Denoising"), when the node is a known one. */
+  stage: string | undefined
+  /** "2 min left", when ComfyUI reported a pace. */
+  eta: string | undefined
+}
+
+/**
+ * The stage and time-left words of a job's progress.
+ *
+ * The pending tile, the upscale bar and the chat's job row each built these
+ * from the same fields; one place keeps the three labels saying the same.
+ * @param progress - the job's progress, as `useJobProgress` returned it.
+ * @returns the three parts; each is undefined when not known.
+ */
+export function stageLineOf(progress: JobProgressView['progress']): JobStageLine {
+  const node = progress?.nodeClass
+  const key = node === undefined ? undefined : progressStageLabel(node)
+  return {
+    percent: progress?.percent,
+    stage: key === undefined ? undefined : translate(key),
+    eta: progress?.etaSeconds === undefined ? undefined : translate('imagine.etaLeft', { time: formatEta(progress.etaSeconds) }),
+  }
+}
+
+/**
+ * "Stage · time left", or either part alone.
+ * @param stage - the stage words, if any.
+ * @param eta - the time-left words, if any.
+ * @returns the joined text, empty when neither is known.
+ */
+export function joinStage(stage: string | undefined, eta: string | undefined): string {
+  return [stage, eta].filter(part => part !== undefined).join(' · ')
 }
 
 /** A job's percentage, as its own word after the running label. */

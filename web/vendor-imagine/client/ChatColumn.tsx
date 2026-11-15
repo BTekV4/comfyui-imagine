@@ -15,9 +15,9 @@ import { setupPackUnverified, type ImagineJobView as ImagineJob, type MediaFileR
 import type { WorkflowProposal } from '../../../shared/imagine-chat.ts'
 import type { ImagineMessage, ImagineProject } from '../../../shared/imagine-projects.ts'
 import { isSeedMessage } from './imagine-projects.ts'
-import { clockStamp, formatEta, formatGigabytes } from './format.ts'
-import { GeneratingLabel, progressStageLabel } from './imagine-bits.tsx'
-import { Percent, ProgressBar, useJobProgress } from './job-progress.tsx'
+import { clockStamp, formatGigabytes } from './format.ts'
+import { AudioMark, GeneratingLabel } from './imagine-bits.tsx'
+import { joinStage, Percent, ProgressBar, stageLineOf, useJobProgress } from './job-progress.tsx'
 import { useTrace, type TraceStore } from './reading-trace.ts'
 import css from './ChatColumn.module.css'
 import { translate } from './locale-store.ts'
@@ -41,7 +41,7 @@ function FileChip({ file, className, thumbClassName, size, picked, onOpen }: {
       onClick={() => { onOpen(file.name) }}
     >
       {file.kind === 'audio'
-        ? <span className={css.audioThumb} aria-hidden="true">♪</span>
+        ? <AudioMark className={css.audioThumb} />
         : <Still className={thumbClassName} src={thumbUrlOf(file.name, size)} />}
     </button>
   )
@@ -60,6 +60,11 @@ interface ChatBubble {
    * sentence and what it made, the way Grok Imagine does.
    */
   results?: readonly MediaFileRef[]
+  /**
+   * An answer's paragraphs and lists, split once here inside the column's
+   * memo rather than on every render of every bubble.
+   */
+  blocks?: ProseBlock[]
 }
 
 /**
@@ -84,7 +89,7 @@ function bubblesOf(messages: readonly ImagineMessage[]): ChatBubble[] {
     // project opens on an empty column (asked 2026-09-10).
     if (isSeedMessage(message)) continue
     if (message.role === 'assistant') {
-      const bubble: ChatBubble = { message, ids: [message.id], count: 1 }
+      const bubble: ChatBubble = { message, ids: [message.id], count: 1, blocks: proseBlocks(message.text) }
       for (const jobId of message.jobIds ?? []) ownerByJob.set(jobId, bubble)
       out.push(bubble)
       continue
@@ -245,12 +250,7 @@ const JobRow = memo(function JobRow({ job, onStop, onApproveSetup }: {
   }
   const setupProgress = live?.setupProgress ?? job.setupProgress
   const installing = (live?.notice ?? job.notice) === 'setup-running' && job.promptId === undefined
-  const percent = live?.progress?.percent
-  const node = live?.progress?.nodeClass
-  const stage = node === undefined ? undefined : progressStageLabel(node)
-  const eta = live?.progress?.etaSeconds === undefined
-    ? undefined
-    : translate('imagine.etaLeft', { time: formatEta(live.progress.etaSeconds) })
+  const { percent, stage, eta } = stageLineOf(live?.progress)
   const scan = live?.scanProgress
   const setupStage = installing && setupProgress !== undefined && setupProgress.stage !== ''
     ? setupProgress.stage === 'restart' ? translate('imagine.setupRestart') : setupProgress.stage
@@ -271,11 +271,7 @@ const JobRow = memo(function JobRow({ job, onStop, onApproveSetup }: {
         </button>
       </span>
       {(setupStage !== undefined || stage !== undefined || eta !== undefined) && (
-        <span className={css.chatWorkStage}>
-          {setupStage ?? (stage === undefined ? undefined : translate(stage))}
-          {(setupStage !== undefined || stage !== undefined) && eta !== undefined ? ' · ' : undefined}
-          {eta}
-        </span>
+        <span className={css.chatWorkStage}>{joinStage(setupStage ?? stage, eta)}</span>
       )}
       <ProgressBar value={percent} />
     </div>
@@ -420,7 +416,7 @@ export const ChatColumn = memo(function ChatColumn(props: ChatColumnProps) {
         </div>
       )}
       <div className={css.messages} ref={messagesRef}>
-        {chatBubbles.map(({ message, ids, count, results }) => (
+        {chatBubbles.map(({ message, ids, count, results, blocks }) => (
           <div key={message.id} className={css.bubbleWrap} data-role={message.role}>
             {message.files !== undefined && message.files.length > 0 && (
               /*
@@ -462,7 +458,7 @@ export const ChatColumn = memo(function ChatColumn(props: ChatColumnProps) {
             {message.text.length > 0 && (message.role === 'assistant'
               ? (
                 <div className={css.prose}>
-                  {proseBlocks(message.text).map((block, index) => (block.kind === 'ul'
+                  {(blocks ?? []).map((block, index) => (block.kind === 'ul'
                     ? (
                       <ul key={`block-${String(index)}`} className={css.proseList}>
                         {block.lines.map((line, item) => <li key={`item-${String(item)}`}>{line}</li>)}

@@ -11,6 +11,7 @@ import type { ImagineProject } from '../../../shared/imagine-projects.ts'
 import type { GalleryItem } from '../../../shared/imagine-types.ts'
 import { thumbUrlOf, THUMB_SMALL } from './gallery-api.ts'
 import { Still } from './Still.tsx'
+import { AudioMark } from './imagine-bits.tsx'
 import shared from './imagine-shared.module.css'
 import css from './ProjectsGrid.module.css'
 import { translate } from './locale-store.ts'
@@ -56,7 +57,7 @@ export const ProjectsGrid = memo(function ProjectsGrid({ listed, allByName, onOp
                   style={{ gridTemplateColumns: `repeat(${gridCols}, 1fr)` }}
                 >
                   {thumbs.map(item => item.kind === 'audio'
-                    ? <span key={item.name} className={css.audioThumb} aria-hidden="true">♪</span>
+                    ? <AudioMark key={item.name} className={css.audioThumb} />
                     : <Still key={item.name} src={thumbUrlOf(item.name, THUMB_SMALL, item.mtime)} />)}
                   {thumbs.length === 0 && (
                     <span className={css.projectCardEmpty} aria-hidden="true">

@@ -23,7 +23,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import type { ImagineHost } from '../../src/host.ts'
-import { AAC_128K, AUDIO_RATE, FPS, ffmpegTo, frameAt, h264Out, probeMedia } from './media-tools.ts'
+import { AAC_128K, FPS, SILENT_STEREO_INPUT, ffmpegTo, frameAt, h264Out, probeMedia, type MediaProbe } from './media-tools.ts'
 import { recallNote, type ImagineFileOrigin } from './imagine-notes.ts'
 import { eyesOf } from './eyes.ts'
 import { lookWith } from './imagine-models.ts'
@@ -110,7 +110,7 @@ export function regenerateCanvas(width: number, height: number): { width: number
  * The step is fixed (100), so the last window may run past the end of the
  * clip: its draft is padded by cloning the last frame, and the extra tail is
  * dropped when the original audio is put back on the file with `-shortest`
- * (job-finish). This way every joint has the same overlap and the same
+ * (`layPlateAudio` in run-job's `renderRegenerate`). This way every joint has the same overlap and the same
  * crossfade, and no window shows a jump backwards.
  * @param frames - frames of the source clip.
  * @returns the first frame of every window, in order.
@@ -142,11 +142,16 @@ export function regenerateStarts(frames: number): readonly number[] {
  * fail.
  * @param plate - the source clip.
  * @param startFrame - the first frame of the window.
+ * @param measured - the clip's probe, when the run already read it; probed here otherwise.
  * @returns the draft's path, outside the gallery; the caller deletes it.
  * @throws {Error} when ffmpeg cannot write it; the partial file is removed.
  */
-export async function regenerateDraft(plate: string, startFrame: number): Promise<string> {
-  const probe = await probeMedia(plate)
+export async function regenerateDraft(
+  plate: string,
+  startFrame: number,
+  measured?: Pick<MediaProbe, 'hasAudio'>,
+): Promise<string> {
+  const probe = measured ?? await probeMedia(plate)
   const out = join(tmpdir(), `regenerate-${randomUUID()}.mp4`)
   const span = REGENERATE_WINDOW_FRAMES / FPS
   const from = Math.max(0, startFrame) / FPS
@@ -155,7 +160,7 @@ export async function regenerateDraft(plate: string, startFrame: number): Promis
     // One second more than needed: the cut must be able to deliver 124
     // frames, and when the clip ends earlier `tpad` fills them in.
     '-ss', from.toFixed(4), '-t', (span + 1).toFixed(4), '-i', plate,
-    ...probe.hasAudio ? [] : ['-f', 'lavfi', '-i', `anullsrc=channel_layout=stereo:sample_rate=${String(AUDIO_RATE)}`],
+    ...probe.hasAudio ? [] : SILENT_STEREO_INPUT,
     '-map', '0:v:0',
     '-map', probe.hasAudio ? '0:a:0' : '1:a',
     // `fps` before `tpad`: the cut lands on a frame and the cloned tail sits
@@ -176,9 +181,10 @@ export async function regenerateDraft(plate: string, startFrame: number): Promis
  * The prompt to regenerate a clip with: the user's, the one the clip was born
  * from, the one the vision model writes for it, or the neutral sentence.
  *
- * The order is not arbitrary. The prompt guides the redraw, so the best one is
- * the one that already produced this clip: it is in the file's note
- * (`origin.prompt`). When that is a placeholder — an upscale, a voice change,
+ * The order is not arbitrary. A line the user wrote says what they want to see
+ * and wins (a placeholder such as «regenerate» is not one). Without it, the
+ * best prompt for the redraw is the one that already produced this clip: it
+ * is in the file's note (`origin.prompt`). When that is a placeholder — an upscale, a voice change,
  * an earlier regeneration — the note also says which file it was born from
  * (`origin.source`), and the chain is walked back. Only if the chain leads
  * nowhere is the clip looked at, and the last resort is a neutral sentence: an
@@ -187,6 +193,7 @@ export async function regenerateDraft(plate: string, startFrame: number): Promis
  * @param sourceName - the clip's name in the gallery.
  * @param sourcePath - the clip's path.
  * @param chosen - the model the composer chip was showing, when there is one.
+ * @param userLine - the line the request carried; empty or a placeholder when the user wrote none.
  * @returns the prompt to give the sampler, never empty.
  */
 export async function regeneratePrompt(
@@ -194,7 +201,10 @@ export async function regeneratePrompt(
   sourceName: string,
   sourcePath: string,
   chosen?: ModelRoute,
+  userLine = '',
 ): Promise<string> {
+  const line = userLine.trim()
+  if (line.length > 0 && !PLACEHOLDER_PROMPTS.has(line)) return line
   const filed = await filedPrompt(sourceName)
   if (filed !== undefined) return filed
   const seen = await seenPrompt(ctx, sourcePath, chosen)
@@ -260,12 +270,12 @@ async function seenPrompt(
     // A very long description is a story: the graph reads a sentence, and the
     // cut keeps the prompt within what the model can use.
     if (text === undefined || text.length === 0) {
-      console.warn(`[imagine] regenerate detail: ${eyes.route.provider}/${eyes.route.model} did not describe the frame, the refiner starts from the user's request`)
+      console.warn(`[imagine] regenerate detail: ${eyes.route.provider}/${eyes.route.model} did not describe the frame, the refiner starts from the neutral sentence`)
       return undefined
     }
     return text.slice(0, 600)
   } catch (error: unknown) {
-    console.warn(`[imagine] regenerate detail: the frame could not be prepared or read, the refiner starts from the user's request: ${error instanceof Error ? error.message : String(error)}`)
+    console.warn(`[imagine] regenerate detail: the frame could not be prepared or read, the refiner starts from the neutral sentence: ${error instanceof Error ? error.message : String(error)}`)
     return undefined
   } finally {
     await unlink(frame).catch(() => undefined)

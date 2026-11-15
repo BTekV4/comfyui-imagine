@@ -31,7 +31,7 @@ export interface LoraRequest {
 }
 
 /** The class a plain (model-only) LoRA node uses. */
-export const LORA_CLASS = 'LoraLoaderModelOnly'
+const LORA_CLASS = 'LoraLoaderModelOnly'
 
 /** The class names a model chain starts at, in the order they are tried. */
 const MODEL_SOURCES = ['UNETLoader', 'CheckpointLoaderSimple', 'CheckpointLoader', 'UnetLoaderGGUF', 'UNETLoaderGGUF']
@@ -123,9 +123,12 @@ function freshId(graph: ComfyGraph): string {
 /**
  * Insert a LoRA at the start of the model chain.
  *
- * The returned graph is a new object: a caller that fails before writing it
- * still holds the one on disk.
- * @param graph - the workflow.
+ * The graph is changed IN PLACE and returned, as `patchWorkflow` does: every
+ * caller hands in the copy `editWorkflowFile` has just parsed from disk, which
+ * nobody else holds, so the deep copy made here until 2026-11-15 was a second
+ * one for nothing. Every check runs before the first write, so a refusal
+ * leaves the graph as it was.
+ * @param graph - the workflow, changed in place.
  * @param request - which LoRA, and how strongly.
  * @returns the graph with the node in, and the node's id.
  * @throws {Error} when the graph has no model loader or no model consumer.
@@ -139,7 +142,7 @@ export function insertLora(graph: ComfyGraph, request: LoraRequest): { graph: Co
   const consumers = modelConsumers(graph, source)
   if (consumers.length === 0) throw new Error(message('lora.noConsumer'))
 
-  const next: ComfyGraph = JSON.parse(JSON.stringify(graph)) as ComfyGraph
+  const next = graph
   const node = freshId(next)
   /*
    * The consumers are read off the graph BEFORE the node goes in: the new node
@@ -164,8 +167,9 @@ export function insertLora(graph: ComfyGraph, request: LoraRequest): { graph: Co
  * The strength is the only thing about a LoRA that is worth changing after it
  * is in: the node, its place in the chain and the model it reads are all
  * decided. Negative values are allowed, as ComfyUI does — a LoRA pushed the
- * other way is a normal way to soften one.
- * @param graph - the workflow.
+ * other way is a normal way to soften one. Changed in place, like
+ * {@link insertLora}.
+ * @param graph - the workflow, changed in place.
  * @param node - the LoRA node's id.
  * @param strength - the model strength to write.
  * @returns the graph with the new value.
@@ -176,14 +180,14 @@ export function setLoraStrength(graph: ComfyGraph, node: string, strength: numbe
   if (entry === undefined) throw new Error(message('lora.nodeMissing', { node }))
   if (entry.class_type !== LORA_CLASS) throw new Error(message('lora.nodeNotLora', { node, class: entry.class_type }))
   if (!Number.isFinite(strength)) throw new Error(message('lora.strengthRequired'))
-  const next: ComfyGraph = JSON.parse(JSON.stringify(graph)) as ComfyGraph
-  ;(next[node]!.inputs as Record<string, unknown>).strength_model = strength
-  return next
+  ;(entry.inputs as Record<string, unknown>).strength_model = strength
+  return graph
 }
 
 /**
- * Take a LoRA out, handing its consumers the model it was reading.
- * @param graph - the workflow.
+ * Take a LoRA out, handing its consumers the model it was reading. Changed in
+ * place, like {@link insertLora}.
+ * @param graph - the workflow, changed in place.
  * @param node - the LoRA node's id.
  * @returns the graph without it.
  * @throws {Error} when the node is not a model-only LoRA or has nothing feeding it.
@@ -194,7 +198,7 @@ export function removeLora(graph: ComfyGraph, node: string): ComfyGraph {
   if (entry.class_type !== LORA_CLASS) throw new Error(message('lora.nodeNotLora', { node, class: entry.class_type }))
   const upstream = (entry.inputs as Record<string, unknown>).model
   if (!isRef(upstream)) throw new Error(message('lora.noUpstream', { node }))
-  const next: ComfyGraph = JSON.parse(JSON.stringify(graph)) as ComfyGraph
+  const next = graph
   for (const [id, field] of modelConsumers(next, node)) {
     ;(next[id]!.inputs as Record<string, unknown>)[field] = [upstream[0], upstream[1]]
   }

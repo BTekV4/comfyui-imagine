@@ -51,10 +51,12 @@ export function Still({ src, alt = '', className, lazy, imageRef, onLoaded, urge
   }
 
   // A new file starts the attempts over; nothing carries across a src change,
-  // not even a retry the old file had pending.
+  // not even a retry the old file had pending. A state that is already fresh
+  // is kept as is: this also runs on mount, and a new object there rendered
+  // every still twice.
   useEffect(() => {
     cancelRetry()
-    setState({ attempt: 0, tries: 0, broken: false })
+    setState(prev => (prev.attempt === 0 && prev.tries === 0 && !prev.broken ? prev : { attempt: 0, tries: 0, broken: false }))
   }, [src])
 
   // Only a still that gave up is asked for again, so coming back to the tab

@@ -31,16 +31,15 @@ providers:
     baseURL: https://api.openai.com/v1
     apiKeyEnv: OPENAI_API_KEY
 
-# The models the composer offers. `vision: true` ones can read the clip frames.
+# The models the composer offers. The default model also reads the pictures and
+# the clip frames, so pick one with image input.
 models:
   - provider: local
     id: qwen3-vl:8b
     name: Qwen3-VL 8B
-    vision: true
   - provider: openai
     id: gpt-4o-mini
     name: GPT-4o mini
-    vision: true
 
 defaultModel:
   provider: local
@@ -78,7 +77,7 @@ toolComfy:
   # run. The ids below match the graphs shipped in ./workflows/: if you edit a
   # graph or bring your own, update them. `pathHigh`, where present, is the
   # graph used when the job asks for high quality (or slow speed); it must
-  # carry the same pins. See workflows/README.md for the alternatives.
+  # carry the same pins. See workflows/README.md for what each graph does.
   workflows:
     # ---------------------------------------------------------------- images
 
@@ -173,8 +172,7 @@ toolComfy:
 
     # ---------------------------------------------------------------- video
     # The clip graphs below use MiniMax H3 with the Pika LoRA: the "fast" graph
-    # (4 steps) by default, the "quality" graph (6 steps) as `pathHigh`. The
-    # FastH3 graphs in ./workflows/ take the same pins and can replace either.
+    # (4 steps) by default, the "quality" graph (6 steps) as `pathHigh`.
     # `realism` is the optional realism LoRA node: its strength and trigger
     # word are applied when a job asks for it.
 
@@ -533,10 +531,8 @@ toolComfy:
       seedField: seed
       promptNodeId: ip
       promptField: value
-      # The card's «Lip-sync» switch writes node 68 (no_lip_sync) both ways.
-      noLipSync:
-        nodeId: "68"
-        field: value
+      # «Lip-sync» off runs swapPersonNoLipSync below: this graph has no
+      # no_lip_sync switch, so it takes no `noLipSync` pin.
       planResolution:
         nodeId: "11"
         field: resolution
@@ -578,7 +574,6 @@ toolComfy:
       videoField: video
       seedNodeId: "10"
       metaBatchNodeId: "30"
-      videoCombineNodeId: "15"
 
     # "Regenerate detail" (Open-H3 refiner): lifts the clip's latent with a 3D
     # convolution and redraws it in a few steps. `sizeNodeId` declares the

@@ -6,6 +6,7 @@
  * @module tool-comfy/imagine-routes
  */
 
+import { SWAP_RESOLUTIONS, type SwapResolution } from '../../../shared/imagine-sizing.ts'
 import { createHash } from 'node:crypto'
 import { basename } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -13,6 +14,7 @@ import type { ImagineHost } from '../../src/host.ts'
 import { currentLanguage, message, translateMessage } from '../../src/messages.ts'
 import { allowOnly, languageOf, notAllowed, readObject, restOf, sendJson } from '../../src/route-kit.ts'
 import { kindOf, safeBasename } from './gallery.ts'
+import { isPlainObject } from './guards.ts'
 import { isImagineAction } from './imagine-actions.ts'
 import { readImagineChat, type ImagineChatRequest, type WorkflowInventory } from './imagine-chat.ts'
 import {
@@ -26,7 +28,8 @@ import {
 import { lookSoon } from './imagine-sight.ts'
 import { adoptJobsInto, loadImagineStoreJson, saveImagineStore } from './imagine-store.ts'
 import { startMusicClip } from './music-clip.ts'
-import { loraStrength, type LoraInGraph } from './lora.ts'
+import type { LoraInGraph } from './lora.ts'
+import { loraRoute } from './custom-workflow-routes.ts'
 import { readProjectTitle } from './project-title.ts'
 import { parseSize } from './snap-size.ts'
 import type { WorkflowChange } from './workflow-edit.ts'
@@ -38,7 +41,7 @@ import type {
 } from '../../../shared/imagine-types.ts'
 
 /** Everything the studio's routes are handed at boot. */
-export interface ImagineRoutes {
+interface ImagineRoutes {
   /** Plugin context. */
   readonly ctx: ImagineHost
   /** The workflows the studio may talk about. */
@@ -402,43 +405,13 @@ async function workflowRoute(
      * The LoRAs of one workflow: the list, one added, one removed. A node is
      * not a value, so this is its own path rather than a `changes` entry.
      */
-    if (sub === 'loras') {
-      if (req.method === 'GET' || req.method === 'HEAD') {
-        sendJson(res, 200, { loras: lorasOf(key) ?? [] })
-        return
-      }
-      if (req.method !== 'POST') {
-        notAllowed(res, 'GET, HEAD, POST')
-        return
-      }
-      const asked = await readObject<{ loraName?: unknown; strength?: unknown }>(req, SMALL_BODY_BYTES)
-      try {
-        const done = await addLora(key, {
-          loraName: typeof asked.loraName === 'string' ? asked.loraName : '',
-          strength: loraStrength(asked.strength, 1),
-        })
-        sendJson(res, 200, done)
-      } catch (error: unknown) {
-        sendJson(res, 400, { error: error instanceof Error ? error.message : message('lora.notAdded') })
-      }
-      return
-    }
-    if (sub.startsWith('loras/')) {
-      const node = sub.slice('loras/'.length)
-      try {
-        if (req.method === 'PATCH' || req.method === 'PUT') {
-          const asked = await readObject<{ strength?: unknown }>(req, SMALL_BODY_BYTES)
-          sendJson(res, 200, await tuneLora(key, node, loraStrength(asked.strength, Number.NaN)))
-          return
-        }
-        if (req.method !== 'DELETE') {
-          notAllowed(res, 'PATCH, PUT, DELETE')
-          return
-        }
-        sendJson(res, 200, await removeLora(key, node))
-      } catch (error: unknown) {
-        sendJson(res, 400, { error: error instanceof Error ? error.message : message('lora.notChanged') })
-      }
+    if (sub === 'loras' || sub.startsWith('loras/')) {
+      await loraRoute(req, res, sub, {
+        list: () => lorasOf(key) ?? [],
+        add: async request => await addLora(key, request),
+        tune: async (node, strength) => await tuneLora(key, node, strength),
+        remove: async node => await removeLora(key, node),
+      })
       return
     }
     if (sub !== 'options') {
@@ -528,6 +501,8 @@ async function jobRoute(
     aspectRatio?: string
     seconds?: number
     megapixels?: number
+    /** Character and object swap only: `480p`, `720p` or `1080p`. */
+    swapResolution?: string
     /** The clip's render speed: `fast` as the graph ships, `slow` for more steps. */
     speed?: string
     /** The photo's recipe: `standard` as the graph ships, `high` for more steps. */
@@ -611,20 +586,21 @@ async function jobRoute(
   // pinned behind it.
   const chosen = routeOf(body.model)
   try {
+    // The card's file slots, read once: the job takes them and the project adopts them.
+    const customFiles = isPlainObject(body.customFiles)
+      ? Object.fromEntries(Object.entries(body.customFiles)
+        .filter((entry): entry is [string, string] => /^\d+$/.test(entry[0]) && typeof entry[1] === 'string' && entry[1].length > 0))
+      : undefined
     const job = await startImagineJob(ctx, workflows, outputDir, {
       action: body.action,
       prompt: typeof body.prompt === 'string' ? body.prompt : '',
       ...typedFields(body, JOB_FIELDS),
-      ...typeof body.customFields === 'object' && body.customFields !== null && !Array.isArray(body.customFields)
-        ? { customFields: body.customFields as Record<string, unknown> }
+      // Already checked against the ladder by `invalidRequestReason`.
+      ...(SWAP_RESOLUTIONS as readonly unknown[]).includes(body.swapResolution)
+        ? { swapResolution: body.swapResolution as SwapResolution }
         : {},
-      ...typeof body.customFiles === 'object' && body.customFiles !== null && !Array.isArray(body.customFiles)
-        ? {
-          customFiles: Object.fromEntries(Object.entries(body.customFiles as Record<string, unknown>)
-            .filter(([node, value]) => /^\d+$/.test(node) && typeof value === 'string' && value.length > 0)
-            .map(([node, value]) => [node, value as string])),
-        }
-        : {},
+      ...isPlainObject(body.customFields) ? { customFields: body.customFields } : {},
+      ...customFiles === undefined ? {} : { customFiles },
       ...typeof body.region === 'object' && body.region !== null ? { region: body.region as ImagineRegion } : {},
       // One photo per shot: a montage instead of a single take. Filtered to
       // strings here so a malformed body cannot reach the queue as a name.
@@ -671,9 +647,7 @@ async function jobRoute(
        */
       const inputs = [body.source, body.reference, body.lastSource, body.frame, body.song,
         ...Array.isArray(body.sources) ? body.sources : [],
-        ...typeof body.customFiles === 'object' && body.customFiles !== null && !Array.isArray(body.customFiles)
-          ? Object.values(body.customFiles as Record<string, unknown>)
-          : []]
+        ...Object.values(customFiles ?? {})]
         .filter((name): name is string => typeof name === 'string' && safeBasename(name) === name && kindOf(name) !== undefined)
       await adoptJobsInto([project], [...mine, ...new Set(inputs)]).catch(() => undefined)
     }
@@ -774,7 +748,7 @@ function projectIdOf(value: unknown): string | undefined {
  * data URL. Dropped media does not pass through here: it is streamed to disk
  * by `saveGalleryUploadStream`, and has no size ceiling.
  */
-export const MAX_BODY_BYTES = 80 * 1024 * 1024
+const MAX_BODY_BYTES = 80 * 1024 * 1024
 
 /**
  * The whole studio as one document (~1.4 MB on the reference deployment):
@@ -929,6 +903,7 @@ function invalidRequestReason(body: {
   size?: string
   seconds?: number
   megapixels?: number
+  swapResolution?: string
 }): string | undefined {
   if (typeof body.size === 'string') {
     const size = parseSize(body.size)
@@ -942,6 +917,9 @@ function invalidRequestReason(body: {
   const maxSeconds = MAX_SECONDS[body.action ?? ''] ?? DEFAULT_MAX_SECONDS
   if (body.seconds !== undefined && (!Number.isFinite(body.seconds) || body.seconds <= 0 || body.seconds > maxSeconds)) {
     return message('request.secondsInvalid', { max: maxSeconds })
+  }
+  if (body.swapResolution !== undefined && !(SWAP_RESOLUTIONS as readonly string[]).includes(body.swapResolution)) {
+    return message('request.swapResolutionInvalid', { allowed: SWAP_RESOLUTIONS.join(', ') })
   }
   if (body.megapixels !== undefined && (!Number.isFinite(body.megapixels) || body.megapixels <= 0 || body.megapixels > 16)) {
     return message('request.megapixelsInvalid')

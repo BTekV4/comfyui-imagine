@@ -31,7 +31,7 @@ import { join } from 'node:path'
 import type { ImagineHost } from '../../src/host.ts'
 import { lookWith, type VisionCapable } from './imagine-models.ts'
 import { eyesOf } from './eyes.ts'
-import { frameAt, mapWithConcurrency } from './media-tools.ts'
+import { frameAt } from './media-tools.ts'
 import { forgetSightNote, recallNote, rememberSight } from './imagine-notes.ts'
 import { kindOf, safeBasename } from './gallery.ts'
 import type { MediaFileRef } from '../../../shared/imagine-types.ts'
@@ -57,14 +57,6 @@ export interface ImagineChatEyes {
 export interface SightOptions {
   /** The interface language, for the description. */
   readonly language?: string
-  /**
-   * The lookbook's poses, as the workflow spells them.
-   *
-   * A lookbook photo is asked which of these it is closest to: the pose is a
-   * closed ComfyUI combo, and "rifai queste foto" can only be run with a value
-   * off that list. The guess is labelled as one in the description.
-   */
-  readonly poses?: readonly string[]
 }
 
 /**
@@ -76,16 +68,6 @@ export interface SightOptions {
  * budget cut most photos of a montage unread).
  */
 export const SIGHT_TIMEOUT_MS = 90_000
-
-/**
- * How many stills are looked at side by side.
- *
- * There is no ceiling on how many a line may stage — the user's choice, on
- * 2026-09-09, was that a cap of two "non ha senso" — only on how many calls
- * are in flight at once, so thirteen staged photos are a few seconds of wall
- * clock and not thirteen in a row.
- */
-const SIGHT_PARALLEL = 4
 
 /**
  * How many background looks (see {@link lookSoon}) run side by side. The
@@ -122,18 +104,6 @@ Describe only what you see: no interpretations, no judgements, no guesses about 
 
 /** Said to the model when the picture is a frame pulled out of a clip. */
 const CLIP_NOTE = '\nIt is a frame of a video: describe the scene you see, not the movement.'
-
-/**
- * The pose question, appended to every still when the poses are known.
- *
- * Every still and not only the lookbook's own files: the photos a line is
- * about are as often the 4K upscales of those files, or copies dragged into
- * another project, and by name those are not lookbook photos. A still with
- * nobody in it is told to leave the line out.
- */
-function poseQuestion(poses: readonly string[]): string {
-  return `\n\nIf there is a person posing in the photo, close with a separate line "Posa: " followed by the entry of this list that most looks like their pose, copied EXACTLY as it is written (only one). If there is no person, do not write that line.\n${poses.map(pose => `- ${pose}`).join('\n')}`
-}
 
 /*
  * One description per file, kept for the life of the process and, through
@@ -210,7 +180,15 @@ export async function lookAtStaged(
   if (stills.length === 0) return { sights: [], blind: false }
   const eyes = eyesOf(ctx)
   if (eyes === undefined) return { sights: [], blind: true }
-  const descriptions = await mapWithConcurrency(stills, SIGHT_PARALLEL, file => lookAt(ctx, outputDir, file.name, options))
+  /*
+   * There is no ceiling on how many a line may stage — the user's choice, on
+   * 2026-09-09, was that a cap of two "non ha senso" — only on how many calls
+   * are in flight at once, and that is the studio-wide vision lane of
+   * `lookWith`: a second cap here was one more constant to keep equal to it.
+   * A still that fails reads as unseen, as it did under the old cap, and
+   * does not sink the others.
+   */
+  const descriptions = await Promise.all(stills.map(async file => await lookAt(ctx, outputDir, file.name, options).catch(() => undefined)))
   const sights: ImagineChatSight[] = []
   stills.forEach((file, index) => {
     const description = descriptions[index]
@@ -329,8 +307,7 @@ async function lookAt(
     // A song has no picture to look at: its description is its own audio.
     const kind = kindOf(safe)
     if (kind === 'audio') return undefined
-    const asked = (kind === 'video' ? sightInstruction(options.language) + CLIP_NOTE : sightInstruction(options.language))
-      + (options.poses !== undefined && options.poses.length > 0 && kind === 'image' ? poseQuestion(options.poses) : '')
+    const asked = kind === 'video' ? sightInstruction(options.language) + CLIP_NOTE : sightInstruction(options.language)
     const path = join(outputDir, safe)
     const description = kind === 'video'
       ? await describeFrame(eyes.vision, path, eyes.route, asked, background)

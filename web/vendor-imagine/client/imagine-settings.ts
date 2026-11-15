@@ -18,7 +18,7 @@ import { VIDEO_MEGAPIXELS, clipSecondsFor } from '../../../shared/imagine-sizing
  */
 export {
   LOOP_SECONDS, VIDEO_RESOLUTIONS, clampResolution, clampSeconds, clipSecondsFor, megapixelsFor, sizeFor,
-  canvasMegapixelsFor, videoAspectLabel, videoSecondsFor, SWAP_RESOLUTIONS, swapMegapixelsFor,
+  canvasMegapixelsFor, videoAspectLabel, videoSecondsFor, SWAP_RESOLUTIONS, swapResolutionOf,
 } from '../../../shared/imagine-sizing.ts'
 
 /**
@@ -84,16 +84,19 @@ export function clampStorySeconds(seconds: number): number {
   return Math.max(STORY_FLOOR_SECONDS, Math.min(MAX_STORY_SECONDS, Math.round(seconds)))
 }
 
-/** The two sides of each composer aspect, in the order they are named. */
-const ASPECT_SIDES: Record<ImagineAspect, readonly [number, number]> = {
-  '9:16': [9, 16],
-  '2:3': [2, 3],
-  '3:2': [3, 2],
-  '4:3': [4, 3],
-  '1:1': [1, 1],
-  '16:9': [16, 9],
-  '21:9': [21, 9],
-  '5:2': [5, 2],
+/**
+ * The two sides of a composer aspect, in the order they are named: '9:16' is
+ * [9, 16].
+ *
+ * Read off the aspect's own spelling, as `sizeFor` in shared/imagine-sizing.ts
+ * reads it, rather than from a second hand-kept table of the same eight
+ * pairs. Every `ImagineAspect` is two positive integers around a colon.
+ * @param aspect - composer aspect.
+ * @returns width and height parts.
+ */
+function aspectSides(aspect: ImagineAspect): readonly [number, number] {
+  const [w = 1, h = 1] = aspect.split(':').map(Number)
+  return [w, h]
 }
 
 /**
@@ -116,7 +119,7 @@ const VIDEO_SIZE_MULTIPLE = 32
  * @returns width and height in pixels.
  */
 function videoPixelSize(aspect: ImagineAspect, megapixels: number): { width: number; height: number } {
-  const [w, h] = ASPECT_SIDES[aspect]
+  const [w, h] = aspectSides(aspect)
   const scale = Math.sqrt(megapixels * 1024 * 1024 / (w * h))
   const round = (side: number): number => Math.round(side / VIDEO_SIZE_MULTIPLE) * VIDEO_SIZE_MULTIPLE
   return { width: round(w * scale), height: round(h * scale) }

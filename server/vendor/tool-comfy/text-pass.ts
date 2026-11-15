@@ -38,11 +38,10 @@ export async function firstTextReply<T>(
     console.warn(`[imagine] ${what}: no text model on the context`)
     return undefined
   }
-  const tried = new Set<string>()
-  for (const route of textRoutes(chosen)) {
+  // `textRoutes` already drops repeated routes: each one is a new attempt.
+  const routes = textRoutes(chosen)
+  for (const route of routes) {
     const key = `${route.provider}/${route.model}`
-    if (tried.has(key)) continue
-    tried.add(key)
     const written = await streamText(llm, route, instruction, timeoutMs)
     if (written === undefined || written.trim().length === 0) {
       console.warn(`[imagine] ${what}: ${key} did not answer within ${String(Math.round(timeoutMs / 1000))} s`)
@@ -60,6 +59,6 @@ export async function firstTextReply<T>(
      */
     console.warn(`[imagine] ${what}: answer from ${key} unusable (${String(written.trim().length)} characters), trying the next route`)
   }
-  console.warn(`[imagine] ${what}: none of the ${String(tried.size)} routes wrote usable text`)
+  console.warn(`[imagine] ${what}: none of the ${String(routes.length)} routes wrote usable text`)
   return undefined
 }

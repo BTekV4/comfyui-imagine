@@ -17,6 +17,14 @@ import type { SocialComment, SocialCommentPass } from './gallery-api.ts'
 import { fetchSocialComments, likeSocialComment, replySocialComment, runSocialCommentPass } from './gallery-api.ts'
 import css from './SocialComments.module.css'
 
+
+/**
+ * "Comments (3)": the heading of the unfiltered list. It was written in
+ * Italian in the code and showed so in every language; the word is the
+ * page's own «Comments» key.
+ */
+const allCommentsTitle = (count: number): string => `${translate('imagine.socialComments')} (${String(count)})`
+
 /** Props for the comment list. */
 export interface SocialCommentsProps {
   /**
@@ -245,7 +253,7 @@ export function SocialComments({ permalink, onClearFilter, inline = false }: Soc
     if (!loaded || shown.length === 0) return null
     return (
       <div className={css.inline}>
-        <span className={css.inlineTitle}>{`Commenti (${String(shown.length)})`}</span>
+        <span className={css.inlineTitle}>{allCommentsTitle(shown.length)}</span>
         {shown.map(c => <CommentRow key={c.id} comment={c} onChanged={replace} />)}
       </div>
     )
@@ -258,7 +266,7 @@ export function SocialComments({ permalink, onClearFilter, inline = false }: Soc
       <div className={css.header}>
         <h3 className={css.sectionTitle}>
           {onClearFilter === undefined
-            ? `Commenti (${String(shown.length)})`
+            ? allCommentsTitle(shown.length)
             : translate('imagine.cmtCount', { count: shown.length })}
         </h3>
         {onClearFilter !== undefined && (

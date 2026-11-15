@@ -1,12 +1,8 @@
 .menu {
+  composes: popMenu from './imagine-shared.module.css';
   position: fixed;
   z-index: 200;
-  box-sizing: border-box;
-  padding: 6px;
-  border: 1px solid var(--imagine-line);
-  border-radius: 14px;
   background: var(--imagine-surface);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 0.55);
   color: var(--imagine-ink);
   font-size: 13px;
 }

@@ -10,12 +10,11 @@ import { basename, join } from 'node:path'
 import type { ImagineHost } from '../../src/host.ts'
 import { declaredOutputPath, freeOutputPath } from './index.ts'
 import type { ComfyProducedFile } from './index.ts'
-import { muxAudio, probeMedia, type MediaProbe } from './media-tools.ts'
+import { layPlateAudio, muxAudio, probeMedia, type MediaProbe } from './media-tools.ts'
 import { kindOf, probePixels } from './gallery.ts'
 import { exactVideoFrame, fourKFrame, parseSize, snapClip, snapStill } from './snap-size.ts'
 import { joinAtSeam } from './extend-video.ts'
 import { finalFileName, readStoryManifest, shotOfFileName, storyLabel, updateStoryManifest, updateStoryShot } from './story-manifest.ts'
-import { layPlateAudio } from './h3-windows.ts'
 import { rememberWrittenPrompt } from './written-prompts.ts'
 import { rememberOrigin } from './imagine-notes.ts'
 import { lookSoon } from './imagine-sight.ts'
@@ -50,6 +49,8 @@ interface FinishRun {
   readonly args: Record<string, unknown>
   /** The length of the clip a continuation extends. */
   readonly extendDuration: number | undefined
+  /** That clip's pixels, measured with its length: the continuation is fitted to them at the seam. */
+  readonly extendPixels?: { readonly width: number; readonly height: number }
   /** The produced file is already the source followed by its continuation (a chained extend). */
   readonly wholeClip?: boolean
   readonly shot: DeliveredShot | undefined
@@ -219,7 +220,7 @@ async function deliveredFiles(run: FinishRun): Promise<readonly ComfyProducedFil
   if (job.action === 'extend' && run.wholeClip !== true && job.source !== undefined && sourceKind === 'video' && files.length > 0) {
     const videoFile = files.find(f => f.kind === 'video')
     if (videoFile !== undefined) {
-      const concatenated = await joinAtSeam(join(outputDir, job.source), videoFile.path, run.extendDuration ?? 0, outputDir)
+      const concatenated = await joinAtSeam(join(outputDir, job.source), videoFile.path, run.extendDuration ?? 0, outputDir, run.extendPixels)
       // The whole clip takes the declared output name, replacing the
       // continuation: otherwise the job leaves two videos in the gallery and
       // the one it reports is the half-length one.

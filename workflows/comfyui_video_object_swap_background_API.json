@@ -540,23 +540,6 @@
    "ver": "1.0.0"
   }
  },
- "34": {
-  "inputs": {
-   "headroom": 0,
-   "hold_frames": 1,
-   "max_people": 0,
-   "track_data": [
-    "32",
-    0
-   ]
-  },
-  "class_type": "H3PeopleMask",
-  "_meta": {
-   "title": "Tracked area, tight (for the grey shape)",
-   "cnr_id": "comfyui-workflow-encrypt",
-   "ver": "1.0.0"
-  }
- },
  "35": {
   "inputs": {
    "blur": 0.04,

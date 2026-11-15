@@ -8,7 +8,6 @@
  * @module composer-store
  */
 
-import { useSyncExternalStore } from 'react'
 import type { ImagineAspect, ImagineResolution } from '../../../shared/imagine-media.ts'
 import {
   DEFAULT_OBJECT_PLACEMENT, type GalleryItem, type ImagineObjectMode, type ImaginePlacement, type ImagineQuality,
@@ -16,6 +15,7 @@ import {
 } from '../../../shared/imagine-types.ts'
 import type { ImagineMode } from './imagine-settings.ts'
 import { DEFAULT_RELIGHT_LOOK } from '../../../shared/relight-looks.ts'
+import { createSignal, useSelected } from './signal.ts'
 
 /** The composer's fields, and the panels' options that travel with a run. */
 export interface ComposerState {
@@ -134,21 +134,17 @@ export interface ComposerStore {
  * @returns the store the page keeps for its life.
  */
 export function createComposerStore(): ComposerStore {
-  let state = INITIAL
-  const listeners = new Set<() => void>()
+  const signal = createSignal(INITIAL)
   return {
-    get: () => state,
+    get: signal.get,
     set: (patch) => {
+      const state = signal.get()
       const next = typeof patch === 'function' ? patch(state) : patch
+      // A patch that changes no field makes no new state, so nobody re-renders.
       const changed = (Object.keys(next) as (keyof ComposerState)[]).some(key => next[key] !== state[key])
-      if (!changed) return
-      state = { ...state, ...next }
-      for (const listener of [...listeners]) listener()
+      if (changed) signal.set({ ...state, ...next })
     },
-    subscribe: (listener) => {
-      listeners.add(listener)
-      return () => { listeners.delete(listener) }
-    },
+    subscribe: signal.subscribe,
   }
 }
 
@@ -159,6 +155,5 @@ export function createComposerStore(): ComposerStore {
  * @returns the selected value.
  */
 export function useComposer<T>(store: ComposerStore, select: (state: ComposerState) => T): T {
-  const read = (): T => select(store.get())
-  return useSyncExternalStore(store.subscribe, read, read)
+  return useSelected(store, select)
 }

@@ -13,7 +13,7 @@ import { translate } from './locale-store.ts'
 import { memo, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import {
   IconEllipsisOutlineRegular, IconFolderCloseRegular, IconPanelLeftOutlineRegular, IconPlusOutlineRegular,
-  IconSearchOutlineRegular, IconSettingsOutlineRegular, IconSparkleRegular,
+  IconSearchOutlineRegular, IconSettingsOutlineRegular, IconSparkleRegular, IconSquares,
   Tooltip,
 } from '../../shims/primitives/index.ts'
 import { ComfyUIMark } from './comfyui-mark.tsx'
@@ -29,6 +29,7 @@ import type { GalleryItem } from '../../../shared/imagine-types.ts'
 import type { ImagineView } from './gallery-store.ts'
 import type { ImagineProject } from '../../../shared/imagine-projects.ts'
 import type { ImaginePageProps } from './props.ts'
+import { AudioMark } from './imagine-bits.tsx'
 import css from './Rail.module.css'
 
 /** Projects the rail lists before its "show more" button. */
@@ -443,7 +444,7 @@ export const Rail = memo(function Rail(props: RailProps) {
                   onClick={() => { onOpenFile(item.name) }}
                 >
                   {item.kind === 'audio'
-                    ? <span className={css.audioThumb} aria-hidden="true">♪</span>
+                    ? <AudioMark className={css.audioThumb} />
                     : <Still src={thumbUrlOf(item.name, THUMB_SMALL, item.mtime)} />}
                 </button>
               </Tooltip>
@@ -456,7 +457,7 @@ export const Rail = memo(function Rail(props: RailProps) {
                 data-active={view === 'media' || undefined}
                 onClick={() => { actions.go('media') }}
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1.2" /><rect x="9" y="2" width="5" height="5" rx="1.2" /><rect x="2" y="9" width="5" height="5" rx="1.2" /><rect x="9" y="9" width="5" height="5" rx="1.2" /></svg>
+                <IconSquares size={16} strokeWidth={1.225} />
               </button>
             </Tooltip>
           </div>

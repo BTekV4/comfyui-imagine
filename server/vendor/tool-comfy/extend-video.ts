@@ -15,8 +15,8 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { AAC_192K, AUDIO_RATE, FASTSTART, FPS, ffmpegTo, h264Out, probeMedia, type MediaProbe } from './media-tools.ts'
-import { H3_MAX_CANVAS_PIXELS, snapToGrid } from './snap-size.ts'
+import { AAC_192K, FASTSTART, FPS, SILENT_STEREO_INPUT, ffmpegTo, h264Out, type MediaProbe } from './media-tools.ts'
+import { H3_MAX_CANVAS_PIXELS, H3_NATIVE_MEGAPIXELS, snapToGrid } from './snap-size.ts'
 
 /**
  * Frames of the source clip the continuation is conditioned on.
@@ -69,6 +69,32 @@ export function h3Canvas(width: number, height: number): { width: number; height
 }
 
 /**
+ * The canvas of a given area on a clip's own ratio: `ResolutionSelector`'s
+ * arithmetic, the area spread over the clip's sides and each rounded to a
+ * multiple of 32.
+ *
+ * Computed here rather than left to the graph because the plugin writes it
+ * straight into the graph's scale node («Ricrea video»). The default is the
+ * model's native canvas of 0.98 megapixels: the ComfyUI H3 guide says "frames
+ * well above the native canvas do not hold detail", so a soft frame is a
+ * resolution problem first.
+ * @param width - the clip's width in pixels.
+ * @param height - the clip's height in pixels.
+ * @param megapixels - the canvas area, in units of 1024x1024 pixels.
+ * @returns the canvas size, or undefined when the clip cannot be read.
+ */
+export function h3AreaCanvas(
+  width: number,
+  height: number,
+  megapixels = H3_NATIVE_MEGAPIXELS,
+): { width: number; height: number } | undefined {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) return undefined
+  const wanted = megapixels * 1024 * 1024
+  const scale = Math.sqrt(wanted / (width * height))
+  return { width: snapToGrid(width * scale, CANVAS_MULTIPLE), height: snapToGrid(height * scale, CANVAS_MULTIPLE) }
+}
+
+/**
  * The ffmpeg call that cuts the tail the guide is read from.
  *
  * A second and a half rather than the guide's own length: the graph takes the
@@ -89,7 +115,7 @@ function tailArgs(source: string, duration: number, out: string, hasAudio: boole
     '-y',
     '-ss', start.toFixed(3),
     '-i', source,
-    ...hasAudio ? [] : ['-f', 'lavfi', '-i', `anullsrc=channel_layout=stereo:sample_rate=${String(AUDIO_RATE)}`],
+    ...hasAudio ? [] : SILENT_STEREO_INPUT,
     '-map', '0:v:0',
     '-map', hasAudio ? '0:a:0' : '1:a:0',
     '-r', String(FPS),
@@ -186,6 +212,8 @@ export async function videoTail(source: string, probe: ClipProbe): Promise<strin
  * @param second - absolute path of the generated continuation.
  * @param firstDuration - the first clip's duration in seconds.
  * @param outputDir - directory to write the joined clip in.
+ * @param size - the first clip's pixels, as the run measured them; the
+ *   continuation is fitted to them. Absent, it is left at its own size.
  * @returns the absolute path of the joined clip.
  */
 export async function joinAtSeam(
@@ -193,13 +221,10 @@ export async function joinAtSeam(
   second: string,
   firstDuration: number,
   outputDir: string,
+  size?: { readonly width: number; readonly height: number },
 ): Promise<string> {
   // Dot-named, so the gallery skips it until the caller renames it; ffmpegTo
   // removes a failed join so no empty clip lands on the board.
   const out = join(outputDir, `.seam-${randomUUID()}.mp4`)
-  const probe = await probeMedia(first)
-  const size = probe.width === undefined || probe.height === undefined
-    ? undefined
-    : { width: probe.width, height: probe.height }
   return ffmpegTo(out, seamArgs(first, second, firstDuration, out, size), 300_000)
 }

@@ -153,7 +153,6 @@ export async function startMusicClip(
     ? clipSeconds(request.lyrics)
     : clampClipSeconds(Math.round(request.seconds))
   const shots = clipShots(seconds)
-  const poses = request.poses ?? []
   const clipId = randomUUID()
   const common = {
     clipId,
@@ -162,21 +161,16 @@ export async function startMusicClip(
     ...request.model === undefined ? {} : { model: request.model },
   }
   /*
-   * One photo per shot, each with its own pose written into the prompt: a
-   * montage of the same pose with different motion reads as one shot cut up,
-   * which is the thing the montage exists to avoid.
-   *
-   * These are drawn by the plain text-to-image graph. Until 2026-11-04 they
-   * went through the lookbook's catalogue node, which is a custom one: the
-   * studio carried a dependency on a node pack nobody else has, so a look is
-   * now just words, and the pose is appended to them.
+   * One photo per shot, drawn by the plain text-to-image graph from the look.
+   * Until 2026-11-04 they went through the lookbook's catalogue node, which is
+   * a custom one, with a pose per shot; no client sends poses any more
+   * (2026-11-15), so every shot is the look as written.
    */
   const photoIds: string[] = []
   for (let index = 0; index < shots; index++) {
-    const pose = poses[index % Math.max(1, poses.length)]
     const job = await startImagineJob(ctx, workflows, outputDir, {
       action: 'generate',
-      prompt: pose === undefined || pose.trim().length === 0 ? look : `${look}, ${pose.trim()}`,
+      prompt: look,
       ...common,
     })
     photoIds.push(job.id)

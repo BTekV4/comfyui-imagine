@@ -8,12 +8,14 @@ import { useState } from 'react'
 import { mediaUrlOf } from './gallery-api.ts'
 import type { GalleryItem, ImagineRegion } from '../../../shared/imagine-types.ts'
 import { DialogFooter, Modal, dialogButton, useHostEdit } from './Modal.tsx'
+import { Segmented } from './Pills.tsx'
 import { MIN_ZONE, ZoneFrame } from './ZoneFrame.tsx'
 import css from './RegionEditDialog.module.css'
 
-/** The ratios offered, as width over height in pixels; undefined is free. */
+/** The ratios offered, as width over height in pixels; undefined is free (its label is translated). */
+const FREE = 'free'
 const RATIOS: readonly { label: string; value: number | undefined }[] = [
-  { label: 'Libero', value: undefined },
+  { label: FREE, value: undefined },
   { label: '1:1', value: 1 },
   { label: '4:5', value: 4 / 5 },
   { label: '9:16', value: 9 / 16 },
@@ -50,21 +52,19 @@ export function CropDialog({ item, onClose, onDone }: { item: GalleryItem; onClo
 
   return (
     <Modal title={translate('imagine.crop')} onClose={onClose}>
-      <div className={css.ratios} role="radiogroup" aria-label={translate('imagine.cropRatio')}>
-        {RATIOS.map(entry => (
-          <button
-            key={entry.label}
-            type="button"
-            role="radio"
-            aria-checked={ratio === entry.value}
-            className={css.mode}
-            data-on={ratio === entry.value || undefined}
-            onClick={() => { setRatio(entry.value); setRegion(centred(entry.value) ?? region) }}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
+      <Segmented
+        label={translate('imagine.cropRatio')}
+        values={RATIOS.map(entry => entry.label)}
+        value={RATIOS.find(entry => entry.value === ratio)?.label ?? ''}
+        format={label => label === FREE ? translate('imagine.cropFree') : label}
+        onPick={(label) => {
+          const value = RATIOS.find(entry => entry.label === label)?.value
+          setRatio(value)
+          setRegion(centred(value) ?? region)
+        }}
+        group={css.ratios}
+        pill={css.mode}
+      />
       <ZoneFrame
         src={mediaUrlOf(item.name)}
         region={region}

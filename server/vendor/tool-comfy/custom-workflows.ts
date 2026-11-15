@@ -24,6 +24,7 @@ import type { CustomEither, CustomInput, CustomWorkflowMeta } from '../../../sha
 import type { ComfyGraph } from '../comfyui/index.ts'
 import type { LoadedWorkflow } from './index.ts'
 import { message } from '../../src/messages.ts'
+import { isPlainObject } from './guards.ts'
 
 /*
  * The workflow as the host reports it is the page's type too: it lives in
@@ -32,10 +33,10 @@ import { message } from '../../src/messages.ts'
 export type { CustomEither, CustomInput, CustomWorkflowMeta } from '../../../shared/custom-workflows.ts'
 
 /** The prefix every custom graph is keyed by in the workflows map. */
-export const CUSTOM_PREFIX = 'custom:'
+const CUSTOM_PREFIX = 'custom:'
 
 /** Where one workflow's files live. */
-export function customDir(id: string): string {
+function customDir(id: string): string {
   return join(dataPath('custom-workflows'), id)
 }
 
@@ -45,7 +46,7 @@ export function customKey(id: string): string {
 }
 
 /** Accept only ids this module wrote: they are a path segment. */
-export function isCustomId(value: string): boolean {
+function isCustomId(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value)
 }
 
@@ -207,6 +208,19 @@ export function eitherOf(raw: unknown): CustomEither | undefined {
 }
 
 /**
+ * The batch control of a card («all the poses»): a node and one of its fields.
+ *
+ * The form's save and the meta's read checked the same shape each on its own.
+ * @param raw - the value as sent by the form or read from `meta.json`.
+ * @returns the control, or undefined when it is not one.
+ */
+export function batchControlOf(raw: unknown): { readonly node: string; readonly field: string } | undefined {
+  if (!isPlainObject(raw)) return undefined
+  const { node, field } = raw
+  return typeof node === 'string' && typeof field === 'string' ? { node, field } : undefined
+}
+
+/**
  * One workflow's meta from the parsed `meta.json`, with every field checked.
  *
  * The boot and the card list read the same file; until 2026-11-07 each had
@@ -221,6 +235,7 @@ function metaOf(id: string, parsed: unknown): CustomWorkflowMeta | undefined {
   if (typeof raw.title !== 'string' || raw.title.length === 0) return undefined
   const steps = stepsOf(raw)
   const either = eitherOf(raw.either)
+  const batchControl = batchControlOf(raw.batchControl)
   return {
     id,
     title: raw.title,
@@ -231,11 +246,7 @@ function metaOf(id: string, parsed: unknown): CustomWorkflowMeta | undefined {
     ...typeof raw.promptField === 'string' && raw.promptField.length > 0 ? { promptField: raw.promptField } : {},
     ...raw.seedNodeId === undefined ? {} : { seedNodeId: raw.seedNodeId },
     ...typeof raw.seedField === 'string' && raw.seedField.length > 0 ? { seedField: raw.seedField } : {},
-    ...typeof raw.batchControl === 'object' && raw.batchControl !== null
-      && typeof (raw.batchControl as { node?: unknown }).node === 'string'
-      && typeof (raw.batchControl as { field?: unknown }).field === 'string'
-      ? { batchControl: raw.batchControl as { node: string; field: string } }
-      : {},
+    ...batchControl === undefined ? {} : { batchControl },
     ...raw.imageNodeId === undefined ? {} : { imageNodeId: raw.imageNodeId },
     ...either === undefined ? {} : { either },
     inputs: Array.isArray(raw.inputs) ? raw.inputs.filter((entry): entry is CustomInput => typeof entry === 'object' && entry !== null && typeof (entry as CustomInput).node === 'string' && typeof (entry as CustomInput).field === 'string') : [],
@@ -344,26 +355,41 @@ export async function loadCustomWorkflows(): Promise<Record<string, LoadedWorkfl
     return {}
   }
   const cards = await Promise.all(ids.filter(isCustomId).map(async (id) => {
-    const dir = customDir(id)
-    let meta: CustomWorkflowMeta | undefined
-    try {
-      meta = CARD.meta(id, await readFile(join(dir, 'meta.json'), 'utf8'))
-    } catch (error: unknown) {
-      CARD.failed(id, error, 'meta')
-    }
-    if (meta === undefined) return []
-    try {
-      return [[customKey(id), CARD.graph(meta, await readFile(join(dir, 'graph.json'), 'utf8'))] as const]
-    } catch (error: unknown) {
-      CARD.failed(id, error, 'graph')
-      return []
-    }
+    const loaded = await loadCustomWorkflow(id)
+    return loaded === undefined ? [] : [[customKey(id), loaded] as const]
   }))
   return Object.fromEntries(cards.flat())
 }
 
+/**
+ * One custom graph as the workflows map holds it, read without blocking.
+ *
+ * A save or a removal touches one card: reloading only that one spares the
+ * parse of every other card's meta and graph (2026-11-15).
+ * @param id - the card's id; one the studio did not mint reads as no card.
+ * @returns the loaded workflow, or undefined when the folder holds no card
+ *   or its files do not parse.
+ */
+export async function loadCustomWorkflow(id: string): Promise<LoadedWorkflow | undefined> {
+  if (!isCustomId(id)) return undefined
+  const dir = customDir(id)
+  let meta: CustomWorkflowMeta | undefined
+  try {
+    meta = CARD.meta(id, await readFile(join(dir, 'meta.json'), 'utf8'))
+  } catch (error: unknown) {
+    CARD.failed(id, error, 'meta')
+  }
+  if (meta === undefined) return undefined
+  try {
+    return CARD.graph(meta, await readFile(join(dir, 'graph.json'), 'utf8'))
+  } catch (error: unknown) {
+    CARD.failed(id, error, 'graph')
+    return undefined
+  }
+}
+
 /** How many values a batch field has, asked of ComfyUI by the caller. */
-export interface CustomWorkflowSaveOptions {
+interface CustomWorkflowSaveOptions {
   /**
    * The values the field accepts. The batch needs them: a field with a single
    * value is not a series, and a wrong name here would be an empty panel.
@@ -372,7 +398,7 @@ export interface CustomWorkflowSaveOptions {
 }
 
 /** What an upload hands over. */
-export interface CustomWorkflowInput {
+interface CustomWorkflowInput {
   readonly title: string
   readonly description: string
   /** The graph, already parsed: ComfyUI's API format. */
@@ -407,7 +433,7 @@ export async function saveCustomWorkflow(input: CustomWorkflowInput, options: Cu
   const title = input.title.trim()
   if (title.length === 0) throw new Error(message('workflow.titleRequired'))
   const graph = input.graph
-  if (typeof graph !== 'object' || graph === null || Array.isArray(graph)) {
+  if (!isPlainObject(graph)) {
     throw new Error(message('graph.apiObject'))
   }
   /*
@@ -416,10 +442,7 @@ export async function saveCustomWorkflow(input: CustomWorkflowInput, options: Cu
    * tells nothing to whoever uploaded them: we recognise them here.
    */
   let nodes = graph as ComfyGraph
-  const wrapped = ['prompt', 'graph', 'workflow', 'api'].find(key => {
-    const inner = (graph as Record<string, unknown>)[key]
-    return typeof inner === 'object' && inner !== null && !Array.isArray(inner)
-  })
+  const wrapped = ['prompt', 'graph', 'workflow', 'api'].find(key => isPlainObject(graph[key]))
   if (wrapped !== undefined && Object.values(nodes).every(entry => typeof (entry as { class_type?: unknown })?.class_type !== 'string')) {
     nodes = (graph as Record<string, ComfyGraph>)[wrapped] ?? nodes
   }

@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Still } from './Still.tsx'
 import { thumbUrlOf, THUMB_SMALL } from './gallery-api.ts'
 import type { GalleryItem } from '../../../shared/imagine-types.ts'
+import { IconArrowUp } from './canvas-icons.tsx'
 import css from './GenCard.module.css'
 
 export interface GenCardProps {
@@ -70,7 +71,7 @@ export function GenCard({ x, y, mode, refs, zoom, onSubmit, onClose }: GenCardPr
         <div className={css.row}>
           <button type="button" className={css.ghost} onClick={onClose}>{translate('imagine.cancel')}</button>
           <button type="submit" className={css.send} aria-label={translate('imagine.generate')} disabled={blocked || (mode === 'image' && text.trim() === '')}>
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 11.5v-9M3 6.5l4-4 4 4" /></svg>
+            <IconArrowUp size={14} strokeWidth={3.1} />
           </button>
         </div>
       </form>

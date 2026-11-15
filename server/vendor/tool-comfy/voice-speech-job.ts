@@ -23,6 +23,7 @@ import {
 } from './job-queue.ts'
 import type { ImagineJobRequest } from './job-request.ts'
 import { ffmpegTo, muxAudio } from './media-tools.ts'
+import { serviceError, speech } from './speak-job.ts'
 
 /**
  * How long transcribing and reading a track back out may take together.
@@ -89,7 +90,8 @@ async function voiceInto(target: SpeakTarget, outputDir: string, job: ImagineJob
     }
     const text = await transcribe(target, base, trackName, await readFile(track), controller.signal)
     if (text.length === 0) throw new Error(message('voice.noTranscript'))
-    const spoken = await speak(target, base, text, job, controller.signal)
+    // The same words, read out in the voice the job asked for.
+    const spoken = await speech(target, text, job.voice ?? target.voice, controller.signal)
     // A cancel that landed while the audio was on its way wins: no file.
     if (isSettled(job.id)) return
     const short = job.id.replace(/-/g, '').slice(0, 8)
@@ -138,36 +140,7 @@ async function transcribe(
   form.set('model', target.asrModel ?? 'whisper-large-v3-turbo')
   form.set('response_format', 'json')
   const response = await fetch(`${base}/audio/transcriptions`, { method: 'POST', body: form, signal })
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '')
-    throw new Error(message('speak.serviceAnswered', { status: response.status, detail: detail.length === 0 ? '' : `: ${detail.slice(0, 200)}` }))
-  }
+  if (!response.ok) throw await serviceError(response)
   const answer = await response.json() as { text?: unknown }
   return typeof answer.text === 'string' ? answer.text.trim() : ''
-}
-
-/** The same words, read out in the voice the job asked for. */
-async function speak(
-  target: SpeakTarget,
-  base: string,
-  text: string,
-  job: ImagineJob,
-  signal: AbortSignal,
-): Promise<Uint8Array> {
-  const response = await fetch(`${base}/audio/speech`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model: target.model,
-      input: text,
-      voice: job.voice ?? target.voice,
-      response_format: target.format,
-    }),
-    signal,
-  })
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '')
-    throw new Error(message('speak.serviceAnswered', { status: response.status, detail: detail.length === 0 ? '' : `: ${detail.slice(0, 200)}` }))
-  }
-  return new Uint8Array(await response.arrayBuffer())
 }

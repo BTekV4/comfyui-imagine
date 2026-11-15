@@ -35,7 +35,7 @@ export interface Persona {
  * paragraph — but valid, so the studio boots and every action works before
  * anyone has written one.
  */
-export const DEFAULT_PERSONA: Persona = {
+const DEFAULT_PERSONA: Persona = {
   identity: 'The subject, a person standing alone in the photograph, lit naturally and photographed from the front.',
   hair: '',
 }

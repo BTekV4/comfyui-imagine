@@ -58,13 +58,6 @@ async function load(): Promise<WatchState> {
   return state
 }
 
-/** For the tests. */
-export function resetWatchForTests(): void {
-  state = undefined
-  lastFacebookTry = 0
-  toldWriteError = undefined
-}
-
 /** A moment in Rome, short: «dom 16 nov, 19:00». */
 function moment(at: number): string {
   return new Date(at).toLocaleString(languageKind(currentLanguage()) === 'it' ? 'it-IT' : 'en-GB', {

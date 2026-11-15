@@ -36,7 +36,9 @@ const SURFACES: Readonly<Record<MediaSurface, readonly MediaActionKind[]>> = {
   tile: ['details', 'open', 'remix', 'region', 'crop', 'erase', 'video', 'bg', 'extend', 'trim', 'frames', 'voice', 'upscale', 'download', 'publish', 'delete'],
   menu: ['details', 'open', 'remix', 'region', 'crop', 'erase', 'duplicate', 'video', 'copy', 'extend', 'trim', 'frames', 'cover', 'download', 'publish', 'delete'],
   // As Grok's post column (2026-11-15): the big actions, the foot icons, then the «…» menu.
-  viewer: ['bg', 'video', 'extend', 'publish', 'like', 'copy', 'download', 'remix', 'erase', 'trim', 'frames', 'upscale', 'duplicate', 'cover', 'details', 'region', 'crop', 'delete'],
+  // No 'region' or 'crop': the viewer has its own in-place tools for both
+  // («Modifica precisa» and PostCrop), so the list never drew them.
+  viewer: ['bg', 'video', 'extend', 'publish', 'like', 'copy', 'download', 'remix', 'erase', 'trim', 'frames', 'upscale', 'duplicate', 'cover', 'details', 'delete'],
 }
 
 /** Actions that queue GPU work or remove a file: off while a run is busy on the file. */
@@ -45,8 +47,9 @@ const BUSY_OFF: ReadonlySet<MediaActionKind> = new Set(['region', 'video', 'bg',
 /**
  * Actions that hand the file to something else — the composer, a dialog that
  * covers the studio — and so close the viewer when they are picked there.
+ * Only read for the viewer, which no longer offers 'region' or 'crop'.
  */
-export const CLOSES_VIEWER: ReadonlySet<MediaActionKind> = new Set(['remix', 'video', 'extend', 'region', 'crop', 'erase'])
+export const CLOSES_VIEWER: ReadonlySet<MediaActionKind> = new Set(['remix', 'video', 'extend', 'erase'])
 
 /** One action as a surface draws it. */
 export interface MediaAction {

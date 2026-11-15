@@ -90,6 +90,7 @@ const TOOL_PREFIXES: readonly (readonly [string, GalleryTool])[] = [
   ['upscale_video-', 'upscale_video'],
   ['remove_background-', 'remove_background'],
   ['generate_music-', 'generate_music'],
+  // Legacy: nothing writes lookbook files any more, but older ones stay in galleries.
   ['generate_lookbook-', 'generate_lookbook'],
   ['animated_background-', 'animated_background'],
   ['extend_video-', 'extend_video'],
@@ -322,12 +323,6 @@ export async function deleteGalleryItem(outputDir: string, name: string): Promis
   return true
 }
 
-const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-const RIFF_MAGIC = Buffer.from('RIFF', 'ascii')
-const WEBP_WEBP = Buffer.from('WEBP', 'ascii')
-const GIF87A_MAGIC = Buffer.from('GIF87a', 'ascii')
-const GIF89A_MAGIC = Buffer.from('GIF89a', 'ascii')
-const EBML_MAGIC = Buffer.from([0x1a, 0x45, 0xdf, 0xa3])
 /** The still formats a file's first bytes can say it is. */
 export type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
 
@@ -641,20 +636,24 @@ export function pixelsOfVideoBytes(bytes: Uint8Array): { width: number; height: 
   return videoSizeOf(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength))
 }
 
+/*
+ * The size readers below dispatch on the shared signature table
+ * (`sniffMedia`) rather than on magic numbers of their own (until 2026-11-15
+ * this file spelt them twice); each keeps the minimum length its fields need.
+ */
 function imageSizeOf(buf: Buffer): { width: number; height: number } | undefined {
-  if (buf.length >= 24 && buf.subarray(0, 8).equals(PNG_MAGIC)) {
-    return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) }
+  switch (sniffMedia(buf)) {
+    case 'image/png':
+      return buf.length >= 24 ? { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) } : undefined
+    case 'image/jpeg':
+      return buf.length >= 4 ? jpegSizeOf(buf) : undefined
+    case 'image/webp':
+      return buf.length >= 30 ? webpSizeOf(buf) : undefined
+    case 'image/gif':
+      return buf.length >= 10 ? { width: buf.readUInt16LE(6), height: buf.readUInt16LE(8) } : undefined
+    default:
+      return undefined
   }
-  if (buf.length >= 4 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
-    return jpegSizeOf(buf)
-  }
-  if (buf.length >= 30 && buf.subarray(0, 4).equals(RIFF_MAGIC) && buf.subarray(8, 12).equals(WEBP_WEBP)) {
-    return webpSizeOf(buf)
-  }
-  if (buf.length >= 10 && (buf.subarray(0, 6).equals(GIF87A_MAGIC) || buf.subarray(0, 6).equals(GIF89A_MAGIC))) {
-    return { width: buf.readUInt16LE(6), height: buf.readUInt16LE(8) }
-  }
-  return undefined
 }
 
 function jpegSizeOf(buf: Buffer): { width: number; height: number } | undefined {
@@ -703,9 +702,14 @@ function webpSizeOf(buf: Buffer): { width: number; height: number } | undefined 
 }
 
 function videoSizeOf(buf: Buffer): { width: number; height: number; duration?: number } | undefined {
-  if (buf.length >= 8 && buf.subarray(4, 8).toString('ascii') === 'ftyp') return mp4SizeOf(buf)
-  if (buf.length >= 4 && buf.subarray(0, 4).equals(EBML_MAGIC)) return webmSizeOf(buf)
-  return undefined
+  switch (sniffMedia(buf)) {
+    case 'video/mp4':
+      return mp4SizeOf(buf)
+    case 'video/webm':
+      return webmSizeOf(buf)
+    default:
+      return undefined
+  }
 }
 
 /** EBML master elements on the path from the file root down to the video track. */

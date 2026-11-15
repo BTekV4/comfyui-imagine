@@ -34,7 +34,7 @@ export interface ControlSpec {
  * @param text - the text in the field.
  * @returns the reading, or an empty string.
  */
-export function durationReading(path: readonly string[], text: string): string {
+function durationReading(path: readonly string[], text: string): string {
   if (!(path.at(-1) ?? '').endsWith('Ms')) return ''
   const ms = Number(text.trim())
   if (text.trim() === '' || !Number.isFinite(ms) || ms <= 0) return ''

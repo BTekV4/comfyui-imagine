@@ -16,6 +16,7 @@ import { mediaUrlOf, thumbUrlOf, THUMB_SMALL } from './gallery-api.ts'
 import { kindCounts, toolLabelOf } from './imagine-filters.ts'
 import { bandAround, useGrowOnTail, useScrollMeasure } from './use-scroll-band.ts'
 import type { GalleryItem, MediaKind } from '../../../shared/imagine-types.ts'
+import { AudioMark } from './imagine-bits.tsx'
 import css from './LibraryPage.module.css'
 
 type Tab = 'all' | MediaKind
@@ -212,7 +213,7 @@ export function LibraryPage({ items, projectOf, onOpen, onUpload }: LibraryPageP
                   <div key={item.name} className={css.card} data-library-card>
                     <button type="button" className={css.thumb} onClick={() => { onOpen(item) }} title={item.name} aria-label={translate('imagine.openNamed', { name: project === undefined ? toolLabelOf(item) : translate('imagine.label.inProject', { label: toolLabelOf(item), project }) })}>
                       {item.kind === 'audio'
-                        ? <span className={css.audio} aria-hidden="true">♪</span>
+                        ? <AudioMark className={css.audio} />
                         : <Still className={css.still} lazy src={thumbUrlOf(item.name, THUMB_SMALL, item.mtime)} />}
                       {item.kind === 'video' && item.duration !== undefined && <span className={css.badge}>{formatClock(item.duration)}</span>}
                     </button>

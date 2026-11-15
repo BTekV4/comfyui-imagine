@@ -17,6 +17,28 @@
  */
 
 /**
+ * Wait for at most `ms`.
+ *
+ * The one timeout race of the host: the bus bounds each subscriber with it,
+ * and the plugins system each plugin's status (it had its own copy until
+ * 2026-11-15). The work is not cancelled, only no longer waited for.
+ * @param work - the promise or value.
+ * @param ms - the budget.
+ * @returns the value, or undefined when the budget ran out.
+ */
+export async function within<T>(work: Promise<T> | T, ms: number): Promise<T | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      Promise.resolve(work),
+      new Promise<undefined>((resolveTimeout) => { timer = setTimeout(() => resolveTimeout(undefined), ms) }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
+
+/**
  * What may travel with a notice besides its text: one picture, as a file on
  * this machine or as a public address. A listener that cannot show pictures
  * ignores it — the text alone must always make sense.
@@ -90,16 +112,12 @@ export function createNotifyBus(options: { readonly timeoutMs?: number } = {}): 
       // failing still leaves the others delivered.
       const deliver = async (entry: Entry): Promise<void> => {
         const who = entry.owner ?? 'handler'
-        let timer: ReturnType<typeof setTimeout> | undefined
-        const outcome = await Promise.race<Outcome>([
+        const outcome: Outcome = await within(
           Promise.resolve()
             .then(() => entry.handler(text, extra))
             .then(() => ({ kind: 'ok' }) as Outcome, (error: unknown) => ({ kind: 'error', error }) as Outcome),
-          new Promise<Outcome>((resolveTimeout) => {
-            timer = setTimeout(() => resolveTimeout({ kind: 'timeout' }), timeoutMs)
-          }),
-        ])
-        if (timer !== undefined) clearTimeout(timer)
+          timeoutMs,
+        ) ?? { kind: 'timeout' }
         if (outcome.kind === 'error') {
           console.warn(`[notify] ${who} failed: ${outcome.error instanceof Error ? outcome.error.message : String(outcome.error)}`)
         } else if (outcome.kind === 'timeout') {

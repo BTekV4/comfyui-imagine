@@ -163,8 +163,6 @@ export interface ImagineChatAsk {
    * reading runs on Imagine's own text model.
    */
   readonly model?: ModelRoute
-  /** Poses the vision pass may name when it describes a staged still. */
-  readonly poses?: readonly string[]
   /**
    * The runs of this project that are still going: "sta andando?" is answered
    * from these, not from what the conversation implies.

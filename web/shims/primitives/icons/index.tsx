@@ -1,7 +1,8 @@
 /**
  * Shared current-color product icons, vendored from DSH. Names identify the
- * glyph; the rendered size stays a prop. One weight only (a one-pixel stroke),
- * so every icon is just its paths.
+ * glyph; the rendered size stays a prop. One weight by default (a one-pixel
+ * stroke), so every icon is just its paths; `strokeWidth` lets a glyph drawn
+ * at another size keep the line of the inline copy it replaced.
  */
 import type { ReactNode } from 'react'
 import type { IconProps } from './props.ts'
@@ -14,8 +15,8 @@ import type { IconProps } from './props.ts'
  * @returns the component.
  */
 function icon(paths: ReactNode, viewBox = '0 0 16 16', defaultSize = 16) {
-  return ({ size = defaultSize, className }: IconProps) => (
-    <svg width={size} height={size} className={className} viewBox={viewBox} fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" strokeWidth={1}>
+  return ({ size = defaultSize, className, strokeWidth = 1 }: IconProps) => (
+    <svg width={size} height={size} className={className} viewBox={viewBox} fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" strokeWidth={strokeWidth}>
       {paths}
     </svg>
   )
@@ -109,6 +110,15 @@ export const IconPlayOutlineRegular = icon(
   </>,
 )
 
+/** The play icon's ring with two bars: what the same button shows while playing. */
+export const IconPauseOutlineRegular = icon(
+  <>
+    <path d="M8 14.5C11.5899 14.5 14.5 11.5899 14.5 8C14.5 4.41015 11.5899 1.5 8 1.5C4.41015 1.5 1.5 4.41015 1.5 8C1.5 11.5899 4.41015 14.5 8 14.5Z" stroke="currentColor" />
+    <path d="M6.5 5.75V10.25" stroke="currentColor" />
+    <path d="M9.5 5.75V10.25" stroke="currentColor" />
+  </>,
+)
+
 export const IconFullscreenOutlineRegular = icon(
   <>
     <path d="M2.33154 9.40576V13.1685C2.3318 13.4444 2.55556 13.6685 2.83154 13.6685H6.49463V14.6685H2.83154C2.00328 14.6685 1.3318 13.9967 1.33154 13.1685V9.40576H2.33154ZM13.1685 1.33154C13.9964 1.33199 14.6683 2.00352 14.6685 2.83154V6.40576H13.6685V2.83154C13.6683 2.5558 13.4441 2.33199 13.1685 2.33154H9.49463V1.33154H13.1685Z" fill="currentColor" />
@@ -139,6 +149,16 @@ export const IconSparkleRegular = icon(
   </>,
 )
 
+/**
+ * Size and line weight of the heavier glyphs below. The weight is in the
+ * glyph's own grid units: a caller drawing a glyph at another size passes the
+ * weight that keeps the line it had before.
+ */
+interface StrokedIconProps {
+  size?: number
+  strokeWidth?: number
+}
+
 /*
  * The glyphs of All media (2026-10-17, drawn after Grok's /imagine/saved):
  * a 14px face with a heavier stroke than the set above, so they keep their
@@ -146,28 +166,28 @@ export const IconSparkleRegular = icon(
  * They lived inline in MediaPage.tsx until 2026-10-25.
  */
 
-/** A tick: a picked file, a checked menu row. */
-export const IconCheck = () => <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 7.5 2.5 2.5L11 4.5" /></svg>
+/** A tick: a picked file, a checked menu row, a confirm button. */
+export const IconCheck = ({ size = 14, strokeWidth = 2 }: StrokedIconProps) => <svg width={size} height={size} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 7.5 2.5 2.5L11 4.5" /></svg>
 /** A label tag. */
 export const IconTag = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1.4 1.4 0 0 1 0 2l-6.7 6.7a1.4 1.4 0 0 1-2 0l-8.3-8.3Z" /><circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none" /></svg>
 /** A tag struck through: take files out of one. */
 export const IconTagOff = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1.4 1.4 0 0 1 0 2l-6.7 6.7a1.4 1.4 0 0 1-2 0l-8.3-8.3Z" /><path d="M8.5 12h7" /></svg>
 /** Three filled dots: more. */
 export const IconDots = () => <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="13" cy="8" r="1.4" /></svg>
-/** A cross: clear the selection. */
-export const IconCross = () => <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><path d="m3.5 3.5 7 7m0-7-7 7" /></svg>
+/** A cross: clear the selection, cancel. */
+export const IconCross = ({ size = 14, strokeWidth = 1.7 }: StrokedIconProps) => <svg width={size} height={size} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" aria-hidden="true"><path d="m3.5 3.5 7 7m0-7-7 7" /></svg>
 /** An arrow into a ring: download. */
 export const IconDownloadRound = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5v8M8.5 12.5 12 16l3.5-3.5" /></svg>
 /** A bin: delete. */
-export const IconBin = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5" /></svg>
+export const IconBin = ({ size = 14, strokeWidth = 1.8 }: StrokedIconProps) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5" /></svg>
 /** A filled triangle: a clip, or make one. */
 export const IconPlayFilled = () => <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M4 2.5v9l7.5-4.5L4 2.5Z" fill="currentColor" /></svg>
 /** An arrow pointing left: back. */
 export const IconBack = () => <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M13 8H3M7 4 3 8l4 4" /></svg>
 /** A three-by-three grid of dots: everything. */
 export const IconDotGrid = () => <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">{[2, 7, 12].flatMap(x => [2, 7, 12].map(y => <circle key={`${String(x)}-${String(y)}`} cx={x} cy={y} r="1.1" />))}</svg>
-/** Four squares: the layout menu. */
-export const IconSquares = () => <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><rect x="1.5" y="1.5" width="4.5" height="4.5" rx="1" /><rect x="8" y="1.5" width="4.5" height="4.5" rx="1" /><rect x="1.5" y="8" width="4.5" height="4.5" rx="1" /><rect x="8" y="8" width="4.5" height="4.5" rx="1" /></svg>
+/** Four squares: the layout menu, the rail's projects. */
+export const IconSquares = ({ size = 14, strokeWidth = 1.4 }: StrokedIconProps) => <svg width={size} height={size} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={strokeWidth} aria-hidden="true"><rect x="1.5" y="1.5" width="4.5" height="4.5" rx="1" /><rect x="8" y="1.5" width="4.5" height="4.5" rx="1" /><rect x="1.5" y="8" width="4.5" height="4.5" rx="1" /><rect x="8" y="8" width="4.5" height="4.5" rx="1" /></svg>
 /** A pointer: start selecting. */
 /** The select tool's arrow: All media's select button, and the canvas bar at 18 px. */
-export const IconPointer = ({ size = 14 }: IconProps) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true"><path d="M5 3.5 19 10l-6.3 1.8L10 18.5 5 3.5Z" /></svg>
+export const IconPointer = ({ size = 14 }: Pick<IconProps, 'size'>) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true"><path d="M5 3.5 19 10l-6.3 1.8L10 18.5 5 3.5Z" /></svg>

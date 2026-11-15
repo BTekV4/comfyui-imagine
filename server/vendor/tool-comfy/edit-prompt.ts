@@ -126,12 +126,11 @@ export async function writeEditPrompt(
    * because a discarded reply is invisible in the picture except as "it did
    * not do what I asked".
    */
-  const tried = new Set<string>()
-  for (const route of [eyes.route, secondVisionRoute(chosen)]) {
-    if (route === undefined) continue
+  // `secondVisionRoute` is, by construction, a route other than the first.
+  const second = secondVisionRoute(chosen)
+  const routes = second === undefined ? [eyes.route] : [eyes.route, second]
+  for (const route of routes) {
     const key = `${route.provider}/${route.model}`
-    if (tried.has(key)) continue
-    tried.add(key)
     const result = await lookWith(eyes.vision, imagePath, editPromptInstruction(intent), route)
     if (result === undefined) {
       console.warn(`[imagine] edit prompt: ${key} did not answer`)
@@ -144,6 +143,6 @@ export async function writeEditPrompt(
     }
     return read.prompt
   }
-  console.warn(`[imagine] edit prompt: none of the ${String(tried.size)} routes wrote a usable prompt, using the user's line`)
+  console.warn(`[imagine] edit prompt: none of the ${String(routes.length)} routes wrote a usable prompt, using the user's line`)
   return undefined
 }

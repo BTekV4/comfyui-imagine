@@ -55,7 +55,7 @@ export function qualityLabelOf(item: GalleryItem): string | undefined {
 }
 
 /** Pending-tile stage label keys, one per recognized ComfyUI node class. */
-export type ProgressStageKey = 'imagine.stageDenoise' | 'imagine.stageDecode' | 'imagine.stageEncode'
+type ProgressStageKey = 'imagine.stageDenoise' | 'imagine.stageDecode' | 'imagine.stageEncode'
 
 const PROGRESS_STAGES: Readonly<Record<string, ProgressStageKey>> = {
   KSampler: 'imagine.stageDenoise',
@@ -69,4 +69,15 @@ const PROGRESS_STAGES: Readonly<Record<string, ProgressStageKey>> = {
 /** The pending-tile stage label for one executing node class, when known. */
 export function progressStageLabel(nodeClass: string): ProgressStageKey | undefined {
   return PROGRESS_STAGES[nodeClass]
+}
+
+/**
+ * The note that stands in for a track's picture. Every surface drew its own
+ * `<span>♪</span>`; the class (usually composed from `imagine-shared`'s
+ * `audioThumb`) still sizes it per place.
+ * @param props.className - the place's class.
+ * @returns the decorative glyph.
+ */
+export function AudioMark({ className }: { className: string | undefined }) {
+  return <span className={className} aria-hidden="true">♪</span>
 }

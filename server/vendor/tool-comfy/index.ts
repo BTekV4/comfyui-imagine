@@ -35,7 +35,7 @@ import { GUIDE_FRAMES } from './extend-video.ts'
 import { FPS } from './media-tools.ts'
 import { loadImagineOverrides, mergeWorkflowMaps } from './imagine-settings.ts'
 import { loadPersona, setPersona } from './persona.ts'
-import { CUSTOM_PREFIX, customGraphFile, loadCustomWorkflows, loadCustomWorkflowsSync } from './custom-workflows.ts'
+import { customGraphFile, customKey, loadCustomWorkflow, loadCustomWorkflowsSync } from './custom-workflows.ts'
 import { imagineHandler, type ImagineSettingsSurface } from './imagine-routes.ts'
 import { parseSize } from './snap-size.ts'
 import { ensureComfyReady, type SetupHooks } from './comfy-setup.ts'
@@ -64,7 +64,7 @@ export interface ComfyExtraInput {
  * loader at index 0, which reads no file and pins nothing, and drops the
  * saver so the output folder is not filled with latents nobody continues.
  */
-export interface ComfyChainNodes {
+interface ComfyChainNodes {
   /** Id of the node that loads the saved latent, pinned to the previous run. */
   loadNodeId: string
   /** Id of the node that writes the latent the next run continues from. */
@@ -80,7 +80,7 @@ export interface ComfyChainNodes {
  * LoRA the deployment installed, so both are configured beside its pin rather
  * than written here.
  */
-export interface ComfyRealismInput extends ComfyExtraInput {
+interface ComfyRealismInput extends ComfyExtraInput {
   /** LoRA strength for a realistic clip; a clip judged otherwise gets zero. */
   strength: number
   /** The LoRA's trigger word, placed in the prompt's style slot. */
@@ -186,23 +186,20 @@ export interface WorkflowExtras {
    * label; the lookbook takes it on its `ResolutionSelector`.
    */
   aspectRatio?: ComfyExtraInput
-  /**
-   * Length in seconds → the graph's length input: one clip, the whole
-   * animated background, or one window of an object swap.
-   */
+  /** Length in seconds → the graph's length input: one clip or the whole animated background. */
   seconds?: ComfyExtraInput
   /** Realism LoRA strength, switched by the vision pass's verdict. */
   realism?: ComfyRealismInput
   /** Phrase the tracker is given for the object in the clip (object swap). */
   subjectText?: ComfyExtraInput
-  /** The reference document an object swap prompt is composed from. */
+  /**
+   * What the tracked object becomes in an object swap (the Openjutsu plan's
+   * `change_to`): the replacement, what shows instead, the new setting, or
+   * the object to add, as a short phrase.
+   */
   referenceText?: ComfyExtraInput
-  /** The shot document an object swap prompt is composed from. */
-  sceneText?: ComfyExtraInput
   /** The placement keyframes of «aggiungi un oggetto», as JSON. */
   placementText?: ComfyExtraInput
-  /** Where in the clip one object swap window starts. */
-  windowStart?: ComfyExtraInput
   /** A character swap's «no lip-sync» switch: true when the people do not sing or talk along. */
   noLipSync?: ComfyExtraInput
   /** The resolution label of a graph that plans its own clips (Openjutsu's Swap Plan: 480p, 736p…). */
@@ -211,12 +208,6 @@ export interface WorkflowExtras {
   planJson?: ComfyExtraInput
   /** A chained clip's run name: its checkpoints are saved, and resumed, under it. */
   runName?: ComfyExtraInput
-  /**
-   * Canvas area of an object swap window, in units of 1024x1024 pixels;
-   * absent, the model's native 0.98. A graph distilled at another size asks
-   * for it here.
-   */
-  canvasMegapixels?: number
   /** The uploaded track's name → the guide's `LoadAudio` input. */
   songAudio?: ComfyExtraInput
   /** Where this clip starts in the track, in seconds. */
@@ -285,8 +276,6 @@ export interface WorkflowExtras {
   shortSeconds?: number
   /** The `VHS_BatchManager` node a meta-batch graph needs an id written into. */
   metaBatchNodeId?: string
-  /** The `VHS_VideoCombine` node whose written file the run must wait for. */
-  videoCombineNodeId?: string
   /** Lyrics → MiniMax Music `lyrics` input. */
   lyrics?: ComfyExtraInput
   /** Seconds → MiniMax Music `max_duration` input. */
@@ -297,14 +286,6 @@ export interface WorkflowExtras {
   pitch?: ComfyExtraInput
   /** The voices this deployment installed, as the node spells them. */
   voices?: readonly string[]
-  /** Lookbook pose → PromptSelector `pose`. */
-  pose?: ComfyExtraInput
-  /**
-   * The fixed subject the look is built around (OneButtonPrompt
-   * `custom_subject`): who is in the picture, as opposed to what the look
-   * dresses them in. Pinned so it can be read back and replaced.
-   */
-  lookSubject?: ComfyExtraInput
 }
 
 /** Plugin config: the workflows, the speech service and the media output directory. */
@@ -420,7 +401,7 @@ export interface ComfyProducedFile {
 }
 
 /** The files a workflow produced plus the ComfyUI prompt id that made them. */
-export interface ComfyRunReport {
+interface ComfyRunReport {
   readonly files: ComfyProducedFile[]
   readonly promptId: string
 }
@@ -568,18 +549,12 @@ export interface RunOpts {
   seconds?: number | undefined
   megapixels?: number | undefined
   lyrics?: string | undefined
-  pose?: string | undefined
-  lookSubject?: string | undefined
   /** Phrase the tracker reads to find the object in the clip; `objectSwap` only. */
   subjectText?: string | undefined
-  /** The reference document of an object swap. */
+  /** What the tracked object becomes in an object swap, as a short phrase. */
   referenceText?: string | undefined
-  /** The shot document of an object swap. */
-  sceneText?: string | undefined
   /** The placement box of «aggiungi un oggetto», already serialised as JSON. */
   placementText?: string | undefined
-  /** Where in the clip this render window starts, in seconds. */
-  windowStart?: number | undefined
   /** A character swap without lip-sync: H3 hears silence and is told nobody sings. */
   noLipSync?: boolean | undefined
   /** The plan's resolution label, from the composer's step (480p, else the graph's 736p). */
@@ -614,22 +589,44 @@ const SONG_PREROLL_SECONDS = 1
 const SEEDVR2_UPSCALER = 'SeedVR2VideoUpscaler'
 
 /**
+ * One input file the graph takes: the bytes to upload and where the name
+ * ComfyUI gives back is written.
+ */
+interface UploadSlot {
+  readonly file: MediaBytes
+  /** Every kind goes through the same ComfyUI endpoint; the video one is named for clarity. */
+  readonly kind: 'image' | 'video'
+  readonly write: (uploaded: string) => void
+}
+
+/**
  * Parameterize a loaded workflow: inject prompt/seed/size and the video extras
  * where the nodes exist and the caller provided a value, randomize an unpinned
- * seed, and upload the input image into its loader node.
- * @param ctx - plugin context (for the ComfyUI client).
+ * seed, and list the input files with the loader node each one goes into.
+ *
+ * Nothing is uploaded here (2026-11-15): the setup check reads only the class
+ * types and the model file names, never the input names, so the graph is
+ * asked about before a clip of hundreds of megabytes crosses the network for
+ * a run that then needs an install or is refused. Every pin a file goes into
+ * is checked here too, so a broken pin still fails before any upload.
  * @param workflow - the loaded workflow.
  * @param opts - the run's values.
  * @param inputs - the files the graph takes.
- * @returns the graph ready for `POST /prompt`.
+ * @returns the graph, complete but for the uploaded names, and the uploads
+ *   that fill them in ({@link uploadInputs}).
  */
-async function parameterize(
-  ctx: ImagineHost,
+function parameterize(
   workflow: LoadedWorkflow,
   opts: RunOpts,
   inputs: RunInputs,
-): Promise<ComfyGraph> {
+): { readonly graph: ComfyGraph; readonly uploads: readonly UploadSlot[] } {
   const { inputImage, inputVideo, inputAudio, lastImage, refImage } = inputs
+  /*
+   * In the order the names used to be written in: the card's own file slots
+   * first, then the image, the last frame, the reference, the clip and the
+   * track, so a later slot aimed at the same input still wins.
+   */
+  const uploads: UploadSlot[] = []
   const graph = structuredClone(workflow.graph)
   if (workflow.refImageNodeId !== undefined && refImage === undefined) {
     // No reference: the branch leaves, and the links that pointed into it.
@@ -664,15 +661,16 @@ async function parameterize(
   for (const file of inputs.customFiles ?? []) {
     const node = graph[file.node]
     if (node === undefined) throw new ComfyError(`no node at ${file.node} for the card's file`, 'COMFY_GRAPH_REJECTED')
-    const uploaded = file.kind === 'video'
-      ? await ctx.comfy.uploadVideo(file.name, file.bytes)
-      : await ctx.comfy.uploadImage(file.name, file.bytes)
     const field = file.kind === 'video'
       ? ['file', 'video', 'video_path', 'filename'].find(candidate => candidate in (node.inputs ?? {})) ?? 'file'
       : file.kind === 'audio'
         ? 'audio'
         : 'image'
-    ;(node.inputs as Record<string, unknown>)[field] = uploaded.name
+    uploads.push({
+      file,
+      kind: file.kind === 'video' ? 'video' : 'image',
+      write: (uploaded) => { (node.inputs as Record<string, unknown>)[field] = uploaded },
+    })
   }
 
   /*
@@ -795,14 +793,6 @@ async function parameterize(
   if (workflow.lyrics !== undefined) {
     setInput(graph, workflow.lyrics, opts.lyrics ?? '')
   }
-  if (opts.pose !== undefined && workflow.pose !== undefined) {
-    setInput(graph, workflow.pose, opts.pose)
-    const poseNode = graph[workflow.pose.nodeId]
-    if (poseNode !== undefined) {
-      if ('pose_mode' in poseNode.inputs) (poseNode.inputs).pose_mode = 'fixed'
-      if ('mode' in poseNode.inputs) (poseNode.inputs).mode = 'fixed'
-    }
-  }
   if (opts.megapixels !== undefined && workflow.aspectRatio !== undefined) {
     const node = graph[workflow.aspectRatio.nodeId]
     if (node !== undefined && 'megapixels' in node.inputs) {
@@ -810,36 +800,14 @@ async function parameterize(
     }
   }
 
-  /*
-   * The uploads do not depend on each other, so they start together: a clip
-   * and its photo used to cross the network one after the other. A pin check
-   * below that throws leaves them settling unobserved, so each is marked
-   * handled here; the awaits below still see their result.
-   */
-  const uploads = {
-    image: inputImage === undefined ? undefined : ctx.comfy.uploadImage(inputImage.name, inputImage.bytes),
-    last: lastImage === undefined || workflow.lastImageNodeId === undefined
-      ? undefined
-      : ctx.comfy.uploadImage(lastImage.name, lastImage.bytes),
-    ref: refImage === undefined || workflow.refImageNodeId === undefined
-      ? undefined
-      : ctx.comfy.uploadImage(refImage.name, refImage.bytes),
-    video: inputVideo === undefined ? undefined : ctx.comfy.uploadVideo(inputVideo.name, inputVideo.bytes),
-    audio: inputAudio === undefined || (workflow.songAudio === undefined && workflow.audioNodeId === undefined)
-      ? undefined
-      : ctx.comfy.uploadImage(inputAudio.name, inputAudio.bytes),
-  }
-  for (const upload of Object.values(uploads)) void upload?.catch(() => undefined)
-
-  if (inputImage !== undefined && uploads.image !== undefined) {
+  if (inputImage !== undefined) {
     const imageId = workflow.imageNodeId ?? imageInputNode(graph)?.id
     if (imageId === undefined) {
       throw new ComfyError('workflow has no LoadImage node for the input image', 'COMFY_GRAPH_REJECTED')
     }
     const node = graph[imageId]
     if (node === undefined) throw new ComfyError(`no node at ${imageId}`, 'COMFY_GRAPH_REJECTED')
-    const uploaded = await uploads.image
-    ;(node.inputs)[workflow.imageField ?? 'image'] = uploaded.name
+    uploads.push({ file: inputImage, kind: 'image', write: (uploaded) => { (node.inputs)[workflow.imageField ?? 'image'] = uploaded } })
   }
 
   /*
@@ -856,29 +824,26 @@ async function parameterize(
       delete sampler.inputs['last_frame']
     }
   }
-  if (uploads.last !== undefined && workflow.lastImageNodeId !== undefined) {
+  if (lastImage !== undefined && workflow.lastImageNodeId !== undefined) {
     const node = graph[workflow.lastImageNodeId]
     if (node === undefined) throw new ComfyError(`no node at ${workflow.lastImageNodeId}`, 'COMFY_GRAPH_REJECTED')
-    const uploaded = await uploads.last
-    ;(node.inputs)[workflow.imageField ?? 'image'] = uploaded.name
+    uploads.push({ file: lastImage, kind: 'image', write: (uploaded) => { (node.inputs)[workflow.imageField ?? 'image'] = uploaded } })
   }
 
-  if (uploads.ref !== undefined && workflow.refImageNodeId !== undefined) {
+  if (refImage !== undefined && workflow.refImageNodeId !== undefined) {
     const node = graph[workflow.refImageNodeId]
     if (node === undefined) throw new ComfyError(`no node at ${workflow.refImageNodeId}`, 'COMFY_GRAPH_REJECTED')
-    const uploaded = await uploads.ref
-    ;(node.inputs)['image'] = uploaded.name
+    uploads.push({ file: refImage, kind: 'image', write: (uploaded) => { (node.inputs)['image'] = uploaded } })
   }
 
-  if (uploads.video !== undefined) {
+  if (inputVideo !== undefined) {
     const videoId = workflow.videoNodeId ?? videoInputNode(graph)?.id
     if (videoId === undefined) {
       throw new ComfyError(message('graph.noVideoLoader'), 'COMFY_GRAPH_REJECTED')
     }
     const node = graph[videoId]
     if (node === undefined) throw new ComfyError(`no node at ${videoId}`, 'COMFY_GRAPH_REJECTED')
-    const uploaded = await uploads.video
-    ;(node.inputs)[workflow.videoField ?? 'file'] = uploaded.name
+    uploads.push({ file: inputVideo, kind: 'video', write: (uploaded) => { (node.inputs)[workflow.videoField ?? 'file'] = uploaded } })
   }
 
   /*
@@ -887,12 +852,12 @@ async function parameterize(
    * the two numbers say which part of the song this clip is given, so a
    * montage's shots each sing their own seconds of it.
    */
-  if (inputAudio !== undefined && uploads.audio !== undefined) {
-    const uploaded = await uploads.audio
-    if (workflow.songAudio !== undefined) setInput(graph, workflow.songAudio, uploaded.name)
-    else if (workflow.audioNodeId !== undefined) {
-      setInput(graph, { nodeId: workflow.audioNodeId, field: workflow.audioField ?? 'audio' }, uploaded.name)
-    }
+  const audioPin = workflow.songAudio
+    ?? (workflow.audioNodeId === undefined ? undefined : { nodeId: workflow.audioNodeId, field: workflow.audioField ?? 'audio' })
+  if (inputAudio !== undefined && audioPin !== undefined) {
+    // Checked now, as the write after the upload would: a missing node fails before anything is sent.
+    if (graph[audioPin.nodeId] === undefined) throw new ComfyError(`no node at ${audioPin.nodeId}`, 'COMFY_GRAPH_REJECTED')
+    uploads.push({ file: inputAudio, kind: 'image', write: (uploaded) => { setInput(graph, audioPin, uploaded) } })
     /*
      * Where on the clip's timeline the slice is anchored. A shot continued
      * from the one before it carries that shot's last GUIDE_FRAMES frames as
@@ -951,11 +916,34 @@ async function parameterize(
     }
   }
 
-  return graph
+  return { graph, uploads }
+}
+
+/**
+ * Upload a run's input files side by side and write the names ComfyUI gave
+ * back into the graph.
+ *
+ * The uploads do not depend on each other, so they start together: a clip
+ * and its photo used to cross the network one after the other, and a card's
+ * own file slots one by one before everything else. The names are written
+ * only once all are in, in the slots' order, so the outcome does not depend
+ * on which upload finishes first.
+ * @param ctx - plugin context (for the ComfyUI client).
+ * @param uploads - the slots {@link parameterize} listed.
+ * @param signal - the job's cancellation, which stops an upload in flight.
+ */
+async function uploadInputs(ctx: ImagineHost, uploads: readonly UploadSlot[], signal: AbortSignal | undefined): Promise<void> {
+  const names = await Promise.all(uploads.map(async ({ file, kind }) => {
+    const uploaded = kind === 'video'
+      ? await ctx.comfy.uploadVideo(file.name, file.bytes, signal)
+      : await ctx.comfy.uploadImage(file.name, file.bytes, signal)
+    return uploaded.name
+  }))
+  uploads.forEach((slot, index) => { slot.write(names[index] as string) })
 }
 
 /** The lipsync probe over a sung shot, and what to do with its number. */
-export interface ComfyLipsyncCheck {
+interface ComfyLipsyncCheck {
   /** Executable: `probe <clip> <voice> <second the clip starts at>` → JSON with `corr0`. */
   readonly probe: string
   /** Under this the shot is rendered again; default LIPSYNC_MIN in story.ts. */
@@ -1048,10 +1036,17 @@ export async function runWorkflow(
   opts: RunOpts,
   inputs: RunInputs = {},
 ): Promise<ComfyRunReport> {
-  const graph = await parameterize(ctx, workflow, opts, inputs)
+  const { graph, uploads } = parameterize(workflow, opts, inputs)
   const { declared, onPrompt, onRestart, signal, timeoutMs } = inputs
-  // ComfyUI gets what this graph needs first (comfyui-imagine's setup), or is left as it is.
+  /*
+   * ComfyUI gets what this graph needs first (comfyui-imagine's setup), or is
+   * left as it is — and before the uploads: the check reads class types and
+   * model file names, which the uploaded names never are, and a run that
+   * needs an install or is refused has not pushed its clip for nothing.
+   * The model names it substitutes are not touched by the uploads either.
+   */
   await ensureComfyReady(ctx, graph, { ...inputs.setup, ...signal === undefined ? {} : { signal } })
+  await uploadInputs(ctx, uploads, signal)
   /*
    * A cancelled run has to end here, not at the deadline. Deleting the prompt
    * from ComfyUI's queue means no history record is ever written for it, so
@@ -1096,7 +1091,7 @@ export async function runWorkflow(
 const RESUME_SWEEP_DELAY_MS = 8000
 
 /** The host's switches, read at the moment they act. */
-export interface ApplyOptions {
+interface ApplyOptions {
   /**
    * Whether this process resumes interrupted music videos at boot (the
    * settings page, else IMAGINE_RESUME_SWEEP=1): only one process may resume
@@ -1149,18 +1144,19 @@ export function apply(ctx: ImagineHost, config: Config, host: ApplyOptions = {})
    * restart, and the runner holds this very object.
    */
   const imagineWorkflows: WorkflowGraphs = { ...configuredWorkflows } as WorkflowGraphs
-  const refreshCustomWorkflows = async (): Promise<void> => {
+  const refreshCustomWorkflows = async (id: string): Promise<LoadedWorkflow | undefined> => {
     /*
      * Read first, swap after, with no await in between: the old keys used to
      * be deleted before the load, and a job starting while the files were
-     * being read found its card gone (`actionNotConfigured`).
+     * being read found its card gone (`actionNotConfigured`). Only the card
+     * a save or a removal touched is read: the others did not change.
      */
-    const fresh = await loadCustomWorkflows()
+    const fresh = await loadCustomWorkflow(id)
     const live = imagineWorkflows as Record<string, unknown>
-    for (const key of Object.keys(live)) {
-      if (key.startsWith(CUSTOM_PREFIX) && !Object.hasOwn(fresh, key)) delete live[key]
-    }
-    Object.assign(live, fresh)
+    const key = customKey(id)
+    if (fresh === undefined) delete live[key]
+    else live[key] = fresh
+    return fresh
   }
   Object.assign(imagineWorkflows as Record<string, unknown>, loadCustomWorkflowsSync())
   const { videoOnSong } = imagineWorkflows

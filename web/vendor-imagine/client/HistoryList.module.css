@@ -57,17 +57,18 @@
   background: var(--imagine-chip);
 }
 
-.thumb img,
-.audioThumb {
+.thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
+/* The shared note, smaller and quieter in a list row (its own size: see
+   `audioGlyph` in imagine-shared). */
 .audioThumb {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  composes: audioGlyph from './imagine-shared.module.css';
+  width: 100%;
+  height: 100%;
   color: var(--imagine-muted);
   font-size: 18px;
 }

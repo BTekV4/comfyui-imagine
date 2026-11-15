@@ -191,7 +191,19 @@ export async function streamText(
   const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
   let idle: ReturnType<typeof setTimeout> | undefined
-  let giveUp: () => void = () => {}
+  /*
+   * The give-up path exists before any timer or listener is armed: a timer
+   * armed first would capture whatever `giveUp` was at that moment, and the
+   * deadline, the idle timer and the caller's abort would all call an empty
+   * function while the stream ran on (found 2026-11-15). The race below always
+   * includes `timeout`; when nothing gives up it simply never settles.
+   */
+  let settle: (value: undefined) => void = () => {}
+  const timeout = new Promise<undefined>((resolve) => { settle = resolve })
+  const giveUp = (): void => {
+    controller.abort()
+    settle(undefined)
+  }
   /*
    * `timeoutMs` 0 or absent = no ceiling: the request waits for the model as
    * long as it takes. A ceiling stays available to callers that pass one (and
@@ -202,11 +214,6 @@ export async function streamText(
     timer = setTimeout(giveUp, timeoutMs)
     timer.unref()
   }
-  const timeout = limited
-    ? new Promise<undefined>((resolve) => {
-      giveUp = () => { controller.abort(); resolve(undefined) }
-    })
-    : undefined
   /** Push the idle deadline back: something just arrived. */
   const alive = (): void => {
     if (hooks?.idleMs === undefined) return
@@ -249,7 +256,7 @@ export async function streamText(
           return undefined
         }
     })()
-    return timeout === undefined ? await work : await Promise.race([work, timeout])
+    return await Promise.race([work, timeout])
   } finally {
     controller.abort()
     if (timer !== undefined) clearTimeout(timer)
@@ -359,7 +366,9 @@ async function lookSlot(background: boolean): Promise<() => void> {
  * @param route - the model to look with.
  * @param timeoutMs - how long to wait; undefined waits for the provider's own timeout.
  * @param options - `maxSide` for the still, forwarded to the service;
- *   `background` for a look nobody waits for, which runs in the capped lane.
+ *   `background` for a look nobody waits for, which runs in the capped lane;
+ *   `signal` for a caller that may stop waiting (the look is then aborted, or
+ *   never started when it was still queued for a slot).
  * @returns the reply, or undefined when the model failed, said nothing or ran out of time.
  */
 export async function lookWith(
@@ -368,14 +377,20 @@ export async function lookWith(
   instruction: string,
   route: ModelRoute,
   timeoutMs?: number,
-  options?: { maxSide?: number; background?: boolean },
+  options?: { maxSide?: number; background?: boolean; signal?: AbortSignal },
 ): Promise<{ text: string; provider?: string; model?: string } | undefined> {
   // The clock starts once a slot is free: waiting behind other looks is not
   // the model being slow.
-  const { background = false, ...look } = options ?? {}
+  const { background = false, signal, ...look } = options ?? {}
   const release = await lookSlot(background)
+  if (signal?.aborted === true) {
+    release()
+    return undefined
+  }
   const controller = new AbortController()
-  const timer = timeoutMs === undefined ? undefined : setTimeout(() => { controller.abort() }, timeoutMs)
+  const stop = (): void => { controller.abort() }
+  signal?.addEventListener('abort', stop, { once: true })
+  const timer = timeoutMs === undefined ? undefined : setTimeout(stop, timeoutMs)
   timer?.unref()
   try {
     const result = await vision.analyzeImage(path, instruction, { provider: route.provider, model: route.model }, {
@@ -395,5 +410,6 @@ export async function lookWith(
   } finally {
     release()
     if (timer !== undefined) clearTimeout(timer)
+    signal?.removeEventListener('abort', stop)
   }
 }

@@ -44,8 +44,17 @@ export interface FileDetailsBody {
  */
 const WORDLESS_ACTIONS = new Set(['bg', 'upscale', 'voice', 'crop', 'duplicate', 'erase', 'trim', 'merge', 'frame'])
 
-/** Prompts older records carry for those same actions. */
-const PLACEHOLDER_PROMPTS = new Set(['bg', 'upscale', 'voice', 'Upscale', 'Togli lo sfondo', 'Copia'])
+/**
+ * Stand-in prompts a record can carry instead of words anyone typed.
+ *
+ * The first four are what the host writes for a wordless run (`UNPROMPTED` in
+ * server/vendor/tool-comfy/job-request.ts: upscale, bg, voice, and
+ * «character swap» for a promptless swapPerson), so they must follow that
+ * table; the last three are what older records carry. Without
+ * 'character swap' a promptless swap showed the host's placeholder as the
+ * user's own request.
+ */
+const PLACEHOLDER_PROMPTS = new Set(['bg', 'upscale', 'voice', 'character swap', 'Upscale', 'Togli lo sfondo', 'Copia'])
 
 /**
  * The words the user asked with, when there were any.

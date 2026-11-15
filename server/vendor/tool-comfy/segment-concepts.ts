@@ -50,12 +50,12 @@ export interface SegmentSight {
  * 150 s with "low" in a full run (2026-11-15); the studio-wide
  * SIGHT_TIMEOUT_MS (90 s) would leave it unanswered.
  */
-export const SEGMENT_LOOK_TIMEOUT_MS = 300_000
+const SEGMENT_LOOK_TIMEOUT_MS = 300_000
 
 /** More concepts than this is the model listing pixels, not things. */
 export const MAX_CONCEPTS = 40
 /** Readable texts kept per photo. */
-export const MAX_TEXTS = 30
+const MAX_TEXTS = 30
 /** Ceiling on one concept's count (SAM 3 is asked for count + 2). */
 export const MAX_COUNT = 20
 /** Longest concept name and text kept. */
@@ -63,7 +63,7 @@ const MAX_NAME = 60
 const MAX_TEXT = 80
 
 /** The question asked of the photo, answered in JSON. */
-export const SEGMENT_CONCEPTS_INSTRUCTION = `List every distinct thing visible in this image, so that a segmentation model (SAM 3) can cut each one out.
+const SEGMENT_CONCEPTS_INSTRUCTION = `List every distinct thing visible in this image, so that a segmentation model (SAM 3) can cut each one out.
 
 Rules:
 - One entry per kind of thing, as a short English noun phrase SAM can find: "coffee cup", "silver chain necklace", "orange umbrella", "white clouds".
@@ -161,11 +161,21 @@ export function conceptLines(concepts: readonly SegmentConcept[]): string {
  * @param ctx - the host, for the vision service.
  * @param path - the photo, absolute.
  * @param background - a look nobody waits for (a photo just made), in the capped lane.
- * @returns what the model listed, or undefined.
+ * @param signal - stops the look when the rest of the analysis has already failed.
+ * @returns what the model listed and the `provider/model` that listed it, or undefined.
  */
-export async function lookForSegments(ctx: ImagineHost, path: string, background = false): Promise<SegmentSight | undefined> {
+export async function lookForSegments(
+  ctx: ImagineHost,
+  path: string,
+  background = false,
+  signal?: AbortSignal,
+): Promise<(SegmentSight & { readonly model: string }) | undefined> {
   const eyes = eyesOf(ctx)
   if (eyes === undefined) return undefined
-  const reply = await lookWith(eyes.vision, path, SEGMENT_CONCEPTS_INSTRUCTION, eyes.route, SEGMENT_LOOK_TIMEOUT_MS, { background })
-  return parseSegmentSight(reply?.text)
+  const reply = await lookWith(eyes.vision, path, SEGMENT_CONCEPTS_INSTRUCTION, eyes.route, SEGMENT_LOOK_TIMEOUT_MS, {
+    background, ...signal === undefined ? {} : { signal },
+  })
+  const sight = parseSegmentSight(reply?.text)
+  // The label of the route asked, as the index has always recorded it.
+  return sight === undefined ? undefined : { ...sight, model: `${eyes.route.provider}/${eyes.route.model}` }
 }

@@ -7,7 +7,8 @@
  */
 
 import { messageOf } from './message-of.ts'
-import type { GalleryItem, ImagineJobView as ImagineJob } from '../../../shared/imagine-types.ts'
+import type { GalleryItem, GalleryTool, ImagineJobView as ImagineJob } from '../../../shared/imagine-types.ts'
+import { ACTION_TRAITS } from './action-traits.ts'
 import type { ImagineChatEvent } from '../../../shared/imagine-chat.ts'
 import { refusedInputs } from './comfy-errors.ts'
 import type { ImagineMode } from './imagine-settings.ts'
@@ -15,11 +16,34 @@ import type { ComfyLocaleKey } from './locales.ts'
 import type { ImagineThought } from './reading-trace.ts'
 import { translate } from './locale-store.ts'
 
-/** Tools whose files take minutes each on the GPU. */
-const SLOW_TOOLS: ReadonlySet<string> = new Set([
-  'create_video', 'upscale_video', 'extend_video', 'animated_background', 'videoclip',
-  'recreate_video', 'object_swap',
-])
+/**
+ * Whether each host tool's files take minutes each on the GPU.
+ *
+ * Typed over every `GalleryTool`, so a new tool has to say which it is: the
+ * hand-kept set this replaced (2026-11-15) had missed `regenerate_detail` and
+ * `swap_person`, whose clips then got the photos' short gap and opened a row
+ * each — the very split `runGapOf` is there to prevent.
+ */
+const SLOW_TOOLS: Readonly<Record<GalleryTool, boolean>> = {
+  generate_image: false,
+  generate_lookbook: false,
+  edit_image: false,
+  remove_background: false,
+  relight: false,
+  upscale_image: false,
+  generate_music: false,
+  change_voice: false,
+  speak_text: false,
+  create_video: true,
+  extend_video: true,
+  recreate_video: true,
+  regenerate_detail: true,
+  object_swap: true,
+  swap_person: true,
+  animated_background: true,
+  upscale_video: true,
+  videoclip: true,
+}
 
 /**
  * Longest gap between two files of one run on the board, by the kind of file.
@@ -33,7 +57,10 @@ const SLOW_TOOLS: ReadonlySet<string> = new Set([
  * @returns the gap in milliseconds.
  */
 export function runGapOf(kind: string): number {
-  return SLOW_TOOLS.has(kind) ? 600_000 : 180_000
+  // A clip with no tool on record (written before the host read the prefix)
+  // is still a clip: it is keyed by its media kind, `video`.
+  const slow = kind === 'video' || (Object.hasOwn(SLOW_TOOLS, kind) && SLOW_TOOLS[kind as GalleryTool])
+  return slow ? 600_000 : 180_000
 }
 
 /**
@@ -126,67 +153,9 @@ export function noticeText(key: string): string {
 }
 
 /**
- * What did not happen, by the run's action.
- *
- * A failure used to reach the chat as the reason alone — "workflow has no
- * LoadVideo node for the input video" under a request for a song. Nothing on
- * screen said which of the runs in flight it belonged to, and the studio's own
- * reader, which is given these lines and nothing else, answered the next
- * question by inventing one: it reported a video workflow failing and the song
- * safely queued, when the song was exactly what had failed (2026-09-09).
- */
-const FAILED_KEYS: Partial<Record<ImagineJob['action'], ComfyLocaleKey>> = {
-  music: 'imagine.failedMusic',
-  loop: 'imagine.failedLoop',
-  video: 'imagine.failedVideo',
-  story: 'imagine.failedVideo',
-  redo: 'imagine.failedVideo',
-  resume: 'imagine.failedVideo',
-  extend: 'imagine.failedExtend',
-  generate: 'imagine.failedGenerate',
-  remix: 'imagine.failedRemix',
-  upscale: 'imagine.failedUpscale',
-  bg: 'imagine.failedBg',
-  voice: 'imagine.failedVoice',
-  objectSwap: 'imagine.failedObjectSwap',
-  swapPerson: 'imagine.failedSwapPerson',
-  relight: 'imagine.failedRelight',
-  speak: 'imagine.failedSpeak',
-}
-
-/**
- * The sentence for a finished run, by its action: one file, then several.
- *
- * One file gets its own sentence rather than a number and a slashed suffix:
- * "I generated 1 image(s)." was what every successful run said, and one file
- * is what almost every run produces. Every action used to fall through to
- * "I generated one image.": a clip, a continued clip and a spoken line all
- * came back announced as a picture, and that line became the project's title
- * ("Freshly generated image") (2026-10-17). The scan half of "Recreate video"
- * draws the frames and stops: its line says that the recreation has NOT
- * happened yet, or the frames under a sentence about a video read as the
- * video having gone missing.
- */
-const DONE_KEYS: Partial<Record<ImagineJob['action'], readonly [one: ComfyLocaleKey, many: ComfyLocaleKey]>> = {
-  video: ['imagine.doneVideoOne', 'imagine.doneVideo'],
-  story: ['imagine.doneVideoOne', 'imagine.doneVideo'],
-  redo: ['imagine.doneVideoOne', 'imagine.doneVideo'],
-  resume: ['imagine.doneVideoOne', 'imagine.doneVideo'],
-  loop: ['imagine.doneLoopOne', 'imagine.doneLoop'],
-  remix: ['imagine.doneRemixOne', 'imagine.doneRemix'],
-  upscale: ['imagine.doneUpscaleOne', 'imagine.doneUpscale'],
-  bg: ['imagine.doneBgOne', 'imagine.doneBg'],
-  music: ['imagine.doneMusicOne', 'imagine.doneMusic'],
-  objectSwap: ['imagine.doneObjectSwapOne', 'imagine.doneObjectSwap'],
-  swapPerson: ['imagine.doneSwapPersonOne', 'imagine.doneSwapPerson'],
-  relight: ['imagine.doneRelightOne', 'imagine.doneRelight'],
-  scanFrame: ['imagine.doneScanFrameOne', 'imagine.doneScanFrame'],
-  extend: ['imagine.doneExtendOne', 'imagine.doneVideo'],
-  speak: ['imagine.doneSpeakOne', 'imagine.doneSpeak'],
-}
-
-/**
- * The status line a settled job leaves in its project's column.
+ * The status line a settled job leaves in its project's column. The word for
+ * each action's failure and its sentence for a finished run are in the action
+ * table (`failedKey`, `doneKeys` in action-traits.ts).
  * @param job - the job, done, failed or cancelled.
  * @returns the line.
  */
@@ -194,7 +163,8 @@ export function jobDoneText(job: ImagineJob): string {
   if (job.status === 'cancelled') return translate('imagine.jobCancelled')
   if (job.status === 'error') {
     return translate('imagine.failedWith', {
-      what: translate(FAILED_KEYS[job.action] ?? 'imagine.failedRun'),
+      // `?.`: a job record from another host version may name an action this page lacks.
+      what: translate(ACTION_TRAITS[job.action]?.failedKey ?? 'imagine.failedRun'),
       reason: job.error !== undefined ? friendlyError(job.error) : translate('imagine.jobError'),
     })
   }
@@ -207,7 +177,7 @@ export function jobDoneText(job: ImagineJob): string {
    */
   const keys = job.action === 'voice'
     ? clip ? ['imagine.doneVoiceClipOne', 'imagine.doneVoiceClip'] as const : ['imagine.doneVoiceOne', 'imagine.doneVoice'] as const
-    : DONE_KEYS[job.action] ?? (clip ? DONE_KEYS.video : undefined) ?? ['imagine.doneGenerateOne', 'imagine.doneGenerate'] as const
+    : ACTION_TRAITS[job.action]?.doneKeys ?? (clip ? ACTION_TRAITS.video.doneKeys : undefined) ?? ['imagine.doneGenerateOne', 'imagine.doneGenerate'] as const
   return files.length === 1 ? translate(keys[0]) : translate(keys[1], { count: String(files.length) })
 }
 

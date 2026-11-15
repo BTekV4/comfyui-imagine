@@ -214,9 +214,9 @@
   background: var(--imagine-media-bed);
 }
 
+/* The shared note, as a 64px square beside a picked file's name. */
 .audioThumb {
-  display: grid;
-  place-items: center;
+  composes: audioGlyph from './imagine-shared.module.css';
   width: 64px;
   height: 64px;
   flex: none;
@@ -418,7 +418,8 @@
   .runBar { position: static; border-top: none; padding: 4px 0 0; }
 }
 
-/* "Extract frames": player, scrubber, frame steps, saved frames. */
+/* "Extract frames" and an uploaded card's frame control (FrameScrubber.tsx):
+   player, scrubber, frame steps, saved frames. */
 .framePlayer {
   display: block;
   width: 100%;
@@ -426,6 +427,11 @@
   border-radius: 12px;
   background: var(--imagine-media-bed);
   object-fit: contain;
+}
+
+.framePlayerCompact {
+  /* Among an uploaded card's other fields the player stays short. */
+  max-height: 260px;
 }
 
 .frameSlider {

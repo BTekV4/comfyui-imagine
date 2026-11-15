@@ -79,6 +79,34 @@ def iou(a, b):
     return inter / torch.logical_or(a, b).sum().item()
 
 
+def mask_extent(mb):
+    """A boolean mask's pixel count and bounding box (x0, y0, x1, y1), the box None when empty."""
+    area = int(mb.sum().item())
+    if area == 0:
+        return 0, None
+    rows = torch.nonzero(mb.any(dim=1)).flatten()
+    cols = torch.nonzero(mb.any(dim=0)).flatten()
+    return area, (int(cols[0]), int(rows[0]), int(cols[-1]) + 1, int(rows[-1]) + 1)
+
+
+def iou_bound(a, b):
+    """An upper bound of the IoU of two masks from their extents alone.
+
+    The overlap cannot exceed the overlap of the boxes nor either area, and the
+    IoU grows with the overlap, so a pair under the threshold here never needs
+    the full-resolution comparison (two H x W tensor ops): only masks whose
+    boxes really overlap pay for it."""
+    (area_a, box_a), (area_b, box_b) = a, b
+    if box_a is None or box_b is None:
+        return 0.0
+    ix = max(0, min(box_a[2], box_b[2]) - max(box_a[0], box_b[0]))
+    iy = max(0, min(box_a[3], box_b[3]) - max(box_a[1], box_b[1]))
+    inter = min(ix * iy, area_a, area_b)
+    if inter == 0:
+        return 0.0
+    return inter / (area_a + area_b - inter)
+
+
 def box_iou(a, b):
     ix = max(0, min(a[2], b[2]) - max(a[0], b[0]))
     iy = max(0, min(a[3], b[3]) - max(a[1], b[1]))
@@ -168,10 +196,14 @@ class ImagineSegments:
 
         # The same object can answer two concepts ("woman" and "person"): keep the first.
         kept = []
+        extents = []  # (area, bbox) of each kept mask, for the cheap pre-check
         for item in found:
-            if dedupe_iou < 1.0 and any(iou(item[3], k[3]) > dedupe_iou for k in kept):
+            extent = mask_extent(item[3]) if dedupe_iou < 1.0 else None
+            if dedupe_iou < 1.0 and any(iou_bound(extent, e) > dedupe_iou and iou(item[3], k[3]) > dedupe_iou
+                                        for k, e in zip(kept, extents)):
                 continue
             kept.append(item)
+            extents.append(extent)
 
         wanted = parse_texts(texts, W, H)
         if wanted:

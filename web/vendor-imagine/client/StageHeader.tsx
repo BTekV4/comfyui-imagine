@@ -10,12 +10,16 @@ import { translate } from './locale-store.ts'
 import { memo, type CSSProperties } from 'react'
 import { IconPanelLeftOutlineRegular, IconPlusOutlineRegular, IconSparkleRegular, Tooltip } from '../../shims/primitives/index.ts'
 import type { ImagineView } from './gallery-store.ts'
+import { IconSidePanel } from './canvas-icons.tsx'
 import css from './StageHeader.module.css'
 
 export interface StageHeaderProps {
   readonly view: ImagineView
-  /** The open project's title, in the project view. */
-  readonly title: string | undefined
+  /**
+   * A project is open. Only that, not its title: the bar no longer shows the
+   * title, and passing it re-rendered the memoized bar on every rename.
+   */
+  readonly hasProject: boolean
   /** The open project is the History: no canvas buttons there. */
   readonly onHistory: boolean
   readonly canvasHidden: boolean
@@ -35,10 +39,10 @@ export interface StageHeaderProps {
 }
 
 export const StageHeader = memo(function StageHeader({
-  view, title, onHistory, canvasHidden, chatHidden, projectPane, railDrawer, chatWidth, saveFailed,
+  view, hasProject, onHistory, canvasHidden, chatHidden, projectPane, railDrawer, chatWidth, saveFailed,
   onToggleRail, onHome, onPane, onCanvasHidden, onToggleChat, onNewProject,
 }: StageHeaderProps) {
-  const project = view === 'project' && title !== undefined
+  const project = view === 'project' && hasProject
   return (
     /* All media carries its own bar, as Grok's page: on a wide screen the
        studio's strip above it would only push the grid down. */
@@ -110,7 +114,7 @@ export const StageHeader = memo(function StageHeader({
                 ? (
                   <Tooltip label={translate('imagine.showCanvas')} side="bottom" delayMs={150} portal>
                     <button type="button" className={css.canvasTopBtn} aria-label={translate('imagine.showCanvas')} onClick={() => { onCanvasHidden(false) }}>
-                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="2.5" /><path d="M10 2.5v11" /></svg>
+                      <IconSidePanel />
                     </button>
                   </Tooltip>
                 )
@@ -125,7 +129,7 @@ export const StageHeader = memo(function StageHeader({
                     </Tooltip>
                     <Tooltip label={translate('imagine.hideCanvas')} side="bottom" delayMs={150} portal>
                       <button type="button" className={css.canvasTopBtn} aria-label={translate('imagine.hideCanvas')} onClick={() => { onCanvasHidden(true) }}>
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="2.5" /><path d="M10 2.5v11" /><path d="M11.5 6.5h1M11.5 9h1" strokeLinecap="round" /></svg>
+                        <IconSidePanel dots />
                       </button>
                     </Tooltip>
                   </>

@@ -17,7 +17,7 @@ import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { AAC_128K, AAC_192K, AUDIO_RATE, FASTSTART, FPS, ffmpegTo, h264Out } from './media-tools.ts'
+import { AAC_128K, AAC_192K, AUDIO_RATE, FASTSTART, FPS, SILENT_STEREO_INPUT, ffmpegTo, h264Out } from './media-tools.ts'
 import { MAX_STORY_SECONDS, MIN_SHOT_SECONDS } from '../../../shared/imagine-media.ts'
 
 /** How long the concatenation may take before it is given up on. */
@@ -157,12 +157,12 @@ function cutsArgs(
      * whole accumulated overlap.
      *
      * The offset is read off the timeline as it grows instead of accumulated
-     * from the lengths, because a clip may arrive with a head of its own: the
-     * object swap's windows carry half a second of the window before them
-     * (the same instants, so the dissolve blends a moment with itself) and are
-     * `duration + fade` long. `played` is how long the joined file is so far,
-     * so the dissolve always starts one fade before its end, and a clip that
-     * brings its own overlap gives the fade back instead of losing it.
+     * from the lengths, because a clip may arrive with a head of its own (the
+     * same instants as the end of the clip before it, so the dissolve blends a
+     * moment with itself) and be `duration + fade` long. `played` is how long
+     * the joined file is so far, so the dissolve always starts one fade before
+     * its end, and a clip that brings its own overlap gives the fade back
+     * instead of losing it.
      */
     let played = durations[0] ?? 0
     let last = 'v0'
@@ -364,8 +364,7 @@ export async function silentCopy(path: string, name: string): Promise<string> {
   return ffmpegTo(out, [
     '-y',
     '-i', path,
-    '-f', 'lavfi',
-    '-i', `anullsrc=channel_layout=stereo:sample_rate=${String(AUDIO_RATE)}`,
+    ...SILENT_STEREO_INPUT,
     '-map', '0:v',
     '-map', '1:a',
     '-c:v', 'copy',

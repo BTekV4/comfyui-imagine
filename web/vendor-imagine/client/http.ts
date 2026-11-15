@@ -9,6 +9,32 @@ import { languageHeader } from './locale-store.ts'
  */
 
 /**
+ * Parse a response body as JSON, or nothing when it is empty or not JSON (a
+ * proxy's HTML page, a dropped connection).
+ * @param text - the body as read.
+ * @returns the parsed value, or undefined.
+ */
+function parsed(text: string): unknown {
+  if (text.length === 0) return undefined
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The host's own sentence in a parsed body, `{ error }`, when it sent one.
+ * One reading for both helpers below, which used to parse it each their own way.
+ * @param body - the parsed body.
+ * @returns the sentence, or undefined.
+ */
+function errorOf(body: unknown): string | undefined {
+  if (typeof body !== 'object' || body === null) return undefined
+  return (body as { error?: string }).error
+}
+
+/**
  * The host's own sentence for a failed response, or `<label> <status>`.
  * @param response - the failed fetch response (its body is consumed).
  * @param label - what failed, for the fallback message.
@@ -16,13 +42,7 @@ import { languageHeader } from './locale-store.ts'
  */
 export async function failureOf(response: Response, label: string): Promise<Error> {
   const text = await response.text().catch(() => '')
-  let reported: string | undefined
-  try {
-    reported = (JSON.parse(text) as { error?: string }).error
-  } catch {
-    reported = undefined
-  }
-  return new Error(reported ?? `${label} ${String(response.status)}`)
+  return new Error(errorOf(parsed(text)) ?? `${label} ${String(response.status)}`)
 }
 
 /**
@@ -32,16 +52,10 @@ export async function failureOf(response: Response, label: string): Promise<Erro
  * @returns the parsed body.
  */
 export async function readJson<T>(response: Response, label: string): Promise<T> {
-  const text = await response.text()
-  let body: (T & { error?: string }) | undefined
-  try {
-    body = text.length === 0 ? undefined : JSON.parse(text) as T & { error?: string }
-  } catch {
-    body = undefined
-  }
-  if (!response.ok) throw new Error(body?.error ?? `${label} ${String(response.status)}`)
+  const body = parsed(await response.text())
+  if (!response.ok) throw new Error(errorOf(body) ?? `${label} ${String(response.status)}`)
   if (body === undefined) throw new Error(`${label} ${String(response.status)}`)
-  return body
+  return body as T
 }
 
 /**
@@ -126,6 +140,15 @@ export async function getJson<T>(url: string, label: string, init: RequestInit =
 const validators = new Map<string, string>()
 
 /**
+ * Per URL, how many revalidating reads were started and the newest one whose
+ * validator was kept. Two reads of the same route can be out at once; the
+ * older answer landing last used to overwrite the newer ETag, and the next
+ * read then asked "changed since the older copy?" against a body this page
+ * had already replaced.
+ */
+const validatorOrder = new Map<string, { asked: number; taken: number }>()
+
+/**
  * GET a JSON answer the host may revalidate.
  *
  * The response is cached by nothing on this side: `no-store` is not sent, but
@@ -137,6 +160,10 @@ const validators = new Map<string, string>()
  */
 export async function getJsonRevalidating<T>(url: string, label: string): Promise<T | undefined> {
   const validator = validators.get(url)
+  const order = validatorOrder.get(url) ?? { asked: 0, taken: 0 }
+  validatorOrder.set(url, order)
+  order.asked += 1
+  const asked = order.asked
   const response = await request(
     url,
     'GET',
@@ -144,8 +171,12 @@ export async function getJsonRevalidating<T>(url: string, label: string): Promis
     validator === undefined ? { cache: 'no-cache' } : { cache: 'no-cache', headers: { 'if-none-match': validator } },
   )
   if (response.status === 304) return undefined
-  const tag = response.headers.get('etag')
-  if (tag !== null) validators.set(url, tag)
-  else validators.delete(url)
+  // Only the newest answer so far may set what the next read revalidates against.
+  if (asked >= order.taken) {
+    order.taken = asked
+    const tag = response.headers.get('etag')
+    if (tag !== null) validators.set(url, tag)
+    else validators.delete(url)
+  }
   return await readJson<T>(response, label)
 }

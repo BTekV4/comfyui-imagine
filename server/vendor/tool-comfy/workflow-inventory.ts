@@ -26,9 +26,8 @@ import { workflowFile, type GraphHolder, type LoadedRow } from './workflow-load.
 const PIN_NAMES: Readonly<Record<string, string>> = {
   promptNodeId: 'prompt', seedNodeId: 'seed', imageNodeId: 'immagine', videoNodeId: 'video', sizeNodeId: 'dimensioni',
   upscaleNodeId: 'upscaler',
-  aspectRatio: 'formato', seconds: 'secondi', lyrics: 'testo', duration: 'durata', pose: 'posa',
-  lookSubject: 'soggetto', realism: 'realismo', subjectText: 'soggettoVideo', referenceText: 'soggettoFoto',
-  sceneText: 'descrizioneRipresa', placementText: 'riquadroPosa', windowStart: 'inizioFinestra',
+  aspectRatio: 'formato', seconds: 'secondi', lyrics: 'testo', duration: 'durata',
+  realism: 'realismo', subjectText: 'soggettoVideo', referenceText: 'soggettoFoto', placementText: 'riquadroPosa',
 }
 
 /**

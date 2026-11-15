@@ -15,7 +15,8 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { IconDownloadOutlineRegular, IconTrashOutlineRegular } from '../../shims/primitives/index.ts'
+import { IconCheck, IconDownloadOutlineRegular, IconTrashOutlineRegular } from '../../shims/primitives/index.ts'
+import { IconArrowUp } from './canvas-icons.tsx'
 import { translate } from './locale-store.ts'
 import {
   groupSegments, segmentFileUrl, TEXT_EDIT_FONTS,
@@ -232,7 +233,7 @@ function Check({ shown, checked }: { shown: boolean; checked: boolean }) {
     <span className={css.checkSlot} data-shown={shown || undefined} aria-hidden="true">
       <span className={css.check} data-checked={checked || undefined}>
         {checked && (
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <IconCheck size={10} strokeWidth={1.75} />
         )}
       </span>
     </span>
@@ -282,9 +283,28 @@ export function SegmentBoxes({ index, drawn, frame, shown, group }: {
 }
 
 /** The part's name, following the cursor 16px above it. */
-export function SegmentLabel({ label, x, y }: { label: string; x: number; y: number }) {
+export function SegmentLabel({ label, frame, start }: {
+  label: string
+  /** The photo's frame: the label follows the pointer over it. */
+  frame: RefObject<HTMLElement>
+  /** Where the pointer was when the part under it was found. */
+  start: { x: number; y: number }
+}) {
+  /*
+   * The pointer's position is this label's own state, read from the frame's
+   * events here: kept in the viewer, every mouse move re-rendered the whole
+   * viewer and its panels to move one line of text.
+   */
+  const [at, setAt] = useState(start)
+  useEffect(() => {
+    const node = frame.current
+    if (node === null) return
+    const onMove = (event: PointerEvent): void => { setAt({ x: event.clientX, y: event.clientY }) }
+    node.addEventListener('pointermove', onMove)
+    return () => { node.removeEventListener('pointermove', onMove) }
+  }, [frame])
   return createPortal(
-    <div className={css.cursorLabel} style={{ left: Math.max(80, Math.min(x, window.innerWidth - 80)), top: Math.max(28, y - 16) }}>{label}</div>,
+    <div className={css.cursorLabel} style={{ left: Math.max(80, Math.min(at.x, window.innerWidth - 80)), top: Math.max(28, at.y - 16) }}>{label}</div>,
     document.body,
   )
 }
@@ -396,7 +416,7 @@ export function SegmentEditBox({ picked, place, prompt, onPrompt, busy, error, o
   }
   const send = (
     <button type="button" className={css.send} data-ready={ready || undefined} disabled={!ready} aria-label={translate('imagine.regionEdit')} title={translate('imagine.regionEdit')} onClick={apply}>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      <IconArrowUp />
     </button>
   )
   let inner: ReactNode

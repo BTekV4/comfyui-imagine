@@ -7,8 +7,8 @@
 import { failureOf, getJson, getJsonRevalidating, postJson, readJson, request, send } from './http.ts'
 import { translate } from './locale-store.ts'
 import type {
-  GalleryItem, ImagineAction, ImagineJobView as ImagineJob, ImagineObjectMode, ImaginePlacement, ImagineRegion,
-  ImagineSettingOp, MediaTag, ModelRoute, MusicClipPlan,
+  GalleryItem, ImagineAction, ImagineJobView as ImagineJob, ImagineObjectMode, ImaginePlacement, ImagineQuality, ImagineRegion,
+  ImagineSettingOp, ImagineSpeed, MediaTag, ModelRoute, MusicClipPlan,
   MusicClipRequest,
 } from '../../../shared/imagine-types.ts'
 import type {
@@ -155,13 +155,26 @@ export async function cancelImagineJob(id: string): Promise<void> {
 
 /** The last queue read, handed back when the server answers 304. */
 let lastJobs: readonly ImagineJob[] = []
+/** How many queue reads were started, and the newest one whose answer was taken. */
+let jobsAsked = 0
+let jobsTaken = 0
 
 /**
  * Fetch the Imagine job list from GET /comfy-imagine.
+ *
+ * Several callers read the queue (the live tick, a full reload, a run that
+ * adopts its batch), so two reads can be out at once. An answer that lands
+ * after a newer one is dropped and the newer queue is returned instead: the
+ * older body would otherwise replace `lastJobs` with a queue already out of
+ * date and put finished jobs back as running.
  * @returns the jobs, newest first.
  */
 export async function fetchImagineJobs(): Promise<readonly ImagineJob[]> {
+  jobsAsked += 1
+  const asked = jobsAsked
   const body = await getJsonRevalidating<{ jobs?: ImagineJob[] }>('/comfy-imagine', 'jobs')
+  if (asked < jobsTaken) return lastJobs
+  jobsTaken = asked
   if (body !== undefined) lastJobs = Array.isArray(body.jobs) ? body.jobs : []
   return lastJobs
 }
@@ -402,12 +415,23 @@ export async function startImagineJob(
     keepAudio?: boolean
     /** Character swap only: false turns lip-sync off. */
     lipSync?: boolean
+    /** Character and object swap only: the ladder step their plan renders at. */
+    swapResolution?: '480p' | '720p' | '1080p'
     /** `objectSwap` only: which of the four recipes runs. */
     objectMode?: ImagineObjectMode
     /** `objectSwap` → `add`: the box the new object goes into. */
     placement?: ImaginePlacement
     /** `relight` only: the light look to paint, by slug. */
     light?: string
+    /**
+     * The recipe («Speed» / «Quality»): `quality` for the photo graphs,
+     * `speed` for the video ones. Both always travel; a graph without the
+     * `steps` pin ignores them.
+     */
+    speed?: ImagineSpeed
+    quality?: ImagineQuality
+    /** Recreate only: the opening frame the user picked from a scan, by name. */
+    frame?: string
   },
 ): Promise<ImagineJob> {
   /*
@@ -652,6 +676,22 @@ export interface SocialPostInput {
  */
 export async function fetchSocialPosts(): Promise<readonly SocialPost[]> {
   const body = await getJson<{ posts?: SocialPost[] }>('/plugin/instagram/social/posts', 'social-posts')
+  return Array.isArray(body.posts) ? body.posts : []
+}
+
+/**
+ * The publication queue, for the rail's timer: undefined when the host
+ * answered 304 (nothing changed since the last read).
+ *
+ * The timer reads the whole queue every 20 s for the life of the page. The
+ * other heavy reads already revalidate; this one does as soon as the plugin
+ * route sends an ETag. Until it does, every answer is a full body, exactly as
+ * with `fetchSocialPosts`.
+ * @returns the posts, or undefined when unchanged.
+ */
+export async function fetchSocialPostsIfChanged(): Promise<readonly SocialPost[] | undefined> {
+  const body = await getJsonRevalidating<{ posts?: SocialPost[] }>('/plugin/instagram/social/posts', 'social-posts')
+  if (body === undefined) return undefined
   return Array.isArray(body.posts) ? body.posts : []
 }
 

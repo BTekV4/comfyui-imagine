@@ -16,6 +16,7 @@ import { HISTORY_ORIGIN_KEYS, originOf } from './imagine-filters.ts'
 import { HISTORY_PAGE } from './imagine-projects.ts'
 import { dateStamp } from './dates.ts'
 import { sizeLabel } from './labels.ts'
+import { AudioMark } from './imagine-bits.tsx'
 import css from './HistoryList.module.css'
 import { translate } from './locale-store.ts'
 
@@ -49,7 +50,7 @@ export function HistoryList({ items, onOpen, more, onMore }: HistoryListProps) {
         >
           <span className={css.thumb}>
             {item.kind === 'audio'
-              ? <span className={css.audioThumb} aria-hidden="true">♪</span>
+              ? <AudioMark className={css.audioThumb} />
               : <Still src={thumbUrlOf(item.name, THUMB_SMALL, item.mtime)} lazy />}
           </span>
           <span className={css.name}>{item.name}</span>

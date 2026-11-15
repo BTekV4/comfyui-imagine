@@ -45,7 +45,7 @@ import type {
   PluginView,
 } from '../../shared/plugin-types.ts'
 import { message } from './messages.ts'
-import type { NotifyExtra, NotifyHandler } from './notify-bus.ts'
+import { within, type NotifyExtra, type NotifyHandler } from './notify-bus.ts'
 import { HttpError, notAllowed, readObject, restOf, sendJson } from './route-kit.ts'
 import { fileStamp, setAside } from './set-aside.ts'
 import type { Handler, WebRoute } from './host.ts'
@@ -250,6 +250,19 @@ export interface Plugins {
   refresh(id: string): Promise<void>
   /** Re-read every installed plugin's manifest and module. */
   reloadAll(): Promise<void>
+  /**
+   * Bring the installed plugins up to the repository's copies (manifest and
+   * entry, with a dated backup), as every start does; for `scripts/deploy.sh`.
+   * @param options.tag - who asks, written in the backups' names.
+   * @param options.reload - reload the updated plugins that are loaded; false
+   *   when a restart follows and will load them anyway.
+   * @returns the ids updated, those reloaded, those the repository ships
+   *   with a manifest that does not hold up (left as installed), and the
+   *   backups' suffix.
+   */
+  updateFromRepo(options: { tag: PluginUpdateTag; reload: boolean }): Promise<{
+    updated: string[]; reloaded: string[]; invalid: string[]; backupSuffix: string
+  }>
   /**
    * Switch a plugin on or off, and remember it in the state file.
    * @param id - the plugin.
@@ -482,24 +495,6 @@ function checkValue(spec: PluginSettingSpec, value: unknown): PluginValue {
 /** A plugin's config file. */
 const configPathOf = (dir: string, id: string): string => join(dir, id, 'config.json')
 
-/**
- * Wait for at most `ms`.
- * @param work - the promise or value.
- * @param ms - the budget.
- * @returns the value, or undefined when the budget ran out.
- */
-async function within<T>(work: Promise<T> | T, ms: number): Promise<T | undefined> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      Promise.resolve(work),
-      new Promise<undefined>((resolveTimeout) => { timer = setTimeout(() => resolveTimeout(undefined), ms) }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
-}
-
 /** Drop all but the newest {@link KEPT_BACKUPS} copies of one config file, best effort. */
 async function pruneBackups(file: string): Promise<void> {
   const name = basename(file)
@@ -571,41 +566,56 @@ async function availableIn(repoDir: string, installed: ReadonlySet<string>): Pro
 }
 
 /**
- * Bring the installed plugins up to the repository's copies, before loading.
+ * Who replaced an installed plugin's files, written in the backup's name
+ * (`.bak-<time>-<tag>`): the server at start, or `scripts/deploy.sh`.
+ */
+export type PluginUpdateTag = 'update' | 'deploy'
+
+/**
+ * Bring one installed plugin up to the repository's copy.
  *
  * Installing copies `manifest.json` and the entry into `<data>/plugins/<id>/`,
  * so after a `git pull` and a build the installed copy was the old one until
  * somebody pressed Install again — nothing told a new user to (2026-11-15).
- * Now every start compares the two files with the repository's and copies the
- * ones that changed, keeping the old file beside it (`.bak-<time>-update`).
- * `config.json` and the plugin's other files are never touched. A plugin the
- * repository does not ship, or ships unbuilt, is left as it is.
+ * The two files are compared with the repository's and the ones that changed
+ * are replaced atomically (a plugin loading meanwhile never reads half a
+ * file), keeping the old file beside it (`.bak-<stamp>-<tag>`). `config.json`
+ * and the plugin's other files are never touched. A plugin the repository
+ * does not ship, or ships unbuilt, is left as it is.
+ *
+ * The only copy of this logic: `scripts/deploy.sh` asks the running server
+ * for it (`POST /comfy-plugins/update`) instead of copying files itself, as it
+ * did until 2026-11-15 with a shell version that had already drifted.
  * @param dir - `<data>/plugins`.
  * @param repoDir - the repository's `plugins/`.
- * @returns the ids that were updated.
+ * @param id - the installed plugin's folder.
+ * @param stamp - the time written in the backups' names, one per run.
+ * @param tag - who is updating.
+ * @returns `updated` when a file was replaced, `unchanged`, `invalid` when the
+ *   repository has the plugin with a manifest that does not hold up (no valid
+ *   or no built entry), `absent` when it does not ship it.
  */
-async function updateFromRepo(dir: string, repoDir: string): Promise<string[]> {
-  const updated: string[] = []
-  for (const id of await readFolders(dir)) {
-    const source = await availableSource(repoDir, id)
-    if (source === undefined) continue
-    let changed = false
-    for (const name of ['manifest.json', source.manifest.entry]) {
-      const fresh = await readFile(join(source.dir, name)).catch(() => undefined)
-      if (fresh === undefined) continue
-      const target = join(dir, id, name)
-      const old = await readFile(target).catch(() => undefined)
-      if (old !== undefined && old.equals(fresh)) continue
-      if (old !== undefined) await copyFile(target, `${target}.bak-${fileStamp()}-update`)
-      await copyFile(join(source.dir, name), target)
-      changed = true
-    }
-    if (changed) {
-      updated.push(id)
-      console.log(`[plugin:${id}] updated from the repository's copy`)
-    }
+async function updateOneFromRepo(
+  dir: string, repoDir: string, id: string, stamp: string, tag: PluginUpdateTag,
+): Promise<'updated' | 'unchanged' | 'invalid' | 'absent'> {
+  const source = await availableSource(repoDir, id)
+  if (source === undefined) {
+    const shipped = await stat(join(repoDir, id, 'manifest.json')).then(info => info.isFile(), () => false)
+    return shipped ? 'invalid' : 'absent'
   }
-  return updated
+  let changed = false
+  for (const name of ['manifest.json', source.manifest.entry]) {
+    const fresh = await readFile(join(source.dir, name)).catch(() => undefined)
+    if (fresh === undefined) continue
+    const target = join(dir, id, name)
+    const old = await readFile(target).catch(() => undefined)
+    if (old !== undefined && old.equals(fresh)) continue
+    if (old !== undefined) await copyFile(target, `${target}.bak-${stamp}-${tag}`)
+    await writeFileAtomic(target, fresh, { mode: 0o644 })
+    changed = true
+  }
+  if (changed) console.log(`[plugin:${id}] updated from the repository's copy (${tag})`)
+  return changed ? 'updated' : 'unchanged'
 }
 
 /**
@@ -937,7 +947,10 @@ export async function createPlugins(options: PluginsOptions): Promise<Plugins> {
     async start() {
       if (disposed) return
       await readState()
-      if (options.repoDir !== undefined) await updateFromRepo(options.dir, options.repoDir)
+      if (options.repoDir !== undefined) {
+        const stamp = fileStamp()
+        for (const id of await readFolders(options.dir)) await updateOneFromRepo(options.dir, options.repoDir, id, stamp, 'update')
+      }
       // A folder that is not there means an installation with no plugins.
       const folders = await readFolders(options.dir)
       for (const folder of folders) {
@@ -979,7 +992,7 @@ export async function createPlugins(options: PluginsOptions): Promise<Plugins> {
       // the count of copies to keep would drop by itself.
       const backup = exists ? `${file}.bak-${fileStamp()}-${randomBytes(2).toString('hex')}` : null
       if (backup !== null) await copyFile(file, backup)
-      await mkdir(dirname(file), { recursive: true })
+      // writeFileAtomic creates the folder itself.
       await writeFileAtomic(file, `${JSON.stringify(merged, null, 2)}\n`, { mode: 0o600 })
       if (backup !== null) await pruneBackups(file)
       record.values = { ...record.values, ...next }
@@ -989,6 +1002,30 @@ export async function createPlugins(options: PluginsOptions): Promise<Plugins> {
       if (!records.has(id)) throw new Error(message('plugin.unknown', { id }))
       await reloadNow(id)
     }),
+    async updateFromRepo({ tag, reload }) {
+      const stamp = fileStamp()
+      const updated: string[] = []
+      const reloaded: string[] = []
+      const invalid: string[] = []
+      const backupSuffix = `.bak-${stamp}-${tag}`
+      if (options.repoDir === undefined) return { updated, reloaded, invalid, backupSuffix }
+      const repoDir = options.repoDir
+      for (const id of await readFolders(options.dir)) {
+        // In the plugin's queue: a refresh or an install of the same plugin
+        // must not read its files while they are being replaced.
+        await queued(id, async () => {
+          const outcome = await updateOneFromRepo(options.dir, repoDir, id, stamp, tag)
+          if (outcome === 'invalid') invalid.push(id)
+          if (outcome !== 'updated') return
+          updated.push(id)
+          if (reload && records.has(id)) {
+            await reloadNow(id)
+            reloaded.push(id)
+          }
+        })
+      }
+      return { updated, reloaded, invalid, backupSuffix }
+    },
     async reloadAll() {
       // Re-read the disk, not just the modules: a plugin copied by hand
       // appears, one whose folder is gone leaves the list.
@@ -1054,14 +1091,15 @@ type PluginCommand = (req: IncomingMessage, id: string) => Promise<Record<string
 
 /**
  * The `/comfy-plugins` routes, as one prefix: the list, the commands on the
- * whole list (`reload`, `install`) and those on one plugin
+ * whole list (`reload`, `install`, `update`) and those on one plugin
  * (`<id>/enabled|remove|settings|refresh`).
  *
  * One prefix route and not three, because the host's table matches a prefix
  * against the path itself and everything under it — three entries would be
  * three chances to leave one out. The commands are a table, with one answer
  * for a failure: the status an `HttpError` carries (a body past the limit is
- * a 413, not a 400), else 400 — or 500 for the reload, which reads no input.
+ * a 413, not a 400), else 400 — or 500 for the reload and the update, which
+ * fail on the disk rather than on their input.
  * @param plugins - the loaded system.
  * @returns the route to register on the host.
  */
@@ -1071,6 +1109,14 @@ export function createPluginsRoute(plugins: Plugins): WebRoute {
   const LIST = new Map<string, { readonly run: PluginCommand; readonly failure: number }>(Object.entries({
     // Re-read all the manifests and modules: the page's «Reload» button.
     reload: { run: async () => { await plugins.reloadAll(); return {} }, failure: 500 },
+    // Copy the repository's manifest and entry over the installed ones: scripts/deploy.sh.
+    update: {
+      run: async (req) => {
+        const body = await readObject<{ tag?: unknown; reload?: unknown }>(req, 16 * 1024)
+        return await plugins.updateFromRepo({ tag: body.tag === 'deploy' ? 'deploy' : 'update', reload: body.reload !== false })
+      },
+      failure: 500,
+    },
     install: {
       run: async (req) => {
         const body = await readObject<{ id?: unknown }>(req, 64 * 1024)
@@ -1104,13 +1150,17 @@ export function createPluginsRoute(plugins: Plugins): WebRoute {
           notAllowed(res, 'GET')
           return
         }
-        // In a single read: the page draws the three lists together.
-        sendJson(res, 200, { plugins: await plugins.list(), available: await plugins.available() })
+        // In a single read: the page draws the three lists together. The two
+        // halves side by side: the list can take the 2 s status budget.
+        const [list, available] = await Promise.all([plugins.list(), plugins.available()])
+        sendJson(res, 200, { plugins: list, available })
         return
       }
       const [id = '', action = ''] = rest.split('/')
       const one = ONE.get(action)
-      const command = LIST.get(id) ?? (one === undefined ? undefined : { run: one, failure: 400 })
+      // A list command has no second segment: `/comfy-plugins/update/refresh`
+      // is the refresh of a plugin called "update", not the update.
+      const command = (action === '' ? LIST.get(id) : undefined) ?? (one === undefined ? undefined : { run: one, failure: 400 })
       if (command === undefined) {
         sendJson(res, 404, { error: message('route.unknown', { method: req.method ?? '', path: `/comfy-plugins/${rest}` }) })
         return

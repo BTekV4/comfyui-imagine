@@ -450,11 +450,12 @@ function handle(req: IncomingMessage, res: ServerResponse, path: string): void |
 const server = createServer((req, res) => {
   let path = req.url ?? '/'
   // The page's language, for the messages the server composes (messages.ts).
-  ;(res as ServerResponse & { language?: string }).language = languageOf(req)
+  const language = languageOf(req)
+  ;(res as ServerResponse & { language?: string }).language = language
   // Inside the promise: a handler that throws synchronously (a bad
   // `%`-escape in decodeURIComponent, say) is answered like any other failure
   // instead of escaping the listener as an uncaught exception.
-  Promise.resolve().then(() => withLanguage(languageOf(req), () => {
+  Promise.resolve().then(() => withLanguage(language, () => {
     path = new URL(req.url ?? '/', 'http://x').pathname
     return handle(req, res, path)
   })).catch((error: unknown) => {

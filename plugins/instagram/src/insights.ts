@@ -138,19 +138,13 @@ async function load(): Promise<InsightsState> {
   return state
 }
 
-/** For the tests: forget what was read, so the next pass reads the folder again. */
-export function resetInsightsForTests(): void {
-  state = undefined
-  lastPass = 0
-}
-
 /** The day as Rome sees it, `2026-11-14`. */
 function romeDay(at: Date): string {
   return romeClock(at).day
 }
 
 /** The caption's first line, cut. */
-export function titleOf(caption: string | undefined, max = 90): string {
+function titleOf(caption: string | undefined, max = 90): string {
   const first = (caption ?? '').split('\n')[0]?.trim() ?? ''
   return first.length > max ? `${first.slice(0, max)}…` : first
 }

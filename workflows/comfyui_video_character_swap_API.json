@@ -1017,15 +1017,6 @@
    "title": "Final Video"
   }
  },
- "68": {
-  "inputs": {
-   "value": false
-  },
-  "class_type": "PrimitiveBoolean",
-  "_meta": {
-   "title": "No lip-sync (off in this graph: H3 hears the clip and the mouth follows it)"
-  }
- },
  "pa1": {
   "inputs": {
    "duration": 30.0,

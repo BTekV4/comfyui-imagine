@@ -637,6 +637,7 @@ export const en = {
   "imagine.libEmptySearch": "No files match the search.",
   "imagine.allMedia": "All media",
   "imagine.cropRatio": "Crop shape",
+  "imagine.cropFree": "Free",
   "imagine.cropDone": "The crop ({pixels}) becomes a new photo beside the original.",
   "imagine.cropDrag": "Drag over the photo the part to keep.",
   "imagine.cancel": "Cancel",

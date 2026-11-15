@@ -5,12 +5,13 @@
  * @module tool-comfy/job-request
  */
 
+import type { SwapResolution } from '../../../shared/imagine-sizing.ts'
 import { join } from 'node:path'
 import type { LoadedWorkflow } from './index.ts'
 import { kindOf, probePixels, safeBasename } from './gallery.ts'
 import { upscaleBlocked } from '../../../shared/imagine-media.ts'
 import { probeMedia } from './media-tools.ts'
-import { h3WindowCanvas } from './h3-windows.ts'
+import { h3AreaCanvas } from './extend-video.ts'
 import { formatSize, H3_NATIVE_MEGAPIXELS } from './snap-size.ts'
 import { regenerateCanvas } from './regenerate.ts'
 import type { ImagineWorkflows, WorkflowGraphs } from './workflow-fields.ts'
@@ -144,6 +145,8 @@ export interface ImagineJobRequest {
   customFiles?: Readonly<Record<string, string>>
   seconds?: number
   megapixels?: number
+  /** Character and object swap only: the ladder step their plan renders at. */
+  swapResolution?: SwapResolution
   /**
    * How the clip is rendered: `fast`, the distilled graph as it ships, or
    * `slow`, the high-quality half — the second graph the entry declares as
@@ -311,10 +314,10 @@ export const ACTION_RUNS: Partial<Record<ImagineAction, {
   regenerate: { workflow: 'regenerateDetail', tool: 'regenerate_detail', output: 'video' },
   /*
    * «Object swap»: the object tracked in the clip is changed, removed, or its
-   * background replaced (and one day added). This entry is a SINGLE one
+   * background replaced, or an object added. This entry is a SINGLE one
    * because the file, the tool and the output type are the same for every
-   * mode, rendered in windows; the graph instead is
-   * one per mode, resolved by `readJobRequest`. The file comes out as
+   * mode; the graph instead is one per mode (each plans and chains its own
+   * clips), resolved by `readJobRequest`. The file comes out as
    * `object_swap-…mp4`, which is the prefix the gallery reads the origin from.
    */
   objectSwap: { workflow: 'objectSwap', tool: 'object_swap', output: 'video' },
@@ -616,8 +619,26 @@ interface JobPlan {
   readonly workflow: LoadedWorkflow
 }
 
-/** The source's header, read once however many checks of one request want it. */
-type PixelsOf = (path: string, kind: MediaKind) => ReturnType<typeof probePixels>
+/** A file's pixel size from its header, read at most once per path and kind. */
+export type PixelsOf = (path: string, kind: MediaKind) => ReturnType<typeof probePixels>
+
+/**
+ * A {@link PixelsOf} with its own memory, for one request or one run.
+ *
+ * Keyed by kind and path, so a second file asked of the same cache gets its
+ * own header instead of the first one's in silence. The promise is kept, so
+ * two passes that ask at once share one read.
+ * @returns a fresh cache.
+ */
+export function pixelCache(): PixelsOf {
+  const headers = new Map<string, ReturnType<typeof probePixels>>()
+  return (path, kind) => {
+    const key = `${kind}:${path}`
+    const known = headers.get(key) ?? probePixels(path, kind)
+    headers.set(key, known)
+    return known
+  }
+}
 
 /**
  * Check one graph-running request and resolve it into what its jobs carry.
@@ -653,11 +674,10 @@ export async function readJobRequest(
   const { prompt, lightLook } = promptOf(request)
   const { source, sourceKind } = sourceOf(request)
   const sourcePath = source === undefined ? undefined : join(outputDir, source)
-  let pixels: ReturnType<typeof probePixels> | undefined
-  const pixelsOf: PixelsOf = (path, kind) => (pixels ??= probePixels(path, kind))
+  const pixelsOf = pixelCache()
   await checkSource(request, sourceKind, sourcePath, pixelsOf)
   const files = referencesOf(request)
-  const canvas = await canvasOf(request, swapGraph, sourcePath, pixelsOf)
+  const canvas = await canvasOf(request, sourcePath)
   const edit = editInputsOf(workflows, request)
   /*
    * «Character swap» without lip-sync is its own graph (Openjutsu's export
@@ -807,8 +827,6 @@ async function checkSource(
 interface RequestFiles {
   /** The second file the run carries as `reference`, whichever action named it. */
   readonly reference?: string
-  /** An object swap's photo, which also decides the graph of the `add` mode. */
-  readonly objectReference?: string
   readonly objectMode?: ImagineObjectMode
   readonly objectPlacement?: ImaginePlacement
   /** A recreation's opening frame handed in. */
@@ -912,7 +930,6 @@ function referencesOf(request: ImagineJobRequest): RequestFiles {
   const reference = composeReference ?? objectReference ?? remixReference ?? swapReference
   return {
     ...reference === undefined ? {} : { reference },
-    ...objectReference === undefined ? {} : { objectReference },
     ...objectMode === undefined ? {} : { objectMode },
     ...objectPlacement === undefined ? {} : { objectPlacement },
     ...givenFrame === undefined ? {} : { givenFrame },
@@ -920,36 +937,23 @@ function referencesOf(request: ImagineJobRequest): RequestFiles {
 }
 
 /**
- * The canvas an object swap or a recreation renders on, measured on its clip, and the
- * length of a recreation; every other action keeps the composer's size.
+ * The canvas a recreation renders on, measured on its clip, and its length;
+ * an object swap carries no canvas, and every other action keeps the
+ * composer's size.
  */
 async function canvasOf(
   request: ImagineJobRequest,
-  swapGraph: LoadedWorkflow | undefined,
   sourcePath: string | undefined,
-  pixelsOf: PixelsOf,
 ): Promise<{ size: string | undefined; recreateSeconds: number | undefined }> {
   const action = request.action
   /*
-   * The canvas follows the clip, not the composer's aspect: the graph resizes
-   * the plate onto it and renders that same size back, so a canvas the clip
-   * does not share letterboxes or crops the shot the user asked to keep.
-   *
-   * The plate is rendered in windows the host chains, so nothing here refuses
-   * a clip for being long.
+   * «Object swap»: the graph plans its own clips and takes its size from
+   * `planResolution` (the composer's step, imagine-jobs.ts), never from a
+   * `size` — none of its graphs has a node the size is written into. A size
+   * here would only reach the file's note as a resolution that was not
+   * rendered.
    */
-  let size = request.size
-  if (action === 'objectSwap' && sourcePath !== undefined) {
-    const measured = await pixelsOf(sourcePath, 'video')
-    /*
-     * The canvas area is declared by the graph that renders (each object
-     * swap mode has its own entry). The composer's step, when there is one,
-     * wins.
-     */
-    const area = request.megapixels ?? swapGraph?.canvasMegapixels ?? H3_NATIVE_MEGAPIXELS
-    const canvas = !('width' in measured) ? undefined : h3WindowCanvas(measured.width, measured.height, area)
-    size = canvas === undefined ? undefined : formatSize(canvas)
-  }
+  let size = action === 'objectSwap' ? undefined : request.size
   /*
    * A recreation keeps the reference clip's own canvas and length: the scene
    * is the one being recreated, and the composer's aspect describes the next
@@ -963,8 +967,8 @@ async function canvasOf(
     const measured = await probeMedia(sourcePath)
     if (measured.width !== undefined && measured.height !== undefined) {
       /*
-       * The composer's resolution step, when it sent one: the same canvas area
-       * the object swap takes (480p halves it, 720p is about the model's own 0,98 MP),
+       * The composer's resolution step, when it sent one, as a canvas area
+       * (480p halves it, 720p is about the model's own 0,98 MP),
        * but never larger than the clip being recreated — a recreation of a
        * 480p clip at 720p would only spend time inventing detail the source
        * does not have. Without a step it is the clip's own size, capped by H3.
@@ -972,7 +976,7 @@ async function canvasOf(
       const own = (measured.width * measured.height) / (1024 * 1024)
       const area = Math.min(request.megapixels ?? H3_NATIVE_MEGAPIXELS, own)
       // Never undefined here: both sides were measured, and are positive.
-      const canvas = h3WindowCanvas(measured.width, measured.height, area)
+      const canvas = h3AreaCanvas(measured.width, measured.height, area)
       size = canvas === undefined ? undefined : formatSize(canvas)
     }
     /*

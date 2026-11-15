@@ -14,7 +14,7 @@ import type { GalleryItem, ImagineJobView as ImagineJob } from '../../../shared/
 import { canvasOrder, layoutCanvas, runGroups } from './canvas-layout.ts'
 import { askToLook, boardJobs, jobIsLive, upscalesInFlight } from './gallery-api.ts'
 import type { ImagineView } from './gallery-store.ts'
-import { filterHistory, historyKindCounts, type HistoryFilters } from './imagine-filters.ts'
+import { filterHistory, historyKindCounts, kindCounts, type HistoryFilters } from './imagine-filters.ts'
 import { runGapOf } from './imagine-messages.ts'
 import { itemRatio, jobRatio } from './imagine-settings.ts'
 import { groupPicked } from './SelectionTools.tsx'
@@ -54,8 +54,14 @@ export function useBoardModel({
   )
   /** Files each kind seat would keep, so its chip can carry a count. */
   const historyCounts = useMemo(
-    () => (onHistory ? historyKindCounts(items, historyFilters, Date.now()) : undefined),
-    [onHistory, items, historyFilters],
+    () => {
+      if (!onHistory) return undefined
+      // With no kind picked (the default) the counted set is the one just
+      // drawn: count it instead of filtering the inventory a second time.
+      if (historyFilters.kinds.length === 0) return kindCounts(historyItems)
+      return historyKindCounts(items, historyFilters, Date.now())
+    },
+    [onHistory, items, historyFilters, historyItems],
   )
   // Keyed on the id and the file list, not on the project: a chat line makes
   // a new project record and used to lay the board out again.
@@ -101,7 +107,11 @@ export function useBoardModel({
   }, [stillsToSee])
   const currentJobIds = current?.jobIds
   const ownLive = useMemo(
-    () => jobs.filter(job => jobIsLive(job) && (currentJobIds?.includes(job.id) ?? false)),
+    () => {
+      // A Set, so a long project is not scanned once per job in the queue.
+      const own = new Set(currentJobIds)
+      return jobs.filter(job => jobIsLive(job) && own.has(job.id))
+    },
     [jobs, currentJobIds],
   )
   // An upscale draws on the tile it is replacing rather than claiming one of

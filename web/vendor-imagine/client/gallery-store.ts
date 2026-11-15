@@ -6,7 +6,7 @@
 
 import { createStore, type StoreInstance } from '../../shims/store/index.ts'
 import { HISTORY_FILTERS_DEFAULT, type HistoryFilters } from './imagine-filters.ts'
-import type { ImagineTombstones } from './imagine-projects.ts'
+import { sameRect, type ImagineTombstones } from './imagine-projects.ts'
 import type { CanvasRect, ImagineProject } from '../../../shared/imagine-projects.ts'
 
 /*
@@ -28,13 +28,18 @@ export const CHAT_DEFAULT = 400
 export const CHAT_OLD_DEFAULT = 360
 
 /**
- * A chat column width within [CHAT_MIN, CHAT_MAX].
+ * A chat column width within [CHAT_MIN, cap].
+ *
+ * Exported with the cap as a parameter so the page, which caps the column
+ * lower on a narrow window, can clamp with the same rule instead of its own
+ * inline `Math.min(cap, Math.max(CHAT_MIN, …))`.
  * @param width - the width asked for, in CSS pixels.
+ * @param cap - the widest allowed; CHAT_MAX unless the window is narrow.
  * @returns the rounded width in bounds; the default for a non-finite input.
  */
-function clampChatWidth(width: number): number {
-  if (!Number.isFinite(width)) return CHAT_DEFAULT
-  return Math.min(CHAT_MAX, Math.max(CHAT_MIN, Math.round(width)))
+export function clampChatWidth(width: number, cap: number = CHAT_MAX): number {
+  if (!Number.isFinite(width)) return Math.min(cap, CHAT_DEFAULT)
+  return Math.min(cap, Math.max(CHAT_MIN, Math.round(width)))
 }
 
 /** Which Imagine stage is visible. */
@@ -181,9 +186,7 @@ export function createGalleryStore(): StoreInstance<GalleryState, GalleryActions
         for (const rect of rects) {
           // A rect already stored as it is stays untouched, so a reload that
           // brings back the same positions changes nothing and saves nothing.
-          const stored = d.placed[rect.id]
-          if (stored !== undefined && stored.x === rect.x && stored.y === rect.y && stored.w === rect.w
-            && stored.h === rect.h && stored.scale === rect.scale) continue
+          if (sameRect(d.placed[rect.id], rect)) continue
           d.placed[rect.id] = rect
         }
       },

@@ -2,7 +2,7 @@
  * Entry of the Imagine studio: the page rendered as the whole document, with
  * its store.
  */
-import { StrictMode, useCallback, useSyncExternalStore, type ReactNode } from 'react'
+import { StrictMode, useSyncExternalStore, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import '../tokens.css'
 import { loadPacks } from '../vendor-imagine/client/locale-store.ts'
@@ -26,7 +26,9 @@ async function start(): Promise<void> {
   const actions = instance.actions
 
   function useStore<R>(selector: (state: State) => R): R {
-    const select = useCallback(() => selector(instance.getSnapshot()), [selector])
+    // No useCallback: every caller passes an inline selector, so it would be
+    // rebuilt on each render anyway.
+    const select = (): R => selector(instance.getSnapshot())
     return useSyncExternalStore(instance.subscribe, select, select)
   }
 

@@ -96,15 +96,19 @@ export async function drawKrea(
 }
 
 /**
- * The identity's hair, written as blonde in the text Krea 2 draws from.
+ * The active persona's hair (`activePersona().hair`), pinned in the text
+ * Krea 2 draws from.
  *
  * The reading of the frame describes the performer too, and on a dark-haired
  * clip that description beats the identity blurb: measured 2026-10-23 on one
- * clip, two draws came out one blonde and one brunette depending on the seed.
- * Asking the writer for blonde in the brief was not enough either (same clip,
- * still brunette), so the colour is pinned in the text itself.
+ * clip (a blonde persona), two draws came out one blonde and one brunette
+ * depending on the seed. Asking the writer for the colour in the brief was not
+ * enough either (same clip, still brunette), so the colour is pinned in the
+ * text itself: a dark or grey hair colour the paragraph names is rewritten to
+ * the persona's, and a paragraph that never names it gets one sentence.
  * @param scan - the paragraph the vision pass answered.
- * @returns the same paragraph with the hair described as blonde.
+ * @returns the paragraph with the persona's hair colour, or unchanged when the
+ *   persona declares no hair.
  */
 export function pinHair(scan: string): string {
   const hair = activePersona().hair

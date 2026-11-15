@@ -1,8 +1,9 @@
 /**
  * The runner: one queued job taken through its graph. The GPU chain and its
  * deadline, the inputs read when the turn comes, the prompts written around
- * the user's line, the render with its retries; the scan, the windowed swap,
- * the steps after the render and the stories have modules of their own.
+ * the user's line, the render with its retries; the scan, the object swap's
+ * single prompt, the steps after the render and the stories have modules of
+ * their own.
  * @module tool-comfy/run-job
  */
 
@@ -15,7 +16,7 @@ import type { ImagineHost } from '../../src/host.ts'
 import { ComfyError } from '../comfyui/index.ts'
 import { declaredOutputPath, freeOutputPath, runWorkflow } from './index.ts'
 import type { ComfyProducedFile, LoadedWorkflow } from './index.ts'
-import { FPS, ffmpegTo, frameAt, probeMedia, type MediaProbe } from './media-tools.ts'
+import { FPS, dropScratch, ffmpegTo, frameAt, layPlateAudio, probeMedia, type MediaProbe } from './media-tools.ts'
 import { resolveInputImage, resolveInputVideo, type ResolvedInputVideo } from './input-image.ts'
 import { kindOf, probePixels, safeBasename, upscaleLongFor, upscaleTargetFor } from './gallery.ts'
 import { writeEditPrompt } from './edit-prompt.ts'
@@ -27,9 +28,6 @@ import { MAX_SHOT_SECONDS, closeLoop, joinCuts, montageShots, renderedSeconds, s
 import { isSilent, loudnessOf } from './vocal-silence.ts'
 import { shotFileName, storyLabel, updateStoryShot } from './story-manifest.ts'
 import { writeMusicScore } from './music-prompt.ts'
-import {
-  H3_JOIN_SECONDS, dropScratch, layPlateAudio, planWindows, resampleTo24, sceneCuts, windowSecondsOf,
-} from './h3-windows.ts'
 import {
   REGENERATE_FADE_SECONDS, REGENERATE_WINDOW_FRAMES, regenerateDraft, regeneratePrompt, regenerateStarts,
 } from './regenerate.ts'
@@ -45,11 +43,10 @@ import {
   endRunControl, getImagineJob, isSettled, jobThatProduced, patchJob, setJobNotice, setJobPromptId, endSetup, setSetupProgress, startRunControl, waitForSetupApproval,
   stopRun, takePaintedMask, type ImagineJob,
 } from './job-queue.ts'
-import { ACTION_RUNS, placementKeyframes } from './job-request.ts'
+import { ACTION_RUNS, pixelCache, placementKeyframes, type PixelsOf } from './job-request.ts'
 import { readRecreation, runScanFrame, type ScanRun } from './scan-jobs.ts'
 import {
-  loopsItsOwnWindows, nextSeed, renderRelay, renderWindows, type Assemble, type Render, type RenderOver, type SwapPlate,
-  type SwapRun,
+  loopsItsOwnWindows, nextSeed, renderRelay, type Assemble, type Render, type RenderOver,
 } from './swap-windows.ts'
 import { finishRun, type DeliveredShot } from './job-finish.ts'
 import {
@@ -83,6 +80,20 @@ const JOB_DEADLINE_MS = 3_000_000
  * above it, for a hang outside the run.
  */
 const LONG_JOB_DEADLINE_MS = 12 * 3_600_000
+
+/**
+ * Whether the job's graph plans and chains its own clips, so the whole clip
+ * is one long run: both character-swap graphs and the object-swap graphs
+ * carry a loop start (`loopsItsOwnWindows`). The action test stays as a
+ * safety net for a custom character-swap graph without one, which still
+ * renders the whole clip in one prompt.
+ * @param job - the job.
+ * @param workflow - the graph it runs.
+ * @returns true for a self-chaining run.
+ */
+function chainsItsOwnClips(job: ImagineJob, workflow: LoadedWorkflow): boolean {
+  return job.action === 'swapPerson' || loopsItsOwnWindows(workflow)
+}
 
 /**
  * Put one job at the back of the GPU queue, with its own deadline.
@@ -126,7 +137,7 @@ export function enqueueJob(
           void stopRun(ctx, job.id, current.promptId)
         }
         resolve()
-      }, job.action === 'swapPerson' || loopsItsOwnWindows(workflow)
+      }, chainsItsOwnClips(job, workflow)
         ? LONG_JOB_DEADLINE_MS
         : JOB_DEADLINE_MS)
     })
@@ -182,19 +193,15 @@ interface RunState {
   headless: boolean
   /** What the vision pass saw happen in the reference clip of a recreation. */
   recreateMotion?: string
-  /** The tracker phrase, reference and shot description of an object swap. */
+  /** The tracker phrase and the reference document of an object swap. */
   subjectText?: string
   referenceText?: string
-  sceneText?: string
   /** The placement box of «aggiungi un oggetto», as the graph's JSON. */
   placementText?: string
   /** A song's lyrics with their structure tags, and its length. */
   musicLyrics?: string
   musicSeconds: number
 }
-
-/** A file's pixel size from its header, read at most once per run. */
-type PixelsOf = (path: string, kind: 'image' | 'video') => ReturnType<typeof probePixels>
 
 /** What the run reads, resolved when its turn comes. */
 interface RunInputs {
@@ -210,8 +217,15 @@ interface RunInputs {
   readonly drawnFrame?: string
   /** A deadline for the render longer than ComfyUI's own, for a graph that loops its own clips. */
   readonly timeoutMs?: number
-  /** The clip a continuation extends: its length and the canvas it renders on. */
-  readonly extendSource?: { readonly duration: number; readonly size?: string }
+  /**
+   * The clip a continuation extends: its length, its pixels (the seam fits the
+   * continuation to them) and the canvas it renders on.
+   */
+  readonly extendSource?: {
+    readonly duration: number
+    readonly pixels?: { readonly width: number; readonly height: number }
+    readonly size?: string
+  }
   /** The continuation's source frame, for the vision pass. */
   readonly extendFrame?: string
   readonly resolutionMax?: number
@@ -222,9 +236,8 @@ interface RunInputs {
    * size from a `ResolutionSelector` and stretches whatever it is given.
    */
   readonly imageRatio?: number
-  /** The object swap's plate, measured and planned. */
-  readonly plate?: SwapPlate
-  readonly selfLooping: boolean
+  /** An object swap's plate length, measured once for the deadline and the texts pass. */
+  readonly plateSeconds?: number
 }
 
 /** What the run hands the graph as its audio, and how the shot sings. */
@@ -239,7 +252,6 @@ interface RunAudio {
   readonly voiceFile?: string
 }
 
-/** The written prompt, with the realism token when the vision pass judged it and the graph has one. */
 /**
  * The Context Loop plan of a chained clip: one scene per prompt, each with its
  * length. A plan with fewer prompts than scenes (no vision pass) repeats the
@@ -260,6 +272,7 @@ function chainPlanJson(prompts: readonly string[], scenes: readonly number[], ca
   }, null, 2)
 }
 
+/** The written prompt, with the realism token when the vision pass judged it and the graph has one. */
 function withRealism(prompt: string, realistic: boolean, workflow: LoadedWorkflow): string {
   return realistic && workflow.realism !== undefined ? applyRealismToken(prompt, workflow.realism.token) : prompt
 }
@@ -410,13 +423,7 @@ async function runImagineJob(
     const job = state.job
     const sourceVideo = job.source === undefined ? undefined : join(outputDir, job.source)
     // Each file's header, read once per run however many passes want it.
-    const headers = new Map<string, ReturnType<typeof probePixels>>()
-    const pixelsOf: PixelsOf = (path, kind) => {
-      const key = `${kind}:${path}`
-      const known = headers.get(key) ?? probePixels(path, kind)
-      headers.set(key, known)
-      return known
-    }
+    const pixelsOf = pixelCache()
     const scan: ScanRun = { ctx, workflows, outputDir, job, signal: controller.signal }
     if (job.action === 'scanFrame') {
       await runScanFrame(scan, workflow, sourceVideo)
@@ -428,15 +435,15 @@ async function runImagineJob(
       state.job = { ...job, frame: recreation.frame }
     }
     /*
-     * «Rigenera dettaglio» has no prompt of its own, and the prompt is what
-     * guides the refiner's redraw: with a generic line the neckline and lips
-     * change (measured 31/10/2026). The order is regenerate.ts's — the user's
-     * line, the note the clip was born with, vision, a neutral sentence — and
-     * the result is written on the job, so the tile and the file's note say
-     * what was really asked.
+     * «Rigenera dettaglio» usually comes without a line, and the prompt is
+     * what guides the refiner's redraw: with a generic line the neckline and
+     * lips change (measured 31/10/2026). The order is regenerate.ts's — the
+     * user's line when there is one, the note the clip was born with, vision,
+     * a neutral sentence — and the result is written on the job, so the tile
+     * and the file's note say what was really asked.
      */
     if (state.job.action === 'regenerate' && sourceVideo !== undefined) {
-      const resolved = await regeneratePrompt(ctx, state.job.source ?? '', sourceVideo, state.job.model)
+      const resolved = await regeneratePrompt(ctx, state.job.source ?? '', sourceVideo, state.job.model, state.job.prompt)
       state.prompt = resolved
       state.job = { ...state.job, prompt: resolved }
       patchJob(queuedJob.id, { prompt: resolved })
@@ -456,8 +463,9 @@ async function runImagineJob(
     })
   } finally {
     endRunControl(queuedJob.id)
-    // The 24 fps plate, an extension's tail and frame, and every other helper
-    // file of this run: outside the gallery, but still to be deleted.
+    // An extension's tail and frame, a zone edit's mask, the refiner's drafts
+    // and every other helper file of this run: outside the gallery, but still
+    // to be deleted.
     await dropScratch(state.scratch)
     // The last clip of a story is the last reader of its plan.
     if (isLastOfStory(state.job)) forgetStoryPlan(state.job.storyId)
@@ -544,8 +552,8 @@ async function takeTurn(state: RunState): Promise<boolean> {
 
 /**
  * Everything the graph reads besides the prompt, resolved at run time: the
- * plate and its windows, the clip or photo to load, the mask, the tail of a
- * continuation, the upscale target.
+ * clip or photo to load, the mask, the tail of a continuation, the upscale
+ * target, the deadline of a run that chains its own clips.
  */
 async function readInputs(
   state: RunState,
@@ -556,39 +564,6 @@ async function readInputs(
 ): Promise<RunInputs> {
   const job = state.job
   const sourceKind = job.source === undefined ? undefined : kindOf(job.source)
-  /*
-   * The H3 graphs render 24 frames a second and read the plate's frames as
-   * the reference motion: a plate at another rate would put 30 frames where
-   * the model counts 24 and the finished action would run at the wrong
-   * speed. The copy is scratch, and one window is rendered per entry of the
-   * plan below.
-   */
-  const windowedAction = job.action === 'objectSwap'
-  const selfLooping = windowedAction && loopsItsOwnWindows(workflow)
-  const windowed = windowedAction && sourceVideo !== undefined && !selfLooping
-  const h3Plate = windowed ? await resampleTo24(sourceVideo) : undefined
-  if (h3Plate !== undefined) state.scratch.push(h3Plate)
-  /*
-   * The plate's length, measured once: the windows are planned on it, and a
-   * window too long for the card re-plans the same clip shorter. The window
-   * itself follows the canvas the run asked for — eight seconds at 480p, which
-   * is the longest pass measured to hold (a fifteen-second one lost the
-   * edit), and 124 frames at the native canvas.
-   */
-  const h3Seconds = windowed ? (await probeMedia(sourceVideo)).duration : 0
-  /*
-   * Where the plate cuts, when the clip has to be split at all: the windows are
-   * planned on the user's own cuts, so a join lands where the picture was meant
-   * to change and has nothing to hide. One ffmpeg pass, no GPU.
-   */
-  const h3Window = windowSecondsOf(job)
-  const h3Cuts = h3Seconds > h3Window && h3Plate !== undefined ? await sceneCuts(h3Plate) : []
-  const plate: SwapPlate = {
-    ...h3Plate === undefined ? {} : { path: h3Plate },
-    seconds: h3Seconds,
-    plan: h3Seconds > 0 ? planWindows(h3Seconds, h3Window, H3_JOIN_SECONDS, h3Cuts) : [],
-    cuts: h3Cuts,
-  }
   /*
    * A clip with no soundtrack is a clip the long upscaler refuses: it loads
    * its input through VideoHelperSuite, whose audio extractor runs ffmpeg
@@ -617,7 +592,7 @@ async function readInputs(
      */
     || job.action === 'regenerate'
     ? undefined
-    : await resolveInputVideo({ path: h3Plate ?? upscaleInput }, outputDir)
+    : await resolveInputVideo({ path: upscaleInput }, outputDir)
   if (upscaleInput !== sourceVideo && upscaleInput !== undefined) {
     await unlink(upscaleInput).catch(() => undefined)
   }
@@ -638,24 +613,33 @@ async function readInputs(
       : job.source === undefined || sourceKind !== 'image'
         ? undefined
         : join(outputDir, job.source)
-  const inputImage = imagePath === undefined ? undefined : await resolveInputImage({ path: imagePath }, outputDir)
   /*
-   * The photo's own ratio, read here because this is the last place the file
-   * is a path: what renders a video next holds only bytes, and a decoder is
-   * one more thing to get wrong. Unreadable pixels are not an error — the run
-   * falls back to the graph's own aspect, which is what it did before.
+   * The photo, its pixels, the second image and an edit's reference are four
+   * independent local reads: taken together rather than one after the other.
+   *
+   * The photo's own ratio is read here because this is the last place the
+   * file is a path: what renders a video next holds only bytes, and a decoder
+   * is one more thing to get wrong. Unreadable pixels are not an error — the
+   * run falls back to the graph's own aspect, which is what it did before.
+   *
+   * A zone edit's mask travels in the second image slot, the one a clip uses
+   * for its last frame: the region graph pins it on its mask loader (below).
+   * An edit's reference photo (Grok's «+») is Krea 2's second image.
    */
-  const imagePixels = imagePath === undefined ? undefined : await pixelsOf(imagePath, 'image').catch(() => undefined)
+  const [inputImage, imagePixels, lastSourceImage, refImage] = await Promise.all([
+    imagePath === undefined ? undefined : resolveInputImage({ path: imagePath }, outputDir),
+    imagePath === undefined ? undefined : pixelsOf(imagePath, 'image').catch(() => undefined),
+    job.lastSource === undefined
+      ? undefined
+      : resolveInputImage({ path: join(outputDir, job.lastSource) }, outputDir).catch(() => undefined),
+    job.action === 'remix' && job.reference !== undefined
+      ? resolveInputImage({ path: join(outputDir, job.reference) }, outputDir)
+      : undefined,
+  ])
   const imageRatio = imagePixels === undefined || !('width' in imagePixels)
     ? undefined
     : ratioOf(imagePixels.width, imagePixels.height)
-  /*
-   * A zone edit's mask travels in the second image slot, the one a clip
-   * uses for its last frame: the region graph pins it on its mask loader.
-   */
-  let lastImage: RunInputs['lastImage'] = job.lastSource === undefined
-    ? undefined
-    : await resolveInputImage({ path: join(outputDir, job.lastSource) }, outputDir).catch(() => undefined)
+  let lastImage: RunInputs['lastImage'] = lastSourceImage
   if (job.action === 'remix' && (job.region !== undefined || job.painted === true) && job.source !== undefined) {
     const pixels = await pixelsOf(join(outputDir, job.source), 'image')
     if (!('width' in pixels)) throw new Error(message('still.sizeUnreadable'))
@@ -670,10 +654,6 @@ async function readInputs(
     state.scratch.push(maskPath)
     lastImage = { bytes: new Uint8Array(await readFile(maskPath)), name: `region-mask-${job.id}.png` }
   }
-  // An edit's reference photo (Grok's «+»): Krea 2's second image.
-  const refImage = job.action === 'remix' && job.reference !== undefined
-    ? await resolveInputImage({ path: join(outputDir, job.reference) }, outputDir)
-    : undefined
   /*
    * 'extend' hands the graph the TAIL of the source clip, not a frame of it.
    * H3 anchors a 22-frame guide with its soundtrack at frame 0, so the
@@ -696,7 +676,10 @@ async function readInputs(
       // one being continued, and a mismatch is a cut in the middle of a shot.
       ...probe.width === undefined || probe.height === undefined
         ? {}
-        : { size: formatSize(h3Canvas(probe.width, probe.height)) },
+        : {
+          pixels: { width: probe.width, height: probe.height },
+          size: formatSize(h3Canvas(probe.width, probe.height)),
+        },
     }
     const extendTail = await videoTail(videoPath, probe)
     state.scratch.push(extendTail)
@@ -729,11 +712,10 @@ async function readInputs(
    * graph's 736p, so a long clip is never cut off by ComfyUI's single-run
    * deadline while a stuck run still ends.
    */
-  const chained = job.action === 'swapPerson' || loopsItsOwnWindows(workflow)
-  const chainedSeconds = !chained ? undefined
-    : (job.action === 'swapPerson' || job.action === 'objectSwap') && sourceVideo !== undefined
-      ? (await probeMedia(sourceVideo)).duration
-      : job.seconds
+  const plateSeconds = (job.action === 'swapPerson' || job.action === 'objectSwap') && sourceVideo !== undefined
+    ? (await probeMedia(sourceVideo)).duration
+    : undefined
+  const chainedSeconds = !chainsItsOwnClips(job, workflow) ? undefined : plateSeconds ?? job.seconds
   const timeoutMs = chainedSeconds === undefined
     ? undefined
     : Math.ceil(Math.max(1, chainedSeconds) / 4.4) * 30 * 60_000
@@ -750,8 +732,7 @@ async function readInputs(
     ...extendFrame === undefined ? {} : { extendFrame },
     ...resolutionMax === undefined ? {} : { resolutionMax },
     ...timeoutMs === undefined ? {} : { timeoutMs },
-    ...windowed ? { plate } : {},
-    selfLooping,
+    ...plateSeconds === undefined ? {} : { plateSeconds },
   }
 }
 
@@ -796,15 +777,14 @@ async function writePrompts(
  */
 function readsSwapTexts(workflow: LoadedWorkflow): boolean {
   return workflow.subjectText !== undefined || workflow.referenceText !== undefined
-    || workflow.sceneText !== undefined
 }
 
 /**
  * Put the texts an object swap's pass wrote on the run and on the live job.
  *
- * With nothing written the graph's placeholders stay, and
- * the user's line goes where the shot goes: it is worth more than an empty
- * section.
+ * With nothing written the graph's own placeholders stay. The shot account is
+ * not a pin of any swap graph (they plan their own scenes): it is filed as
+ * the written prompt, so the tile and the file's note say what was read.
  * @param state - the run.
  * @param written - the texts, or undefined when the pass fell through.
  */
@@ -813,16 +793,12 @@ function applySwapTexts(
   written: { readonly track: string; readonly reference: string; readonly scene: string } | undefined,
 ): void {
   const job = state.job
-  if (written === undefined) {
-    if (job.prompt.trim().length > 0) state.sceneText = job.prompt.trim()
-    return
-  }
+  if (written === undefined) return
   state.subjectText = written.track
   state.referenceText = written.reference
-  state.sceneText = written.scene
   state.writtenPrompt = written.scene
   patchJob(job.id, {
-    writtenPrompt: written.scene, subjectText: written.track, referenceText: written.reference, sceneText: written.scene,
+    writtenPrompt: written.scene, subjectText: written.track, referenceText: written.reference,
   })
 }
 
@@ -849,7 +825,7 @@ async function writeObjectSwapPrompt({ ctx, state, workflow, outputDir, inputs }
     ...job.reference === undefined ? {} : { referencePath: join(outputDir, job.reference) },
     mode: job.objectMode ?? 'change',
     intent: job.prompt,
-    duration: (await probeMedia(plate)).duration,
+    duration: inputs.plateSeconds ?? (await probeMedia(plate)).duration,
     chosen: job.model,
   })
   applySwapTexts(state, written)
@@ -1085,11 +1061,10 @@ async function readAudio(
   if (voiceFile !== undefined) {
     // Only the part this shot delivers: a chained shot's first 22 frames
     // are the previous shot's, already sung or not sung there.
-    const head = job.chain !== undefined && job.chain.index > 0 ? GUIDE_SECONDS : 0
     silentSlice = isSilent(await loudnessOf(
       voiceFile,
-      (job.songStart ?? 0) + head,
-      renderedSeconds(job.seconds ?? 5) - head,
+      voiceOffsetOf(job),
+      renderedSeconds(job.seconds ?? 5) - voiceHeadOf(job),
     ))
   }
   /*
@@ -1128,6 +1103,27 @@ async function readAudio(
     silentSlice,
     ...voiceFile === undefined ? {} : { voiceFile },
   }
+}
+
+/**
+ * The seconds at the head of a sung shot that belong to the shot before it:
+ * a chained shot past the first opens on the previous shot's 22 guide frames.
+ * @param job - the sung shot.
+ * @returns the head in seconds, zero for a first or unchained shot.
+ */
+function voiceHeadOf(job: ImagineJob): number {
+  return job.chain !== undefined && job.chain.index > 0 ? GUIDE_SECONDS : 0
+}
+
+/**
+ * Where in the vocal a sung shot's own part starts: its place in the song
+ * plus the head it shares with the shot before it. One spelling for the
+ * silence probe and the lipsync probe, which must read the same slice.
+ * @param job - the sung shot.
+ * @returns the offset into the vocal, in seconds.
+ */
+function voiceOffsetOf(job: ImagineJob): number {
+  return (job.songStart ?? 0) + voiceHeadOf(job)
 }
 
 /**
@@ -1242,10 +1238,9 @@ interface CustomFile {
  * once the finished file is in place — and stay if anything threw, which is
  * where they are still worth something.
  *
- * `fade` is the seconds each join dissolves over. A window that arrives with
- * its own head is dissolved by exactly that head, so the two sides of the
- * dissolve are the same instants of the plate; the montage and the loop
- * bring no head and keep the default.
+ * `fade` is the seconds each join dissolves over: «Rigenera dettaglio»
+ * dissolves its windows over their one-second overlap; the loop brings no
+ * overlap and keeps the default.
  */
 function assemblerFor(outputDir: string, out: RunOutput, args: Record<string, unknown>): Assemble {
   return async (parts, lengths, errors, finish, fade) => {
@@ -1287,8 +1282,8 @@ interface RenderSetup {
  *
  * `over` carries what one segment of an animated background changes
  * against the job's own values: its own length and its own file. A window
- * of the object swap adds the plate it renders from. Every other action
- * renders once and leaves it out.
+ * of «Rigenera dettaglio» adds the draft it renders from. Every other
+ * action renders once and leaves it out.
  */
 function rendererFor(setup: RenderSetup): Render {
   const { ctx, state, workflow, outputDir, inputs, audio, out, args, aspect, shotPath, customFiles, signal } = setup
@@ -1296,9 +1291,8 @@ function rendererFor(setup: RenderSetup): Render {
   const effectivePrompt = state.prompt
   const { resolutionMax, inputImage, lastImage, refImage } = inputs
   /*
-   * The clip one render reads: a window of the object swap brings its own
-   * plate (the previous window's tail in front of the plate's frames), every
-   * other render reads the job's input.
+   * The clip one render reads: a window of «Rigenera dettaglio» brings its
+   * own draft, every other render reads the job's input.
    */
   const renderVideo = (video?: ResolvedInputVideo): { bytes: Uint8Array; name: string } | undefined => {
     const chosen = video ?? inputs.inputVideo
@@ -1330,8 +1324,8 @@ function rendererFor(setup: RenderSetup): Render {
         ...aspect === undefined ? {} : { aspectRatio: aspect },
         // The card's controls: values for this run only, written on the clone.
         ...job.customFields === undefined ? {} : { fields: job.customFields },
-        // A segment's own length wins: a loop or a window asked for without
-        // `seconds` still renders the length it was planned at.
+        // A segment's own length wins: a loop asked for without `seconds`
+        // still renders the length it was planned at.
         ...seconds === undefined ? {} : { seconds },
         ...job.megapixels === undefined ? {} : { megapixels: job.megapixels },
         ...job.action === 'music' ? { lyrics: state.musicLyrics ?? job.lyrics ?? '', seconds: state.musicSeconds } : {},
@@ -1356,7 +1350,6 @@ function rendererFor(setup: RenderSetup): Render {
           },
         ...state.subjectText === undefined ? {} : { subjectText: state.subjectText },
         ...state.referenceText === undefined ? {} : { referenceText: state.referenceText },
-        ...state.sceneText === undefined ? {} : { sceneText: state.sceneText },
         ...state.placementText === undefined ? {} : { placementText: state.placementText },
         ...job.action === 'swapPerson' ? { noLipSync: job.lipSync === false } : {},
         ...job.planResolution === undefined ? {} : { planResolution: job.planResolution },
@@ -1365,8 +1358,6 @@ function rendererFor(setup: RenderSetup): Render {
           planJson: chainPlanJson(state.chainPrompts ?? [effectivePrompt], chainSceneSeconds(job.seconds ?? 5), job.action === 'extend' ? GUIDE_SECONDS : 0),
           runName: `imagine_${job.id}`,
         },
-        ...over?.windowStart === undefined ? {} : { windowStart: over.windowStart },
-
         realistic: state.realistic,
       },
       {
@@ -1540,7 +1531,7 @@ async function renderRegenerate(run: RenderRun): Promise<readonly ComfyProducedF
   return renderSegments(run, {
     count: starts.length,
     over: async (index) => {
-      const draft = await regenerateDraft(plate, starts[index] ?? 0)
+      const draft = await regenerateDraft(plate, starts[index] ?? 0, probe)
       state.scratch.push(draft)
       return {
         // Dot-prefixed: the gallery does not list intermediates (see listGallery).
@@ -1560,7 +1551,7 @@ async function renderRegenerate(run: RenderRun): Promise<readonly ComfyProducedF
     /*
      * Every window needs the same models: the card must be freed between one
      * and the next, or the second finds the memory already taken by the first
-     * (the same trap as the windowed object swap).
+     * (measured on the old windowed object swap, which chained the same way).
      */
     freeBetween: true,
     finish: async assembled => layPlateAudio(assembled, plate, outputDir, 'regenerate-audio'),
@@ -1568,21 +1559,19 @@ async function renderRegenerate(run: RenderRun): Promise<readonly ComfyProducedF
   })
 }
 
-/** An object swap: one prompt when the graph loops its own windows, else window by window. */
+/**
+ * An object swap: one prompt for the whole clip. Every shipped swap graph
+ * plans, renders and joins its own clips and lays the plate's soundtrack
+ * back (a loop start, `loopsItsOwnWindows`); a custom graph without one gets
+ * the same single render of the whole plate.
+ */
 async function renderSwap(run: RenderRun): Promise<readonly ComfyProducedFile[]> {
-  const swap: SwapRun = {
-    ctx: run.ctx,
+  return renderRelay({
     outputDir: run.outputDir,
     job: run.state.job,
     seed: run.seed,
-    signal: run.signal,
-    scratch: run.state.scratch,
     render: run.render,
-    assemble: run.assemble,
-  }
-  return run.inputs.selfLooping
-    ? await renderRelay(swap)
-    : await renderWindows(swap, run.inputs.plate ?? { seconds: 0, plan: [], cuts: [] })
+  })
 }
 
 /** The renderer of each action that is more than one render; the rest render once. */
@@ -1609,7 +1598,7 @@ async function trimHead(files: readonly ComfyProducedFile[], outputDir: string):
 }
 
 /**
- * Render the job — once, as a chain of segments, or window by window — with
+ * Render the job — once, or as a chain of segments — with
  * the retries a chained or sung shot is allowed, and hand the result on.
  */
 async function renderAndFinish(
@@ -1679,6 +1668,7 @@ async function renderAndFinish(
     tool: out.tool,
     args,
     extendDuration: inputs.extendSource?.duration,
+    ...inputs.extendSource?.pixels === undefined ? {} : { extendPixels: inputs.extendSource.pixels },
     // A chained continuation comes back with the clip already in front of it.
     wholeClip: job.action === 'extend' && workflow.planJson !== undefined,
     shot,
@@ -1766,7 +1756,7 @@ async function retakeOffVoice(
   }
   let files = rendered
   const floor = check.min ?? LIPSYNC_MIN
-  const offset = (job.songStart ?? 0) + (job.chain !== undefined && job.chain.index > 0 ? GUIDE_SECONDS : 0)
+  const offset = voiceOffsetOf(job)
   const measure = async (): Promise<LipsyncProbe | undefined> => {
     const clip = files.find(file => file.kind === 'video')
     return clip === undefined ? undefined : await lipsyncScore(check.probe, clip.path, voiceFile, offset)

@@ -463,7 +463,7 @@ export class ComfyUi {
    * @returns how many runs are executing and how many are waiting.
    * @throws {ComfyError} when the queue cannot be read.
    */
-  async queueDepth(signal?: AbortSignal): Promise<{ running: number; pending: number }> {
+  private async queueDepth(signal?: AbortSignal): Promise<{ running: number; pending: number }> {
     const queue = await this.readQueue(signal, 'COMFY_UNREACHABLE', true)
     return { running: queue.running.length, pending: queue.pending.length }
   }
@@ -1009,7 +1009,7 @@ export class ComfyUi {
    * @param signal - caller cancellation and the enclosing deadline.
    * @returns the settled run's output nodes, keyed by node id.
    */
-  async waitHistory(promptId: string, signal: AbortSignal): Promise<Record<string, ComfyNodeOutput>> {
+  private async waitHistory(promptId: string, signal: AbortSignal): Promise<Record<string, ComfyNodeOutput>> {
     for (;;) {
       if (signal.aborted) {
         const timeout = timedOut(signal)
@@ -1108,7 +1108,7 @@ export class ComfyUi {
    * @returns the definition, or undefined when ComfyUI does not know the class.
    * @throws {ComfyError} `COMFY_FETCH_FAILED` when `/object_info` refuses.
    */
-  async nodeInfo(classType: string, signal?: AbortSignal): Promise<ComfyNodeInfo | undefined> {
+  private async nodeInfo(classType: string, signal?: AbortSignal): Promise<ComfyNodeInfo | undefined> {
     const now = Date.now()
     const known = this.nodeInfos.get(classType)
     if (known !== undefined && now - known.at < NODE_INFO_TTL_MS) return await known.info

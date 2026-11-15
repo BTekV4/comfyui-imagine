@@ -44,7 +44,12 @@
 .fileName { composes: ellipsis from './imagine-shared.module.css'; }
 .count { font-size: 11px; color: var(--imagine-faint); }
 .fileThumb { width: 20px; height: 20px; flex: none; border-radius: 4px; object-fit: cover; }
-.note { width: 20px; text-align: center; color: #999; }
+/* The shared note, at the size of a file row's icon. */
+.note {
+  composes: audioGlyph from './imagine-shared.module.css';
+  width: 20px;
+  color: #999;
+}
 .empty { padding: 8px; font-size: 13px; color: var(--imagine-dim); }
 
 .preview {

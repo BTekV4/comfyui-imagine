@@ -111,8 +111,6 @@ export interface ImagineJob extends ImagineJobFields {
   readonly subjectText?: string
   /** What the photo shows, as the graph's reference document; an `objectSwap` job. */
   readonly referenceText?: string
-  /** The shot description an `objectSwap` prompt is composed from. */
-  readonly sceneText?: string
   /**
    * The job whose produced file is this job's source.
    *

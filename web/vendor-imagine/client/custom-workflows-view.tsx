@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getJson, send } from './http.ts'
 import { messageOf } from './message-of.ts'
 import type { CustomWorkflowMeta } from '../../../shared/custom-workflows.ts'
+import { CoverMedia } from './cover-media.tsx'
 import own from './CustomWorkflows.module.css'
 
 /** One uploaded workflow, as the host reports it: the server's own type. */
@@ -30,11 +31,6 @@ interface Picked {
 
 const coverOf = (workflow: CustomWorkflow): string | undefined =>
   workflow.hasCover ? `/comfy-custom-cover/${workflow.id}` : undefined
-
-/** The file a graph is picked from, read as text. */
-async function readText(file: File): Promise<string> {
-  return await file.text()
-}
 
 /** A cover picked from disk, as the data URL the host stores. */
 async function readDataUrl(file: File): Promise<string> {
@@ -86,7 +82,7 @@ export function CustomWorkflows({ onOpen }: CustomWorkflowsProps) {
     setPicked([])
     if (file === undefined) return
     try {
-      const graph = JSON.parse(await readText(file)) as Record<string, { inputs?: Record<string, unknown> }>
+      const graph = JSON.parse(await file.text()) as Record<string, { inputs?: Record<string, unknown> }>
       const rows: Picked[] = []
       for (const [node, entry] of Object.entries(graph)) {
         for (const [field, value] of Object.entries(entry.inputs ?? {})) {
@@ -115,7 +111,7 @@ export function CustomWorkflows({ onOpen }: CustomWorkflowsProps) {
     try {
       const graphFile = data.get('graph')
       if (!(graphFile instanceof File) || graphFile.size === 0) throw new Error(translate('imagine.pickGraphFile'))
-      const graph: unknown = JSON.parse(await readText(graphFile))
+      const graph: unknown = JSON.parse(await graphFile.text())
       const coverFile = data.get('cover')
       await send('/comfy-custom-workflows', 'POST', {
         title: String(data.get('title') ?? ''),
@@ -262,25 +258,18 @@ export function CustomWorkflows({ onOpen }: CustomWorkflowsProps) {
           return (
             <article key={workflow.id} className={own.card}>
               <button type="button" className={own.face} onClick={() => { onOpen(workflow) }}>
+                {/*
+                  * The home card's own cover component: an uploaded cover is a
+                  * file of a known type, drawn as is (`direct`), and a video
+                  * there honours reduced motion like every other card.
+                  */}
                 {cover === undefined
                   ? <span className={own.blank} aria-hidden="true" />
-                  : workflow.coverKind === 'video'
-                    ? (
-                      <video
-                        className={own.cover}
-                        src={cover}
-                        autoPlay
-                        muted
-                        loop
-                        playsInline
-                        aria-hidden="true"
-                      />
-                    )
-                    : <img className={own.cover} src={cover} alt="" />}
+                  : <CoverMedia className={own.cover} cover={cover} direct={workflow.coverKind === 'video' ? 'video' : 'image'} />}
                 <span className={own.shade} aria-hidden="true" />
                 <span className={own.copy}>
                   <span className={own.name}>{workflow.title}</span>
-                  <span className={own.desc}>{workflow.description}</span>
+                  <span className={own.hint}>{workflow.description}</span>
                 </span>
               </button>
               <button type="button" className={own.remove} title={translate('imagine.remove')} onClick={() => { void remove(workflow) }}>×</button>

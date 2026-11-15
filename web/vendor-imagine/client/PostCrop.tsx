@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom'
 import type { ImagineRegion } from '../../../shared/imagine-types.ts'
 import { translate } from './locale-store.ts'
 import type { Box } from './SegmentsPanel.tsx'
+import { IconCheck, IconCross } from '../../shims/primitives/index.ts'
 import css from './PostCrop.module.css'
 
 /** Smallest side of the frame, as a share of the photo. */
@@ -86,11 +87,11 @@ export function PostCrop({ drawn, frame, busy, error, onCancel, onCrop }: {
         <div className={css.bar} style={{ left: drawn.left + drawn.width / 2, top: Math.min(window.innerHeight - 52, drawn.top + drawn.height + 12) }}>
           {error !== undefined && <span className={css.error}>{error}</span>}
           <button type="button" className={css.cancel} disabled={busy} onClick={onCancel}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>
+            <IconCross strokeWidth={1.28} />
             {translate('imagine.cancel')}
           </button>
           <button type="button" className={css.apply} disabled={busy || whole} onClick={() => { onCrop(region) }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <IconCheck strokeWidth={1.28} />
             {translate('imagine.crop')}
           </button>
         </div>,

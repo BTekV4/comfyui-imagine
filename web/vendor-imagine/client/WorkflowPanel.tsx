@@ -18,7 +18,7 @@ import {
 import {
   IMAGE_RESOLUTIONS, IMAGINE_ASPECTS, type ImagineAspect, type ImagineResolution,
 } from '../../../shared/imagine-media.ts'
-import { FrameExtractor } from './FrameExtractor.tsx'
+import { FrameExtractor, type FrameCard } from './FrameExtractor.tsx'
 import { Pills, type PillClasses } from './Pills.tsx'
 import { Still } from './Still.tsx'
 import { STYLE_PRESETS } from './style-catalog.ts'
@@ -28,12 +28,13 @@ import type { ComfyLocaleKey } from './locales.ts'
 import { locale, translate } from './locale-store.ts'
 import { kindsLabel } from './labels.ts'
 import {
-  IMAGINE_OBJECT_MODES, type ImagineObjectMode, type ImaginePlacement, type MediaKind,
+  DEFAULT_OBJECT_PLACEMENT, IMAGINE_OBJECT_MODES, type ImagineObjectMode, type ImaginePlacement, type MediaKind,
 } from '../../../shared/imagine-types.ts'
 import { PlacementPicker } from './PlacementPicker.tsx'
 import type { ModelRoute } from '../../../shared/imagine-types.ts'
 import { CoverMedia } from './cover-media.tsx'
-import { RELIGHT_LOOKS, relightThumbOf, type RelightLook } from '../../../shared/relight-looks.ts'
+import { DEFAULT_RELIGHT_LOOK, RELIGHT_LOOKS, relightThumbOf, type RelightLook } from '../../../shared/relight-looks.ts'
+import { AudioMark } from './imagine-bits.tsx'
 import css from './WorkflowPanel.module.css'
 
 export interface WorkflowPanelProps {
@@ -58,19 +59,19 @@ export interface WorkflowPanelProps {
   readonly aspect: ImagineAspect
   readonly resolution: ImagineResolution
   /** "Recreate video": how many candidate opening frames the scan draws. */
-  readonly references: number
+  readonly references?: number
   /** "Object swap": what to do with the object tracked in the clip. */
-  readonly objectMode: ImagineObjectMode
+  readonly objectMode?: ImagineObjectMode
   /** "Add an object": where the object appears, as fractions of the frame. */
-  readonly placement: ImaginePlacement
+  readonly placement?: ImaginePlacement
   /** "Light the photo": the chosen lighting look, by id. */
-  readonly light: string
+  readonly light?: string
   readonly seconds: number
-  readonly lyrics: string
+  readonly lyrics?: string
   /** "Recreate video": whether the reference clip's soundtrack is kept. */
-  readonly keepAudio: boolean
+  readonly keepAudio?: boolean
   /** "Character swap": whether the new person mouths the clip's vocals. */
-  readonly lipSync: boolean
+  readonly lipSync?: boolean
   readonly busy: boolean
   readonly note: string | undefined
   readonly onBack: () => void
@@ -79,15 +80,15 @@ export interface WorkflowPanelProps {
   readonly onPrompt: (value: string) => void
   readonly onAspect: (value: ImagineAspect) => void
   readonly onResolution: (value: ImagineResolution) => void
-  readonly onReferences: (value: number) => void
-  readonly onObjectMode: (value: ImagineObjectMode) => void
-  readonly onPlacement: (value: ImaginePlacement) => void
-  readonly onLight: (value: string) => void
+  readonly onReferences?: (value: number) => void
+  readonly onObjectMode?: (value: ImagineObjectMode) => void
+  readonly onPlacement?: (value: ImaginePlacement) => void
+  readonly onLight?: (value: string) => void
   readonly onSeconds: (value: number) => void
-  readonly onLyrics: (value: string) => void
-  readonly onKeepAudio: (value: boolean) => void
-  readonly onLipSync: (value: boolean) => void
-  readonly onModel: (route: ModelRoute) => void
+  readonly onLyrics?: (value: string) => void
+  readonly onKeepAudio?: (value: boolean) => void
+  readonly onLipSync?: (value: boolean) => void
+  readonly onModel?: (route: ModelRoute) => void
   readonly onRun: () => void
   /**
    * The controls of an uploaded card that are not built-in options: dropdowns
@@ -103,12 +104,12 @@ export interface WorkflowPanelProps {
   readonly controlValues?: Readonly<Record<string, string>>
   readonly onControl?: (key: string, value: string) => void
   /** Upscale: the picked step (short side), and its setter. */
-  readonly upscaleTo: number | undefined
-  readonly onUpscaleTo: (short: number | undefined) => void
+  readonly upscaleTo?: number | undefined
+  readonly onUpscaleTo?: (short: number | undefined) => void
   /** Extract frames: a frame was saved to the gallery. */
-  readonly onFrameSaved: (item: GalleryItem) => void
+  readonly onFrameSaved?: (item: GalleryItem) => void
   /** Extract frames: open another panel with this frame staged. */
-  readonly onUseFrame: (item: GalleryItem, card: 'remix' | 'video' | 'style' | 'bg') => void
+  readonly onUseFrame?: (item: GalleryItem, card: FrameCard) => void
 }
 
 /**
@@ -207,7 +208,7 @@ function Slot({ slot, label, hint, item, items, onStage, onUpload }: {
         : (
           <div className={css.picked}>
             {item.kind === 'audio'
-              ? <span className={css.audioThumb} aria-hidden="true">♪</span>
+              ? <AudioMark className={css.audioThumb} />
               : <Still className={css.pickedThumb} src={thumbUrlOf(item.name, THUMB_SMALL, item.mtime)} />}
             <span className={css.pickedName} title={item.name}>{item.name}</span>
             <button type="button" className={css.remove} aria-label={translate('imagine.removeNamed', { name: item.name })} onClick={() => { onStage(undefined) }}>
@@ -226,7 +227,7 @@ function Slot({ slot, label, hint, item, items, onStage, onUpload }: {
               onClick={() => { onStage(entry); setPicking(false) }}
             >
               {entry.kind === 'audio'
-                ? <span className={css.audioThumb} aria-hidden="true">♪</span>
+                ? <AudioMark className={css.audioThumb} />
                 : <Still className={css.galleryThumb} src={thumbUrlOf(entry.name, THUMB_SMALL, entry.mtime)} lazy />}
             </button>
           ))}
@@ -236,7 +237,36 @@ function Slot({ slot, label, hint, item, items, onStage, onUpload }: {
   )
 }
 
-export function WorkflowPanel(props: WorkflowPanelProps) {
+/**
+ * What the built-in options read when the caller does not use them. They are
+ * only drawn under `spec.options.includes(...)` (or a spec id), so an
+ * uploaded card, which has none of them, no longer passes fifteen
+ * placeholders just to satisfy the type.
+ */
+const NO_OPTIONS = {
+  references: 10,
+  objectMode: 'change' as ImagineObjectMode,
+  placement: DEFAULT_OBJECT_PLACEMENT,
+  light: DEFAULT_RELIGHT_LOOK.id,
+  lyrics: '',
+  keepAudio: false,
+  lipSync: true,
+  onReferences: () => undefined,
+  onObjectMode: () => undefined,
+  onPlacement: () => undefined,
+  onLight: () => undefined,
+  onLyrics: () => undefined,
+  onKeepAudio: () => undefined,
+  onLipSync: () => undefined,
+  onModel: () => undefined,
+  upscaleTo: undefined,
+  onUpscaleTo: () => undefined,
+  onFrameSaved: () => undefined,
+  onUseFrame: () => undefined,
+} satisfies Partial<WorkflowPanelProps>
+
+export function WorkflowPanel(given: WorkflowPanelProps) {
+  const props = { ...NO_OPTIONS, ...given }
   const { spec } = props
   /** The panel's texts: an uploaded card brings them already written. */
   const titleText = spec.titleText ?? translate(spec.titleKey)

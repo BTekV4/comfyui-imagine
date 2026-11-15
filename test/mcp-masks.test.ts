@@ -91,3 +91,32 @@ test('a mask grown for Remove object covers a margin around the object, not the 
   assert.equal(at(grown, 25, 20), 0)
   assert.equal(growMask(dot, 0), dot)
 })
+
+/** The square max filter written the slow, obvious way: the reference growMask must match. */
+function grownByHand(mask: { width: number; height: number; data: Uint8Array }, r: number): Uint8Array {
+  const out = new Uint8Array(mask.width * mask.height)
+  for (let y = 0; y < mask.height; y++) {
+    for (let x = 0; x < mask.width; x++) {
+      let best = 0
+      for (let yy = Math.max(0, y - r); yy <= Math.min(mask.height - 1, y + r); yy++) {
+        for (let xx = Math.max(0, x - r); xx <= Math.min(mask.width - 1, x + r); xx++) best = Math.max(best, mask.data[yy * mask.width + xx] ?? 0)
+      }
+      out[y * mask.width + x] = best
+    }
+  }
+  return out
+}
+
+test('the fast grow gives the same pixels as the brute-force filter, grey levels and edges included', () => {
+  // A fixed pseudo-random sequence, so a failure is reproducible.
+  let seed = 12345
+  const next = (): number => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 }
+  for (const [width, height] of [[1, 1], [1, 9], [13, 1], [17, 11], [32, 7]] as const) {
+    const data = new Uint8Array(width * height)
+    for (let i = 0; i < data.length; i++) data[i] = next() < 0.1 ? Math.floor(next() * 256) : 0
+    const mask = { width, height, data }
+    for (const r of [1, 2, 3, 5, 8, 40]) {
+      assert.deepEqual(growMask(mask, r).data, grownByHand(mask, r), `${String(width)}x${String(height)} r=${String(r)}`)
+    }
+  }
+})

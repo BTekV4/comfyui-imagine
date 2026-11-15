@@ -24,9 +24,10 @@ import {
 } from '../shared/imagine-types.ts'
 import { IMAGINE_ASPECTS, IMAGE_RESOLUTIONS, type ImagineAspect, type ImagineResolution } from '../shared/imagine-media.ts'
 import {
-  SWAP_RESOLUTIONS, VIDEO_RESOLUTIONS, megapixelsFor, sizeFor, swapMegapixelsFor, videoAspectLabel,
+  SWAP_RESOLUTIONS, VIDEO_RESOLUTIONS, megapixelsFor, sizeFor, videoAspectLabel,
 } from '../shared/imagine-sizing.ts'
-import type { ImagineSegmentsIndex, ImagineSegmentsStatus } from '../shared/imagine-segments.ts'
+import { segmentFileUrl, type ImagineSegmentsIndex, type ImagineSegmentsStatus } from '../shared/imagine-segments.ts'
+import { HISTORY_PROJECT_ID, type ImagineProject } from '../shared/imagine-projects.ts'
 import { checkedZone, growMask, joinMasks, maskDataUrl, readMask, rectangleMask, type Fractions } from './masks.ts'
 
 const IMAGINE = (process.env.IMAGINE_URL ?? 'http://127.0.0.1:3090').replace(/\/+$/, '')
@@ -41,30 +42,44 @@ const TOKEN = (() => {
     throw new Error(`missing token file: ${file} (set MCP_TOKEN_FILE)`)
   }
 })()
-const HISTORY_PROJECT_ID = 'storico'
 
 // ---------------------------------------------------------------- HTTP to Imagine
 
-async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${IMAGINE}${path}`, {
+/**
+ * A request to Imagine, answered as the raw response: the base URL, the
+ * language of the error texts and a timeout, for every call. The callers that
+ * need bytes (a mask, a preview) or the status itself (a 404 that is an
+ * answer) use it directly; the rest go through {@link api}.
+ */
+async function raw(path: string, init: RequestInit = {}): Promise<Response> {
+  return await fetch(`${IMAGINE}${path}`, {
     ...init,
-    headers: { 'accept': 'application/json', 'x-app-language': process.env.IMAGINE_LANGUAGE ?? 'en', ...init.body !== undefined && typeof init.body === 'string' ? { 'content-type': 'application/json' } : {}, ...init.headers },
+    headers: { 'x-app-language': process.env.IMAGINE_LANGUAGE ?? 'en', ...init.headers },
     signal: init.signal ?? AbortSignal.timeout(120_000),
   })
+}
+
+/** A response's JSON body, or an error naming the call and the studio's reason. */
+async function parsed<T>(response: Response, method: string, path: string): Promise<T> {
   const text = await response.text()
   let body: unknown
   try { body = text === '' ? undefined : JSON.parse(text) } catch { body = text }
   if (!response.ok) {
     const reason = typeof body === 'object' && body !== null && 'error' in body ? String((body as { error: unknown }).error) : text.slice(0, 300)
-    throw new Error(`Imagine ${init.method ?? 'GET'} ${path}: ${String(response.status)} ${reason}`)
+    throw new Error(`Imagine ${method} ${path}: ${String(response.status)} ${reason}`)
   }
   return body as T
 }
 
-interface Project {
-  id: string; title: string; createdAt: number; itemNames: string[]; jobIds: string[]; messages: unknown[]
-  [field: string]: unknown
+async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await raw(path, {
+    ...init,
+    headers: { 'accept': 'application/json', ...init.body !== undefined && typeof init.body === 'string' ? { 'content-type': 'application/json' } : {}, ...init.headers },
+  })
+  return await parsed<T>(response, init.method ?? 'GET', path)
 }
+
+type Project = ImagineProject
 interface Studio { projects: Project[] }
 interface Job {
   id: string; action: string; status: string; prompt?: string; createdAt?: number; startedAt?: number; updatedAt?: number
@@ -76,6 +91,37 @@ interface Job {
 const gallery = async (): Promise<GalleryItem[]> => (await api<{ items: GalleryItem[] }>('/comfy-media')).items
 const studio = async (): Promise<Studio> => await api<Studio>('/comfy-imagine/projects')
 const jobs = async (): Promise<Job[]> => (await api<{ jobs: Job[] }>('/comfy-imagine')).jobs
+
+/**
+ * One job, or undefined once the studio no longer holds it (404). Asked by id:
+ * the full list prunes and decorates every job, and imagine_job asks again
+ * every few seconds while a render runs.
+ */
+async function jobById(id: string): Promise<Job | undefined> {
+  const path = `/comfy-imagine/${encodeURIComponent(id)}`
+  const response = await raw(path, { headers: { accept: 'application/json' } })
+  if (response.status === 404) {
+    await response.body?.cancel()
+    return undefined
+  }
+  return await parsed<Job>(response, 'GET', path)
+}
+
+/**
+ * One library file, or undefined when there is none by that name. Asked of
+ * `/api/file-details`, which looks at that one file: the gallery route sends
+ * the whole library (some 1600 entries) for a check of one name.
+ */
+async function libraryItem(name: string): Promise<GalleryItem | undefined> {
+  const path = `/api/file-details?name=${encodeURIComponent(name)}`
+  const response = await raw(path, { headers: { accept: 'application/json' } })
+  // 400: not a media name at all, so not in the library either.
+  if (response.status === 404 || response.status === 400) {
+    await response.body?.cancel()
+    return undefined
+  }
+  return await parsed<GalleryItem>(response, 'GET', path)
+}
 
 const fileUrl = (name: string): string => `${PUBLIC}/comfy-media/${encodeURIComponent(name)}`
 
@@ -130,10 +176,11 @@ function newProjectId(): string {
  * Where a job goes: an existing project, or a new one to create once the job
  * exists (so it is never empty).
  */
-async function projectTarget(project: string | undefined): Promise<{ id: string; title: string; isNew: boolean } | undefined> {
+async function projectTarget(project: string | undefined): Promise<{ id: string; title: string; isNew: boolean; found?: Project } | undefined> {
   if (project === undefined || project.trim() === '') return undefined
   const found = findProject((await studio()).projects.filter(entry => entry.id !== HISTORY_PROJECT_ID), project)
-  if (found !== undefined) return { id: found.id, title: found.title, isNew: false }
+  // The project itself rides along, so adding files to it needs no second read of the studio.
+  if (found !== undefined) return { id: found.id, title: found.title, isNew: false, found }
   return { id: newProjectId(), title: project.trim(), isNew: true }
 }
 
@@ -146,10 +193,12 @@ async function createProject(id: string, title: string, contents: { itemNames?: 
   await putProject({ id, title, createdAt: Date.now(), itemNames: contents.itemNames ?? [], jobIds: contents.jobIds ?? [], messages: [] })
 }
 
-/** Add files to a project, sending its full copy (a partial copy would win over the disk's fields). */
-async function addFilesToProject(projectId: string, names: string[]): Promise<void> {
-  const current = (await studio()).projects.find(entry => entry.id === projectId)
-  if (current === undefined) throw new Error(`project ${projectId} not found`)
+/**
+ * Add files to a project, sending its full copy (a partial copy would win over the disk's fields).
+ * @param current - the project as just read from the studio (by {@link projectTarget}).
+ * @param names - the files to add.
+ */
+async function addFilesToProject(current: Project, names: string[]): Promise<void> {
   const have = new Set(current.itemNames)
   const extra = names.filter(name => !have.has(name))
   if (extra.length === 0) return
@@ -185,10 +234,6 @@ async function guarded(run: () => Promise<unknown>) {
 
 // ---------------------------------------------------------------- segments and zones
 
-/** A segment's mask or cut-out, as the studio serves it. */
-const segmentFileUrl = (photo: string, file: string): string =>
-  `/api/segments/file/${encodeURIComponent(photo)}/${encodeURIComponent(file)}`
-
 /** Where a photo's Segments analysis stands. */
 const segmentsOf = async (photo: string): Promise<ImagineSegmentsStatus> =>
   await api<ImagineSegmentsStatus>(`/api/segments?name=${encodeURIComponent(photo)}`)
@@ -212,8 +257,10 @@ function describeSegments(index: ImagineSegmentsIndex): Record<string, unknown> 
       box: { x: round(segment.bbox.x / index.width), y: round(segment.bbox.y / index.height), w: round(segment.bbox.w / index.width), h: round(segment.bbox.h / index.height) },
       // The index stores the area as a fraction of the photo already.
       areaPercent: Math.round(segment.area * 1000) / 10,
-      cut: `${PUBLIC}${segmentFileUrl(index.photo, segment.cut)}`,
-      mask: `${PUBLIC}${segmentFileUrl(index.photo, segment.mask)}`,
+      // The shared helper adds the analysis time: a new analysis (again: true)
+      // can reuse a file name, and the route lets clients keep these a day.
+      cut: `${PUBLIC}${segmentFileUrl(index, segment.cut)}`,
+      mask: `${PUBLIC}${segmentFileUrl(index, segment.mask)}`,
     })),
   }
 }
@@ -233,7 +280,7 @@ async function segmentsMask(photo: string, wanted: readonly number[], grow = 0):
     return segment
   })
   const masks = await Promise.all(chosen.map(async (segment) => {
-    const response = await fetch(`${IMAGINE}${segmentFileUrl(photo, segment.mask)}`, { signal: AbortSignal.timeout(60_000) })
+    const response = await raw(segmentFileUrl(status.index, segment.mask), { signal: AbortSignal.timeout(60_000) })
     if (!response.ok) throw new Error(`mask of segment ${String(segment.index)}: ${String(response.status)}`)
     return readMask(new Uint8Array(await response.arrayBuffer()))
   }))
@@ -246,7 +293,7 @@ const ERASE_MARGIN = 0.02
 
 /** A photo of the library, with its size: a region becomes pixels on it. */
 async function photoItem(name: string): Promise<GalleryItem> {
-  const item = (await gallery()).find(entry => entry.name === name)
+  const item = await libraryItem(name)
   if (item === undefined) throw new Error(`file not in the library: ${name} (see imagine_recent_media or imagine_project_files)`)
   if (item.kind !== 'image') throw new Error(`"${name}" is a ${item.kind}, not a photo`)
   return item
@@ -257,7 +304,7 @@ async function fileIntoProject(item: GalleryItem, project: string | undefined): 
   const target = await projectTarget(project)
   if (target !== undefined) {
     if (target.isNew) await createProject(target.id, target.title, { itemNames: [item.name] })
-    else await addFilesToProject(target.id, [item.name])
+    else if (target.found !== undefined) await addFilesToProject(target.found, [item.name])
   }
   return { file: describeFile(item), ...target === undefined ? {} : { project: { id: target.id, title: target.title, created: target.isNew } } }
 }
@@ -266,8 +313,8 @@ async function fileIntoProject(item: GalleryItem, project: string | undefined): 
 async function requireFiles(names: (string | undefined)[]): Promise<void> {
   const wanted = names.filter((name): name is string => name !== undefined && name !== '')
   if (wanted.length === 0) return
-  const have = new Set((await gallery()).map(item => item.name))
-  const missing = wanted.filter(name => !have.has(name))
+  const found = await Promise.all(wanted.map(async name => await libraryItem(name)))
+  const missing = wanted.filter((_, at) => found[at] === undefined)
   if (missing.length > 0) throw new Error(`files not in the library: ${missing.join(', ')} (see imagine_recent_media, imagine_project_files or imagine_upload)`)
 }
 
@@ -367,7 +414,8 @@ function buildServer(): McpServer {
       project: projectArg,
     },
   }, async ({ url, data_base64, filename, project }) => guarded(async () => {
-    let bytes: Uint8Array
+    // Typed on an ArrayBuffer so the Blob takes it as it is (no copy of up to 200 MB).
+    let bytes: Uint8Array<ArrayBuffer>
     let name = filename
     if (url !== undefined) {
       const response = await fetch(url, { signal: AbortSignal.timeout(120_000) })
@@ -383,14 +431,9 @@ function buildServer(): McpServer {
     const item = await api<GalleryItem>('/comfy-media', {
       method: 'POST',
       headers: { 'x-filename': encodeURIComponent(name), 'content-type': 'application/octet-stream' },
-      body: new Blob([Uint8Array.from(bytes)]),
+      body: new Blob([bytes]),
     })
-    const target = await projectTarget(project)
-    if (target !== undefined) {
-      if (target.isNew) await createProject(target.id, target.title, { itemNames: [item.name] })
-      else await addFilesToProject(target.id, [item.name])
-    }
-    return { file: describeFile(item), ...target === undefined ? {} : { project: { id: target.id, title: target.title, created: target.isNew } } }
+    return await fileIntoProject(item, project)
   }))
 
   server.registerTool('imagine_view', {
@@ -400,7 +443,7 @@ function buildServer(): McpServer {
     annotations: { readOnlyHint: true },
   }, async ({ name, width }) => {
     try {
-      const response = await fetch(`${IMAGINE}/comfy-media/${encodeURIComponent(name)}?thumb=${String(width)}`, { signal: AbortSignal.timeout(60_000) })
+      const response = await raw(`/comfy-media/${encodeURIComponent(name)}?thumb=${String(width)}`, { signal: AbortSignal.timeout(60_000) })
       if (!response.ok) throw new Error(`file "${name}": ${String(response.status)}`)
       const mimeType = response.headers.get('content-type') ?? 'image/webp'
       if (!mimeType.startsWith('image/')) throw new Error(`"${name}" has no preview (${mimeType})`)
@@ -553,7 +596,7 @@ function buildServer(): McpServer {
     await requireFiles([video, photo])
     return await startJob({
       action: 'swapPerson', prompt, source: video, reference: photo,
-      megapixels: swapMegapixelsFor(resolution as ImagineResolution),
+      swapResolution: resolution,
       ...lip_sync ? {} : { lipSync: false },
     }, project)
   }))
@@ -576,7 +619,7 @@ function buildServer(): McpServer {
       action: 'objectSwap', objectMode: mode, prompt, source: video,
       ...photo === undefined ? {} : { reference: photo },
       ...mode === 'add' && box !== undefined ? { placement: { x: box.x, y: box.y, width: box.w, height: box.h } } : {},
-      megapixels: swapMegapixelsFor(resolution as ImagineResolution),
+      swapResolution: resolution,
     }, project)
   }))
 
@@ -622,7 +665,7 @@ function buildServer(): McpServer {
   }, async ({ job_id, wait_seconds }) => guarded(async () => {
     const until = Date.now() + wait_seconds * 1000
     for (;;) {
-      const job = (await jobs()).find(entry => entry.id === job_id)
+      const job = await jobById(job_id)
       if (job === undefined) {
         return { id: job_id, status: 'unknown', note: 'The job is no longer listed: finished jobs stay for half an hour, and a restart of Imagine empties the queue. Look for its file with imagine_recent_media.' }
       }
@@ -647,7 +690,8 @@ function buildServer(): McpServer {
     inputSchema: { job_id: z.string() },
     annotations: { destructiveHint: true },
   }, async ({ job_id }) => guarded(async () => {
-    const response = await fetch(`${IMAGINE}/comfy-imagine/${encodeURIComponent(job_id)}`, { method: 'DELETE' })
+    const response = await raw(`/comfy-imagine/${encodeURIComponent(job_id)}`, { method: 'DELETE' })
+    await response.body?.cancel()
     if (!response.ok && response.status !== 404) throw new Error(`cancel: ${String(response.status)}`)
     return { id: job_id, cancelled: response.status !== 404 }
   }))
@@ -670,17 +714,46 @@ function reply(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body))
 }
 
-async function readBody(req: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = []
-  let size = 0
-  for await (const chunk of req) {
-    size += (chunk as Buffer).length
-    // A base64 upload can be big: 200 MB of JSON at most.
-    if (size > 200 * 1024 * 1024) throw new Error('body too large')
-    chunks.push(chunk as Buffer)
-  }
-  const text = Buffer.concat(chunks).toString('utf8')
-  return text === '' ? undefined : JSON.parse(text)
+/** A base64 upload can be big: 200 MB of JSON at most. */
+const MAX_BODY_BYTES = 200 * 1024 * 1024
+
+/**
+ * The request body parsed as JSON (undefined when empty), refused past
+ * {@link MAX_BODY_BYTES}.
+ *
+ * Past the limit it stops keeping the bytes but goes on reading them, as
+ * server/src/route-kit.ts's `readBody` does: throwing out of a `for await`
+ * over the request destroys the socket, and the client then sees a dropped
+ * connection instead of the 400 that names the reason. Not imported from
+ * there: route-kit pulls the studio's gallery and stores into this bundle.
+ */
+function readBody(req: IncomingMessage): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    let size = 0
+    let stopped = false
+    req.on('data', (chunk: Buffer) => {
+      if (stopped) return
+      size += chunk.length
+      if (size > MAX_BODY_BYTES) {
+        stopped = true
+        chunks.length = 0
+        reject(new Error('body too large'))
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => {
+      if (stopped) return
+      const text = Buffer.concat(chunks).toString('utf8')
+      try {
+        resolve(text === '' ? undefined : JSON.parse(text))
+      } catch (error: unknown) {
+        reject(error instanceof Error ? error : new Error('Parse error'))
+      }
+    })
+    req.on('error', reject)
+  })
 }
 
 createServer((req, res) => {

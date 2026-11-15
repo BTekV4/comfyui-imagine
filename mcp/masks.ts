@@ -13,6 +13,7 @@
  * @module mcp/masks
  */
 import { crc32, deflateSync, inflateSync } from 'node:zlib'
+import { MIN_REGION_SIDE } from '../shared/imagine-types.ts'
 
 /** A mask: one byte per pixel, 0 = keep, 255 = act. */
 export interface Mask {
@@ -160,11 +161,49 @@ export function joinMasks(masks: readonly Mask[]): Mask {
 }
 
 /**
+ * One line of a square max filter: `out[i]` is the largest of the `src` values
+ * within `r` of `i` on the line (the values past the ends count as 0).
+ *
+ * van Herk/Gil-Werman: the line, padded with `r` zeros each side, is cut in
+ * blocks of `2r + 1`; `g` holds the running max from each block's start, `h`
+ * the running max to its end. Any window of `2r + 1` spans at most two blocks,
+ * so its max is `max(h[first], g[last])`: three steps per pixel whatever `r`.
+ * The scan per pixel it replaced cost `2r + 1` steps (r is 43 px on a 4K photo).
+ * @param src - the values.
+ * @param out - where the filtered line goes (not `src`).
+ * @param start - index of the line's first pixel in both arrays.
+ * @param step - distance between two pixels of the line (1 for a row, the width for a column).
+ * @param n - pixels on the line.
+ * @param r - the radius.
+ * @param g - scratch, at least `n + 2r` long.
+ * @param h - scratch, at least `n + 2r` long.
+ */
+function maxFilterLine(src: Uint8Array, out: Uint8Array, start: number, step: number, n: number, r: number, g: Uint8Array, h: Uint8Array): void {
+  const size = 2 * r + 1
+  const padded = n + 2 * r
+  for (let j = 0; j < padded; j++) {
+    const k = j - r
+    const value = k >= 0 && k < n ? src[start + k * step] ?? 0 : 0
+    g[j] = j % size === 0 ? value : Math.max(g[j - 1] ?? 0, value)
+  }
+  for (let j = padded - 1; j >= 0; j--) {
+    const k = j - r
+    const value = k >= 0 && k < n ? src[start + k * step] ?? 0 : 0
+    h[j] = j % size === size - 1 || j === padded - 1 ? value : Math.max(h[j + 1] ?? 0, value)
+  }
+  for (let i = 0; i < n; i++) out[start + i * step] = Math.max(h[i] ?? 0, g[i + 2 * r] ?? 0)
+}
+
+/**
  * Grow a mask by `radius` pixels in every direction (a square max filter, run
  * as two passes). LaMa fills a zone from its border: a mask that hugs the
  * object rebuilds the same shape (2026-11-15: a lighthouse cut out exactly
  * came back as a dark tower), while a margin around it lets the background
  * in — what the brush in the page does without anyone thinking about it.
+ *
+ * Each pass is O(width × height) whatever the radius ({@link maxFilterLine}):
+ * it runs synchronously on the MCP's only thread, and a scan of `2r + 1`
+ * pixels per pixel took over a billion steps on a 4K photo.
  * @param mask - the mask.
  * @param radius - how far to grow, in pixels.
  * @returns the grown mask.
@@ -173,23 +212,12 @@ export function growMask(mask: Mask, radius: number): Mask {
   const r = Math.max(0, Math.round(radius))
   if (r === 0) return mask
   const { width, height } = mask
+  const g = new Uint8Array(Math.max(width, height) + 2 * r)
+  const h = new Uint8Array(g.length)
   const across = new Uint8Array(width * height)
-  for (let y = 0; y < height; y++) {
-    const row = y * width
-    for (let x = 0; x < width; x++) {
-      let best = 0
-      for (let dx = Math.max(0, x - r); dx <= Math.min(width - 1, x + r) && best < 255; dx++) best = Math.max(best, mask.data[row + dx] ?? 0)
-      across[row + x] = best
-    }
-  }
+  for (let y = 0; y < height; y++) maxFilterLine(mask.data, across, y * width, 1, width, r, g, h)
   const data = new Uint8Array(width * height)
-  for (let x = 0; x < width; x++) {
-    for (let y = 0; y < height; y++) {
-      let best = 0
-      for (let dy = Math.max(0, y - r); dy <= Math.min(height - 1, y + r) && best < 255; dy++) best = Math.max(best, across[dy * width + x] ?? 0)
-      data[y * width + x] = best
-    }
-  }
+  for (let x = 0; x < width; x++) maxFilterLine(across, data, x, width, height, r, g, h)
   return { width, height, data }
 }
 
@@ -202,7 +230,7 @@ export function growMask(mask: Mask, radius: number): Mask {
 export function checkedZone(zone: Fractions): Fractions {
   const { x, y, w, h } = zone
   if (![x, y, w, h].every(value => Number.isFinite(value) && value >= 0 && value <= 1)) throw new Error('region: x, y, w, h are fractions between 0 and 1')
-  if (w < 0.02 || h < 0.02) throw new Error('region: w and h must be at least 0.02')
+  if (w < MIN_REGION_SIDE || h < MIN_REGION_SIDE) throw new Error(`region: w and h must be at least ${String(MIN_REGION_SIDE)}`)
   if (x + w > 1.0001 || y + h > 1.0001) throw new Error('region: it goes past the edge of the photo (x + w and y + h must stay ≤ 1)')
   return zone
 }

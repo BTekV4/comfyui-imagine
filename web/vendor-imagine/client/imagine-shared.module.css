@@ -71,10 +71,19 @@
   scale: 0.97;
 }
 
-.audioThumb {
+/*
+ * A note centred in its box. Modules that size or colour it their own way
+ * compose this rather than `audioThumb`: this file lands after them in the
+ * bundle, so a composed rule beats a local one of the same specificity.
+ */
+.audioGlyph {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.audioThumb {
+  composes: audioGlyph;
   width: 100%;
   height: 100%;
   background: var(--imagine-chip);
@@ -99,11 +108,11 @@
 /* "Show more" for the history board. Parked at the top centre: the two bottom
    corners already hold the zoom HUD and the canvas tools, and the chat floats
    over the board's left. The board draws a page at a time; the gallery is
-   hundreds deep. */
-.historyMore {
+   hundreds deep. The pill itself is `floatPill`, which the board's "new
+   files" pill composes too; only the edge it is parked on differs. */
+.floatPill {
   position: absolute;
   left: 50%;
-  top: 16px;
   transform: translateX(-50%);
   z-index: 10;
   height: 34px;
@@ -119,15 +128,20 @@
   box-shadow: var(--imagine-shadow);
 }
 
-.historyMore:hover {
+.floatPill:hover {
   background: var(--imagine-hover);
 }
 
 /* The `scale` property, not `transform`: this pill carries a translate that
    centres it, and a `transform` here would replace it — it jumped half its
    width out from under the cursor on mousedown, so no click was ever fired. */
-.historyMore:active {
+.floatPill:active {
   scale: 0.97;
+}
+
+.historyMore {
+  composes: floatPill;
+  top: 16px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -136,3 +150,48 @@
     transition: none !important;
   }
 }
+
+/*
+ * The studio's popup menus: the composer's mode menu, All media's menus, the
+ * viewer's «…», the tile's right-click menu, the upscale choices. They were
+ * restyled in each module with small drifts (border 0.08 or 0.1 alpha, three
+ * shadows, two hover tints); this is the one box and the one row they compose.
+ *
+ * Only what every menu shares lives here: this file lands after the modules
+ * that compose it, so anything they set again here would win over their own
+ * rule. The background is the composing module's (the composer and All media
+ * hang a chip-coloured menu from their chip-coloured controls, the others are
+ * surface), and so are a row's height, colour and type size.
+ */
+.popMenu {
+  box-sizing: border-box;
+  padding: 6px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.55);
+}
+
+/* The lighter menus of the History filter bar and the rail's project row. */
+.popMenuCompact {
+  composes: popMenu;
+  padding: 4px;
+  border: none;
+  border-radius: 10px;
+  background: var(--imagine-surface);
+  box-shadow: 0 10px 28px var(--imagine-scrim);
+}
+
+.popItem {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.popItem:hover { background: var(--imagine-hover); }

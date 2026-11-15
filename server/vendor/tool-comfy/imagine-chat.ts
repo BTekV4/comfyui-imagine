@@ -1064,19 +1064,25 @@ export async function readImagineChat(
    */
   const stills = (request.staged ?? []).filter(file => file.kind === 'image')
   if (outputDir !== undefined && stills.length > 0) say({ kind: 'step', step: 'sight', count: stills.length })
-  const eyes = outputDir === undefined || (request.staged ?? []).length === 0
-    ? { sights: [], blind: false }
-    : await lookAtStaged(ctx, outputDir, request.staged ?? [], {
-      ...request.poses === undefined ? {} : { poses: request.poses },
-      ...request.language === undefined ? {} : { language: request.language },
-    })
+  /*
+   * The header probes of the staged files do not depend on the sights, so
+   * they run while the vision pass does instead of after it.
+   */
+  const [eyes, shaped] = await Promise.all([
+    outputDir === undefined || (request.staged ?? []).length === 0
+      ? { sights: [], blind: false }
+      : lookAtStaged(ctx, outputDir, request.staged ?? [], {
+        ...request.language === undefined ? {} : { language: request.language },
+      }),
+    withShapes(request, outputDir),
+  ])
   /*
    * What the host has on file about every file in front of the reading: how
    * it was made, and what was seen in it when something already looked. The
    * board's own files are never looked at here — a line would wait on forty
-   * vision calls — they were queued for a look when they arrived.
+   * vision calls — they were queued for a look when they arrived. After the
+   * sights: a look just taken is read from memory (`sightInMemory`).
    */
-  const shaped = await withShapes(request, outputDir)
   const instruction = imagineChatInstruction(await withNotes(shaped), inventory, eyes)
   let written: string | undefined
   // The route that answered, which the workflow pass below asks again: the

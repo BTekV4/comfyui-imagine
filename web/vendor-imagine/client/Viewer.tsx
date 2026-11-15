@@ -10,13 +10,15 @@
  */
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react'
-import { IconBack, IconPlayOutlineRegular } from '../../shims/primitives/index.ts'
+import { IconBack, IconTrashOutlineRegular } from '../../shims/primitives/index.ts'
+import { IconSidePanel } from './canvas-icons.tsx'
 import { mediaUrlOf } from './gallery-api.ts'
 import type { GalleryItem, ImagineRegion } from '../../../shared/imagine-types.ts'
 import { formatClock } from './format.ts'
 import { QualityBadge } from './imagine-bits.tsx'
 import { mediaActions, type MediaActionKind } from './media-actions.tsx'
 import { useMediaTransport } from './media-playback.ts'
+import { PlayToggle, SeekBar } from './transport-bar.tsx'
 import { useMaskPainter } from './mask-painter.ts'
 import { messageOf } from './message-of.ts'
 import { useHostEdit } from './Modal.tsx'
@@ -77,19 +79,16 @@ export function Viewer({
   onSketch: (photo: GalleryItem, sketch: Blob, mask: string, prompt: string) => void
 }) {
   const transport = useMediaTransport(0)
-  const { playing, currentTime } = transport
+  const { currentTime } = transport
   const duration = transport.duration ?? 0
   const videoRef = transport.ref
   const { reset } = transport
-  useEffect(() => { reset(0) }, [current.name])
 
   const image = current.kind === 'image'
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [folded, setFolded] = useState(panelWasFolded)
   const [tool, setTool] = useState<PostTool>('segments')
-  // Another file opens fitted, on Grok's first tool.
-  useEffect(() => { setZoom(1); setPan({ x: 0, y: 0 }); setTool('segments') }, [current.name])
   const stepZoom = (direction: 1 | -1): void => {
     setZoom((now) => {
       const at = ZOOMS.findIndex(value => value >= now - 1e-6)
@@ -137,12 +136,17 @@ export function Viewer({
   const [hover, setHover] = useState<number>()
   const [groupHover, setGroupHover] = useState<readonly number[]>()
   const [reveal, setReveal] = useState<{ readonly index: number }>()
-  const [cursor, setCursor] = useState<{ x: number; y: number }>()
+  /*
+   * The last pointer position over the photo, in a ref: only the floating
+   * label needs it, and it follows the pointer by itself (SegmentLabel), so a
+   * mouse move no longer re-renders the viewer.
+   */
+  const cursor = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
   const [prompt, setPrompt] = useState('')
   const [joining, setJoining] = useState(false)
   const [joinError, setJoinError] = useState<string>()
   const letGo = (): void => { setPicked([]); setPrompt(''); setJoinError(undefined) }
-  useEffect(() => { letGo(); setHover(undefined); setGroupHover(undefined); setCursor(undefined) }, [current.name, index?.createdAt, tool])
+  useEffect(() => { letGo(); setHover(undefined); setGroupHover(undefined) }, [current.name, index?.createdAt, tool])
   const pickPart = (id: number, add: boolean): void => {
     setJoinError(undefined)
     if (!add) { setPicked([id]); setPrompt(''); return }
@@ -197,10 +201,6 @@ export function Viewer({
     brush: drawn !== undefined && drawn.width > 0 ? brush / drawn.width * 100 : 4,
     erase: false,
   })
-  useEffect(() => { painter.clear() }, [current.name])
-  useEffect(() => {
-    if (preciseOn && imageRef.current !== null && imageRef.current.naturalWidth > 0) painter.sizePaint(imageRef.current)
-  }, [preciseOn, current.name])
 
   /* «Ritaglia» on the photo: a new file beside the original. */
   const crop = useHostEdit<GalleryItem>('/api/crop-copy', 'HTTP')
@@ -214,12 +214,30 @@ export function Viewer({
   /* «Disegna»: a sketch in colour over the photo, finished in a style. */
   const drawOn = image && !folded && tool === 'draw'
   const sketch = useSketch()
+  /*
+   * Another file: the transport starts over, the photo opens fitted on
+   * Grok's first tool, and the zone and the sketch of the last one go. One
+   * effect for what used to be four. Not a `key` on the viewer: the brush
+   * sizes, the drawing colour and style deliberately carry over to the next
+   * file, and a remount would lose them.
+   */
+  useEffect(() => {
+    reset(0)
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+    setTool('segments')
+    painter.clear()
+    sketch.clear()
+  }, [current.name])
+  // After the reset above, as before: a new file's zone is sized once cleared.
+  useEffect(() => {
+    if (preciseOn && imageRef.current !== null && imageRef.current.naturalWidth > 0) painter.sizePaint(imageRef.current)
+  }, [preciseOn, current.name])
   const [drawBrush, setDrawBrush] = useState(12)
   const [drawErase, setDrawErase] = useState(false)
   const [drawColor, setDrawColor] = useState('#FFFFFF')
   const [drawStyle, setDrawStyle] = useState<DrawStyleId>('photo')
   const [sketching, setSketching] = useState(false)
-  useEffect(() => { sketch.clear() }, [current.name])
   useEffect(() => {
     if (drawOn && imageRef.current !== null && imageRef.current.naturalWidth > 0) sketch.sizeTo(imageRef.current)
   }, [drawOn, current.name])
@@ -264,7 +282,7 @@ export function Viewer({
     const start = drag.current
     if (start === undefined) {
       if (segmentsOn && index !== undefined) {
-        setCursor({ x: event.clientX, y: event.clientY })
+        cursor.current = { x: event.clientX, y: event.clientY }
         const under = partUnder(event.clientX, event.clientY)
         if (under !== hover) setHover(under)
       }
@@ -308,7 +326,7 @@ export function Viewer({
           aria-pressed={!folded}
           onClick={() => { fold(!folded) }}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3" /><path d="M15 4v16" />{!folded && <path d="M17.5 8.5h1M17.5 12h1" strokeLinecap="round" />}</svg>
+          <IconSidePanel size={18} strokeWidth={1.8} dots={!folded} />
         </button>
       </header>
       <div className={css.viewerStage}>
@@ -321,7 +339,7 @@ export function Viewer({
           onPointerMove={onPointerMove}
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
-          onPointerLeave={() => { setHover(undefined); setCursor(undefined) }}
+          onPointerLeave={() => { setHover(undefined) }}
           onClick={(event) => {
             if (!segmentsOn || index === undefined) return
             const pressed = pressedAt.current
@@ -397,7 +415,7 @@ export function Viewer({
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5" /><path d="M20 9H9a5 5 0 0 0 0 10h3" /></svg>
                 </button>
                 <button type="button" className={css.round} aria-label={translate('imagine.clearAll')} title={translate('imagine.clearAll')} disabled={sketch.count === 0} onClick={sketch.clear}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" /></svg>
+                  <IconTrashOutlineRegular size={18} strokeWidth={1.2} />
                 </button>
               </div>
             </>
@@ -415,20 +433,9 @@ export function Viewer({
         </div>
         {current.kind !== 'image' && (
           <div className={css.viewerScrub}>
-            <button type="button" className={shared.iconBtn} aria-label={playing ? translate('imagine.pause') : translate('imagine.play')} onClick={transport.toggle}>
-              <IconPlayOutlineRegular size={16} />
-            </button>
+            <PlayToggle transport={transport} className={shared.iconBtn} size={16} />
             <span>{formatClock(currentTime)}</span>
-            <input
-              className={css.viewerSeek}
-              type="range"
-              min={0}
-              max={duration || 0}
-              step={0.05}
-              value={currentTime}
-              aria-label={translate('imagine.play')}
-              onChange={(event) => { transport.seek(Number(event.currentTarget.value)) }}
-            />
+            <SeekBar transport={transport} className={css.viewerSeek} />
             <span>{formatClock(duration)}</span>
             <QualityBadge item={current} />
           </div>
@@ -501,8 +508,8 @@ export function Viewer({
           )}
         </PostPanel>
       )}
-      {segmentsOn && index !== undefined && hover !== undefined && cursor !== undefined && (
-        <SegmentLabel label={index.segments.find(segment => segment.index === hover)?.label ?? ''} x={cursor.x} y={cursor.y} />
+      {segmentsOn && index !== undefined && hover !== undefined && (
+        <SegmentLabel label={index.segments.find(segment => segment.index === hover)?.label ?? ''} frame={frameRef} start={cursor.current} />
       )}
       {segmentsOn && index !== undefined && drawn !== undefined && pickedParts.length > 0 && zoom === 1 && pan.x === 0 && pan.y === 0 && (
         <SegmentEditBox

@@ -13,7 +13,17 @@
 
 import type { LoadedWorkflow, RunOpts, WorkflowConfig, WorkflowExtras } from './index.ts'
 
-/** How one field, or one member of an object field, is written. */
+/**
+ * How one field, or one member of an object field, is written.
+ *
+ * Three readers walk this table, each with its own job: the boot schema
+ * (`index.ts` `checkOf`) refuses only a value of the wrong type, so a
+ * half-written `config.yaml` entry still boots; the loader (`workflow-load.ts`
+ * `loadedField`) keeps what a run can use and drops the rest — a pin missing
+ * one half, a list without a usable entry; the settings validation
+ * (`imagine-settings.ts` `specProblem`) refuses, with a message, what the
+ * page may not store. They agree on what a usable value is.
+ */
 export type FieldSpec =
   /** A non-empty string. */
   | { readonly kind: 'text' }
@@ -53,20 +63,22 @@ const CLIP_FIELDS = {
 } as const satisfies Readonly<Record<string, FieldSpec>>
 
 /**
- * The fields of a «Modifica oggetto» graph: the three texts, the window pins
- * and the canvas area.
+ * The fields of a «Modifica oggetto» graph: what the tracker follows, what it
+ * becomes, the placement box and the plan's resolution.
  *
- * In a single block because the three rows (change, remove, background) want
- * them identical: a divergence here would be a pin one mode writes and another
- * does not, i.e. a graph that renders with the file's own texts.
+ * In a single block because the five rows (change, remove, background, add,
+ * add from a photo) want them identical: a divergence here would be a pin one
+ * mode writes and another does not, i.e. a graph that renders with the file's
+ * own texts. Every shipped graph is an Openjutsu chain that plans and cuts its
+ * own windows, so the pins of the windowed design are gone (2026-11-15): the
+ * window start, the shot document and the window area are retired and
+ * ignored where an old entry still carries them ({@link RETIRED_WORKFLOW_FIELDS});
+ * `aspectRatio` and `seconds` stay valid for the clip rows, so an old entry
+ * that pins them still loads them.
  */
 const OBJECT_SWAP_FIELDS = {
-  aspectRatio: PIN,
-  seconds: PIN,
-  windowStart: PIN,
   subjectText: PIN,
   referenceText: PIN,
-  sceneText: PIN,
   /**
    * Only the «add an object» mode: the placement box, as a JSON string of
    * normalized keyframes, written into the input of the
@@ -77,7 +89,6 @@ const OBJECT_SWAP_FIELDS = {
   placementText: PIN,
   /** A graph that plans its own clips (Openjutsu's): its resolution label. */
   planResolution: PIN,
-  canvasMegapixels: { kind: 'number', min: 0.1, max: 2 },
 } as const satisfies Readonly<Record<string, FieldSpec>>
 
 /**
@@ -178,11 +189,12 @@ export const WORKFLOW_ROWS = [
   },
   /**
    * «Modifica oggetto»: the object tracked in the clip is changed, removed,
-   * or its background replaced (2026-11-06).
+   * or its background replaced (2026-11-06), or an object added.
    *
-   * The clip at 24 fps, the windows asked of the graph, its audio laid back on
-   * top; the tracked subject is an OBJECT. There are three texts, written by
-   * `object-swap-texts.ts`, one per mode.
+   * The whole clip goes to an Openjutsu chain graph that plans and cuts its
+   * own windows; the tracked subject is an OBJECT. The plan takes two short
+   * texts written by `object-swap-texts.ts`: what the tracker follows and
+   * what it becomes.
    *
    * ONE ROW PER MODE, each with its own `run`: the graph is a file, and the
    * three modes have different topologies. `byRun` is an object keyed by
@@ -255,7 +267,7 @@ export const WORKFLOW_ROWS = [
   /** The "upscale" action on a clip at or below `shortSeconds`. */
   {
     config: 'upscaleVideo', run: 'upscaleVideo', key: 'upscale-video', label: 'video upscale',
-    fields: { shortSeconds: { kind: 'number', min: 0 }, metaBatchNodeId: TEXT, videoCombineNodeId: TEXT },
+    fields: { shortSeconds: { kind: 'number', min: 0 }, metaBatchNodeId: TEXT },
   },
   /**
    * The "upscale" action on a longer clip: a VHS meta-batch chain
@@ -336,10 +348,26 @@ export type WorkflowGraphs = ImagineWorkflows & {
 }
 
 /** One workflow entry name of the plugin configuration. */
-export type WorkflowConfigKey = typeof WORKFLOW_ROWS[number]['config']
+type WorkflowConfigKey = typeof WORKFLOW_ROWS[number]['config']
 
 /** The workflow entries the configuration accepts, in the order the page lists them. */
 export const WORKFLOW_KEYS: readonly WorkflowConfigKey[] = WORKFLOW_ROWS.map(row => row.config)
+
+/**
+ * Fields an entry used to accept and nothing reads any more.
+ *
+ * A `config.yaml` passes them through at boot anyway (undeclared keys are
+ * kept by the schema and dropped by the loader), but the settings file is
+ * refused whole for one field it does not know: so an `imagine-settings.json`
+ * written before the field went keeps loading, these are accepted there and
+ * ignored, and the page may still remove them. Setting one is refused.
+ */
+export const RETIRED_WORKFLOW_FIELDS: ReadonlySet<string> = new Set([
+  // The windowed object swap (2026-11-15), replaced by Openjutsu's chain graphs.
+  'windowStart', 'sceneText', 'canvasMegapixels',
+  // The long upscale's combine node: parsed, never read.
+  'videoCombineNodeId',
+])
 
 /**
  * Every field any workflow entry accepts, with how it is written.
@@ -361,8 +389,8 @@ export const ALL_WORKFLOW_FIELDS: Readonly<Record<string, FieldSpec>> = Object.a
  * without it leaves the graph's own. These were a dozen identical `if` blocks
  * in `index.ts` until 2026-11-07. Values that need more than that — the
  * realism verdict (written both ways), the voice (a closed list), the pitch
- * (rounded), the lyrics (always written), the pose (a mode beside it), the
- * song slice (tied to the upload) — stay explicit there.
+ * (rounded), the lyrics (always written), the song slice (tied to the upload)
+ * — stay explicit there.
  */
 export const OPTION_PINS = [
   /*
@@ -375,25 +403,20 @@ export const OPTION_PINS = [
   { option: 'seconds', pin: 'seconds' },
   // A music graph takes the same length as its `max_duration`.
   { option: 'seconds', pin: 'duration' },
-  // Who the look is built around. Left alone when the caller says nothing, so
-  // the workflow's own subject stays the default it has always been.
-  { option: 'lookSubject', pin: 'lookSubject' },
   /*
-   * The texts of an object swap: the tracker phrase, the reference document
-   * and the shot document (`object-swap-texts.ts`). The tracker phrase is a
-   * text conditioning rather than a prompt, and a phrase the caller wrote from
-   * the clip is what makes the tracker land on the thing meant.
+   * The texts of an object swap: the tracker phrase and what it becomes
+   * (`object-swap-texts.ts`). The tracker phrase is a text conditioning rather
+   * than a prompt, and a phrase the caller wrote from the clip is what makes
+   * the tracker land on the thing meant.
    */
   { option: 'subjectText', pin: 'subjectText' },
   { option: 'referenceText', pin: 'referenceText' },
-  { option: 'sceneText', pin: 'sceneText' },
   /*
    * The box of «aggiungi un oggetto»: the graph wants it as a JSON string
    * (`H3ObjectPlacementMask.placement`), and the text arrives already
    * serialised from the job's plan, so its shape is checked in one place.
    */
   { option: 'placementText', pin: 'placementText' },
-  { option: 'windowStart', pin: 'windowStart' },
   // A character swap's lip-sync switch, written both ways so the graph's own default never decides.
   { option: 'noLipSync', pin: 'noLipSync' },
   // The resolution an Openjutsu plan renders at: «480p» on the composer's lower step.

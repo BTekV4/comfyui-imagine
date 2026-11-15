@@ -20,14 +20,29 @@ export const VIDEO_RESOLUTIONS = ['480p', '720p'] as const
  */
 export const SWAP_RESOLUTIONS = ['480p', '720p', '1080p'] as const
 
+/** One step of the swaps' ladder. */
+export type SwapResolution = typeof SWAP_RESOLUTIONS[number]
+
 /**
- * The area a swap sends for its step: the server reads it back as the plan's
- * resolution label (480p below 0.6 MP, 1080p above 1.5, else the graph's 736p).
+ * The swaps' step for whatever the composer shows: its own value when the
+ * ladder has it, 1080p past it, 720p otherwise. The request carries this
+ * label; until 2026-11-15 it carried megapixels the server decoded back with
+ * thresholds, which only agreed with this side by convention.
  * @param resolution - the composer's step.
- * @returns megapixels.
+ * @returns the swap step to send.
  */
-export function swapMegapixelsFor(resolution: ImagineResolution): number {
-  return resolution === '480p' ? 0.4 : resolution === '1080p' || resolution === '1440p' ? 2.07 : 0.98
+export function swapResolutionOf(resolution: ImagineResolution): SwapResolution {
+  return resolution === '480p' ? '480p' : resolution === '1080p' || resolution === '1440p' ? '1080p' : '720p'
+}
+
+/**
+ * The label the Openjutsu plan takes for each swap step, or undefined to keep
+ * the graph's own 736p (the plan has no 720p).
+ */
+export const SWAP_PLAN_RESOLUTION: Readonly<Record<SwapResolution, string | undefined>> = {
+  '480p': '480p',
+  '720p': undefined,
+  '1080p': '1080p',
 }
 
 /** Video lengths the PrimitiveFloat node accepts (workflow converts to frames). */

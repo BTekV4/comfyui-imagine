@@ -9,6 +9,7 @@
  * @module Overlays
  */
 
+import type { FrameCard } from './FrameExtractor.tsx'
 import type { GalleryItem } from '../../../shared/imagine-types.ts'
 import type { ImagineRegion } from '../../../shared/imagine-types.ts'
 import { FramesDialog, TrimDialog } from './ClipDialogs.tsx'
@@ -44,7 +45,7 @@ export interface OverlaysProps {
   /** Precise edit sent: the zone and what to change in it. */
   readonly onRegion: (photo: GalleryItem, prompt: string, zone: { region: ImagineRegion } | { mask: string }) => void
   /** A frame the extractor saved, used as the button under it says. */
-  readonly onUseFrame: (item: GalleryItem, card?: 'remix' | 'video' | 'style' | 'bg') => void
+  readonly onUseFrame: (item: GalleryItem, card: FrameCard) => void
   /** The Details card's "Reuse": the prompt back in the composer, from its file. */
   readonly onReuse: (text: string, from: string | undefined) => void
   /** The Details card's source file, clicked. */
@@ -99,7 +100,7 @@ export function Overlays({
           clip={overlay.item}
           onClose={onClose}
           onSaved={onPlace}
-          onUse={(item, card?: 'remix' | 'video' | 'style' | 'bg') => {
+          onUse={(item, card) => {
             onClose()
             onPlace(item)
             onUseFrame(item, card)

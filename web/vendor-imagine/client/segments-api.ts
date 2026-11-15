@@ -83,6 +83,30 @@ export interface MaskBits {
   readonly data: Uint8Array
 }
 
+/** How many mask files are downloaded at once: enough to overlap the round trips, few enough not to queue the browser. */
+const MASK_LOADS = 6
+
+/**
+ * `Promise.all` over a list with at most `limit` calls in flight.
+ * @param list - the inputs.
+ * @param limit - the largest number running at once.
+ * @param work - the call for one input; it should not reject.
+ * @returns the results, in the order of the inputs.
+ */
+async function mapLimited<T, R>(list: readonly T[], limit: number, work: (entry: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array<R>(list.length)
+  let next = 0
+  const worker = async (): Promise<void> => {
+    while (next < list.length) {
+      const position = next
+      next += 1
+      out[position] = await work(list[position]!)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, list.length) }, worker))
+  return out
+}
+
 /**
  * The masks of an analysis, kept small for pointer tests: the part under the
  * cursor is the one whose mask holds that pixel, as on Grok, not the one
@@ -106,10 +130,19 @@ export function useMaskBits(index: ImagineSegmentsIndex | undefined): ReadonlyMa
     if (context === null) return
     void (async () => {
       const next = new Map<number, MaskBits>()
-      for (const segment of index.segments) {
+      /*
+       * Downloaded side by side, at most MASK_LOADS at a time, then
+       * rasterised in order: one after the other cost a round trip per mask
+       * before the pointer test worked at all. A mask that does not load is
+       * only left out of the pointer test.
+       */
+      const images = await mapLimited(index.segments, MASK_LOADS,
+        segment => picture(segmentFileUrl(index, segment.mask)).catch(() => undefined))
+      if (cancelled) return
+      for (const [position, segment] of index.segments.entries()) {
+        const image = images[position]
+        if (image === undefined) continue
         try {
-          const image = await picture(segmentFileUrl(index, segment.mask))
-          if (cancelled) return
           context.clearRect(0, 0, width, height)
           context.drawImage(image, 0, 0, width, height)
           const rgba = context.getImageData(0, 0, width, height).data
@@ -117,7 +150,7 @@ export function useMaskBits(index: ImagineSegmentsIndex | undefined): ReadonlyMa
           for (let i = 0; i < data.length; i += 1) data[i] = rgba[i * 4]! > 127 ? 1 : 0
           next.set(segment.index, { width, height, data })
         } catch {
-          // A mask that does not load is only left out of the pointer test.
+          // A mask that cannot be read back is left out of the pointer test too.
         }
       }
       if (!cancelled) setBits(next)

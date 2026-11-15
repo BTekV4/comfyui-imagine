@@ -7,9 +7,10 @@
  * @module tool-comfy/media-tools
  */
 
+import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { rm, stat } from 'node:fs/promises'
-import { basename } from 'node:path'
+import { rm, stat, unlink } from 'node:fs/promises'
+import { basename, join } from 'node:path'
 import { promisify } from 'node:util'
 import { lastJsonLine } from './model-json.ts'
 
@@ -36,7 +37,19 @@ export function h264Out(crf = 17, preset?: string): readonly string[] {
 /** AAC at 192 kb/s, the soundtrack of every join. */
 export const AAC_192K: readonly string[] = ['-c:a', 'aac', '-b:a', '192k']
 
-/** AAC at 128 kb/s, the soundtrack of the scratch plates and the swap's mux. */
+/**
+ * A silent stereo track at {@link AUDIO_RATE}, as an extra ffmpeg input.
+ *
+ * Handed to a pass whose source has no soundtrack, so the graph's audio
+ * reader (or the join's audio map) always finds a track; the caller cuts it
+ * to the picture with `-shortest` or `-t`. One spelling for the continuation's
+ * tail, the refiner's draft and the montage's silent copy.
+ */
+export const SILENT_STEREO_INPUT: readonly string[] = [
+  '-f', 'lavfi', '-i', `anullsrc=channel_layout=stereo:sample_rate=${String(AUDIO_RATE)}`,
+]
+
+/** AAC at 128 kb/s, the soundtrack of the scratch plates and the regenerated clip's mux. */
 export const AAC_128K: readonly string[] = ['-c:a', 'aac', '-b:a', '128k']
 
 /** The `moov` box up front, so a player and the gallery's header probe read the file at once. */
@@ -213,10 +226,17 @@ export async function muxAudio(
  * continuation read a moment it does not actually start from. Every frame of
  * the last half second is written to the same file instead (`-update 1`), so
  * what stays on disk is the final one.
+ *
+ * A seek that lands past the last frame the file can decode writes nothing at
+ * all (a length read off the header, a rate other than the one assumed), and
+ * a contact sheet or a strip then fails on a missing tile: `orLast` takes the
+ * clip's final frame instead of a moment that is not there (measured
+ * 2026-10-23 on the six-tile sheet of a 6.5 s clip).
  * @param video - the source clip.
  * @param out - the still to write; its extension picks the format.
- * @param options - `at` seconds from the start, or `last` for the final frame; `maxSide` to shrink it;
- *   `quality` as ffmpeg's `-q:v` (2 best … 31 worst) for a JPEG.
+ * @param options - `at` seconds from the start, or `last` for the final frame; `orLast` to fall back
+ *   to the final frame when `at` yields nothing; `maxSide` to shrink it, or `height` to scale it to
+ *   that height keeping the ratio (even width); `quality` as ffmpeg's `-q:v` (2 best … 31 worst) for a JPEG.
  * @returns the path written.
  */
 export async function frameAt(
@@ -225,15 +245,28 @@ export async function frameAt(
   options: {
     readonly at?: number
     readonly last?: boolean
+    readonly orLast?: boolean
     readonly maxSide?: number
+    readonly height?: number
     readonly quality?: number
     readonly timeoutMs?: number
   } = {},
 ): Promise<string> {
+  if (options.orLast === true && options.last !== true) {
+    try {
+      await frameAt(video, out, { ...options, orLast: false })
+      if (await hasFrame(out)) return out
+    } catch {
+      // A failed seek is the same missing moment: the final frame stands in.
+    }
+    return frameAt(video, out, { ...options, orLast: false, last: true })
+  }
   const last = options.last === true
   const seek = last ? ['-sseof', '-0.5'] : ['-ss', String(options.at ?? 0)]
   const frames = last ? [] : ['-frames:v', '1']
-  const scale = options.maxSide === undefined
+  const scale = options.height !== undefined
+    ? ['-vf', `scale=-2:${String(options.height)}`]
+    : options.maxSide === undefined
     ? []
     : ['-vf', `scale=w='min(${String(options.maxSide)},iw)':h='min(${String(options.maxSide)},ih)':force_original_aspect_ratio=decrease`]
   const quality = options.quality === undefined ? [] : ['-q:v', String(options.quality)]
@@ -256,6 +289,48 @@ export async function frameAt(
 /** Whether a frame file was written and is not empty. */
 async function hasFrame(path: string): Promise<boolean> {
   return stat(path).then(info => info.size > 0).catch(() => false)
+}
+
+/**
+ * Remove scratch files, ignoring the ones already gone.
+ * @param paths - absolute paths of the files.
+ */
+export async function dropScratch(paths: readonly string[]): Promise<void> {
+  await Promise.all(paths.map(path => unlink(path).catch(() => undefined)))
+}
+
+/**
+ * The finished picture with the source clip's own audio laid over it.
+ *
+ * A render guided by a clip's soundtrack writes audio of its own on top of
+ * it — a guess about a room it only saw. What the user filmed is the track
+ * they expect back, so it replaces the generated one over the whole file;
+ * a silent source leaves the picture alone. Used by «Rigenera dettaglio»
+ * and «Ricrea video».
+ * @param video - absolute path of the finished picture.
+ * @param plate - absolute path of the clip whose track goes back on.
+ * @param dir - the output directory the copy is written into.
+ * @param scratch - what the scratch file is called before the caller renames
+ *   it. Dot-named so the gallery skips it meanwhile; one name per caller keeps
+ *   a failed mux legible in the directory.
+ * @returns the absolute path of the file with the clip's audio, or the input
+ *   when there is no track to lay over it.
+ */
+export async function layPlateAudio(
+  video: string,
+  plate: string,
+  dir: string,
+  scratch = 'plate-audio',
+): Promise<string> {
+  const out = join(dir, `.${scratch}-${randomUUID()}.mp4`)
+  try {
+    // Optional: a source without a soundtrack leaves the picture as it is.
+    return await muxAudio(video, plate, out, { optional: true, aac: AAC_128K })
+  } catch (error: unknown) {
+    // The picture still goes out, but without the user's sound: say so.
+    console.warn(`[imagine] original audio not put back on ${basename(video)}: ${error instanceof Error ? error.message : String(error)}`)
+    return video
+  }
 }
 
 /**

@@ -81,15 +81,8 @@
 }
 
 .ghostBtn {
+  composes: pillBtn from './social-shared.module.css';
   padding: 3px 10px;
-  border: 1px solid var(--imagine-line);
-  border-radius: var(--imagine-radius-pill);
-  corner-shape: round;
-  background: none;
-  color: var(--imagine-ink);
-  font: inherit;
-  font-size: 11.5px;
-  cursor: pointer;
 }
 
 .ghostBtn:hover:not(:disabled) {

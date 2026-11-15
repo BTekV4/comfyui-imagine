@@ -220,3 +220,34 @@ test('the manifest icon reaches the page, and one that is too long is cut', asyn
   assert.equal(byId.get('senza-icona')?.icon, null)
   plugins.dispose()
 })
+
+test('the deploy update replaces the changed files with a -deploy backup and reloads what it updated', async () => {
+  const { plugins, dir, repo } = await system()
+  await plugin(join(dir, 'webhook'), 'webhook', { manifest: { version: '1.0.0' } })
+  await plugin(join(repo, 'webhook'), 'webhook', { manifest: { version: '1.0.0' } })
+  // Shipped, but its entry is not built: reported, left as installed.
+  await plugin(join(dir, 'broken'), 'broken')
+  await plugin(join(repo, 'broken'), 'broken')
+  await rm(join(repo, 'broken', 'index.mjs'))
+  await plugins.start()
+  assert.deepEqual((await plugins.updateFromRepo({ tag: 'deploy', reload: true })).updated, [], 'nothing changed yet')
+
+  await plugin(join(repo, 'webhook'), 'webhook', { manifest: { version: '1.2.0' }, module: 'export default () => ({ status: () => ({ ok: true }) })\n' })
+  const answer = await plugins.updateFromRepo({ tag: 'deploy', reload: true })
+  assert.deepEqual(answer.updated, ['webhook'])
+  assert.deepEqual(answer.reloaded, ['webhook'])
+  assert.deepEqual(answer.invalid, ['broken'])
+  assert.match(answer.backupSuffix, /^\.bak-.+-deploy$/)
+  assert.equal(new Map((await plugins.list()).map(view => [view.id, view])).get('webhook')?.version, '1.2.0', 'reloaded at once')
+  const names = await readdir(join(dir, 'webhook'))
+  assert.deepEqual(names.filter(name => name.endsWith('-deploy')).sort(), [`index.mjs${answer.backupSuffix}`, `manifest.json${answer.backupSuffix}`])
+  assert.equal(names.some(name => name.endsWith('.tmp')), false, 'no temp file left behind')
+
+  // Without reload (a restart follows): copied, not reloaded.
+  await plugin(join(repo, 'webhook'), 'webhook', { manifest: { version: '1.3.0' } })
+  const quiet = await plugins.updateFromRepo({ tag: 'deploy', reload: false })
+  assert.deepEqual(quiet.updated, ['webhook'])
+  assert.deepEqual(quiet.reloaded, [])
+  assert.equal(JSON.parse(await readFile(join(dir, 'webhook', 'manifest.json'), 'utf8')).version, '1.3.0')
+  plugins.dispose()
+})

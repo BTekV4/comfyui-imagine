@@ -72,7 +72,7 @@ export interface MediaPageProps {
    * A clicked file: the project that holds it opens (or the viewer, for a file
    * that is in no project: the page decides).
    */
-  readonly onOpen: (item: GalleryItem, list: readonly GalleryItem[]) => void
+  readonly onOpen: (item: GalleryItem) => void
   /**
    * The full-screen viewer. A single click goes to the project, so the viewer
    * opens on double click: the click waits a moment to let the double click
@@ -194,11 +194,11 @@ export function MediaPage({ items, liked, onLike, onBack, onOpen, onOpenViewer, 
       && (tab === 'all' || (tab === 'liked' ? liked.has(item.name) : inTag?.has(item.name) === true)))
   }, [items, tab, liked, activeTag, hits])
 
-  // One file, one cell: no grouping (asked 2026-11-07), so the cells are the listed files.
-  const cells = listed
+  // One file, one cell: no grouping (asked 2026-11-07), so the listed files
+  // are the cells.
 
   // More cells as the end comes into view.
-  useGrowOnTail(tail, shown, cells.length, () => { setShown(current => current + PAGE) }, '800px')
+  useGrowOnTail(tail, shown, listed.length, () => { setShown(current => current + PAGE) }, '800px')
 
   /*
    * Masonry in reading order: each cell goes to the shortest column, as
@@ -212,7 +212,7 @@ export function MediaPage({ items, liked, onLike, onBack, onOpen, onOpenViewer, 
   const stacks = useMemo((): GalleryItem[][] => {
     const out: GalleryItem[][] = Array.from({ length: columns }, () => [])
     const heights = Array.from({ length: columns }, () => 0)
-    for (const cell of cells.slice(0, shown)) {
+    for (const cell of listed.slice(0, shown)) {
       const known = itemRatio(cell)
       const ratio = known === undefined ? 16 / 9 : Math.min(2.4, Math.max(0.4, known))
       let target = 0
@@ -221,7 +221,7 @@ export function MediaPage({ items, liked, onLike, onBack, onOpen, onOpenViewer, 
       heights[target] = (heights[target] ?? 0) + colWidth * ratio + gap
     }
     return out
-  }, [cells, shown, columns, colWidth])
+  }, [listed, shown, columns, colWidth])
 
   /*
    * Where each cell of each column sits, at the height it is drawn: the cell's
@@ -567,7 +567,7 @@ export function MediaPage({ items, liked, onLike, onBack, onOpen, onOpenViewer, 
                         className={css.openProject}
                         aria-label={translate('imagine.openProjectTile', { name: item.name })}
                         title={translate('imagine.openProjectTile', { name: item.name })}
-                        onClick={(event) => { event.stopPropagation(); onOpen(item, listed) }}
+                        onClick={(event) => { event.stopPropagation(); onOpen(item) }}
                       >
                         <IconFolderCloseRegular size={14} />
                       </button>

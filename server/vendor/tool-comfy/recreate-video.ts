@@ -14,7 +14,7 @@
  * @module tool-comfy/recreate-video
  */
 
-import { stat, unlink } from 'node:fs/promises'
+import { unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ImagineHost } from '../../src/host.ts'
@@ -55,9 +55,9 @@ const SHEET_CONCURRENCY = 3
 /**
  * What the vision model is asked about the reference clip.
  *
- * The `frame` paragraph follows the same list the reference scan
- * asks for, because it feeds the same Krea 2 graph: the person described in
- * detail, then the scene, the wardrobe, the light and the framing. Who that
+ * The `frame` paragraph is a Krea 2 prompt, because it feeds the Krea 2 graph
+ * that draws the opening frame: the person described in detail, then the
+ * scene, the wardrobe, the light and the framing. Who that
  * person IS is not the model's to say — the identity paragraph is put in front
  * of the reply by code (`readReferenceClip`), where it cannot be paraphrased
  * away from the LoRA's trigger.
@@ -98,27 +98,6 @@ export interface ReferenceReading {
 }
 
 /**
- * One still of the clip, at the second asked for.
- *
- * A seek that lands past the last frame the file can decode writes nothing at
- * all — ffmpeg with `-update 1` exits 0 and leaves no file — so the tile is
- * checked, and the clip's final frame stands in for a moment that is not
- * there. Measured 2026-10-23 on the six-tile sheet of a 6.5 s clip: the last
- * tile was empty and the tiling then failed on a missing input.
- * @param clip - absolute path of the reference clip.
- * @param tile - the still to write.
- * @param at - the second to read.
- */
-async function stillOf(clip: string, tile: string, at: number): Promise<void> {
-  await frameAt(clip, tile, { at, maxSide: SHEET_TILE_SIDE, timeoutMs: 90_000 }).catch(() => undefined)
-  try {
-    await stat(tile)
-  } catch {
-    await frameAt(clip, tile, { last: true, maxSide: SHEET_TILE_SIDE, timeoutMs: 90_000 })
-  }
-}
-
-/**
  * One still per moment of the clip, tiled into the single picture the vision
  * model is given.
  *
@@ -133,10 +112,9 @@ async function stillOf(clip: string, tile: string, at: number): Promise<void> {
  * @returns the absolute path of the sheet.
  */
 async function contactSheet(clip: string, duration: number, stamp: string): Promise<string> {
-  const tiles = Math.max(1, SHEET_FRAMES)
   const last = Math.max(0, duration - 0.05)
-  const moments = Array.from({ length: tiles }, (_unused, index) => ({
-    at: tiles === 1 ? 0 : Math.min((duration * index) / (tiles - 1), last),
+  const moments = Array.from({ length: SHEET_FRAMES }, (_unused, index) => ({
+    at: Math.min((duration * index) / (SHEET_FRAMES - 1), last),
     tile: join(tmpdir(), `recreate-sheet-${stamp}-${String(index)}.png`),
   }))
   try {
@@ -144,7 +122,8 @@ async function contactSheet(clip: string, duration: number, stamp: string): Prom
     let failure: unknown
     const pulled = await mapWithConcurrency(moments, SHEET_CONCURRENCY, async ({ at, tile }) => {
       try {
-        await stillOf(clip, tile, at)
+        // A moment past the last decodable frame takes the clip's final one.
+        await frameAt(clip, tile, { at, orLast: true, maxSide: SHEET_TILE_SIDE, timeoutMs: 90_000 })
       } catch (error: unknown) {
         failure ??= error
         throw error
@@ -240,8 +219,8 @@ export async function readReferenceClip(
      * instruction. Without it the graph draws the woman of the reference clip
      * instead of the deployment's person — measured 2026-10-24 on the first
      * version of this action, which asked for a good description and got a good
-     * stranger. The hair is pinned for the same reason the scan pins it: the
-     * description of the performer wins whenever the two disagree.
+     * stranger. The hair is pinned (`pinHair`) so that the persona's own hair
+     * wins whenever the reference's disagrees.
      */
     return { frame: pinHair(`${activePersona().identity} ${body}`), ...motion === undefined ? {} : { motion } }
   } finally {

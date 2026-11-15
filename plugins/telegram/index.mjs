@@ -115,7 +115,7 @@ async function sendPhoto(token, chatId, picture, caption) {
  * under the picture and the rest for a message of its own.
  * @returns `[caption, rest]`, `rest` empty when nothing is left over.
  */
-export function splitCaption(text) {
+function splitCaption(text) {
   const body = String(text ?? '')
   if (body.length <= MAX_CAPTION) return [body, '']
   let cut = body.lastIndexOf('\n', MAX_CAPTION - 24)

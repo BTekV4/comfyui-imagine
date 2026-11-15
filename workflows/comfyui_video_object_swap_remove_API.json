@@ -532,47 +532,6 @@
    "ver": "1.0.0"
   }
  },
- "34": {
-  "inputs": {
-   "headroom": 0,
-   "hold_frames": 1,
-   "max_people": 0,
-   "track_data": [
-    "32",
-    0
-   ]
-  },
-  "class_type": "H3PeopleMask",
-  "_meta": {
-   "title": "Tracked area, tight (for the grey shape)",
-   "cnr_id": "comfyui-workflow-encrypt",
-   "ver": "1.0.0"
-  }
- },
- "35": {
-  "inputs": {
-   "blur": 0.04,
-   "face_blur": 0.05,
-   "images": [
-    "28",
-    0
-   ],
-   "mask": [
-    "34",
-    0
-   ],
-   "size": [
-    "34",
-    1
-   ]
-  },
-  "class_type": "H3GreyMannequins",
-  "_meta": {
-   "title": "Turn it grey (shape and movement only)",
-   "cnr_id": "comfyui-workflow-encrypt",
-   "ver": "1.0.0"
-  }
- },
  "36": {
   "inputs": {
    "expand": 20,

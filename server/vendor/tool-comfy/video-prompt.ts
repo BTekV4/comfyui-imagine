@@ -517,7 +517,7 @@ ANIMATED BACKGROUND THAT REPEATS: the clip is a LOOP — the last frame joins th
 }
 
 /** Which H3 prompt a vision pass writes: a clip, an animated background, a continuation. */
-export type H3PromptKind = 'video' | 'loop' | 'extend'
+type H3PromptKind = 'video' | 'loop' | 'extend'
 
 /**
  * Write a clip's H3 prompt from a still and the user's intent.

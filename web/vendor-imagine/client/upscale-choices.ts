@@ -19,7 +19,15 @@ const STILL_STEPS = [[1080, '1080p'], [1440, '1440p'], [2160, '4K']] as const
 const CLIP_STEPS = [[720, '720p'], [1080, '1080p']] as const
 const SHAPES = [[9, 16], [16, 9], [2, 3], [3, 2], [3, 4], [4, 3], [1, 1]] as const
 
-/** The exact frame for a short side, on the nearest standard shape. */
+/**
+ * The exact frame for a short side, on the nearest standard shape.
+ *
+ * The same rule as `fourKFrame` in server/vendor/tool-comfy/snap-size.ts (same
+ * shapes, 2% slack, long side = short × max/min), which is what the host
+ * actually delivers; this copy is what the menu promises. It stays here only
+ * until that function moves to shared/imagine-sizing.ts, where both can read
+ * it: change the two together.
+ */
 function frameOf(width: number, height: number, short: number): string {
   const ratio = width / height
   const nearest = SHAPES

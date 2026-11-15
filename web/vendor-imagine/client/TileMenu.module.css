@@ -1,14 +1,12 @@
 .menu {
+  composes: popMenu from './imagine-shared.module.css';
   position: fixed;
   z-index: 230;
-  box-sizing: border-box;
-  padding: 6px;
-  border: 1px solid var(--imagine-line);
-  border-radius: 14px;
   background: var(--imagine-surface);
-  box-shadow: 0 16px 40px rgb(0 0 0 / 0.6);
 }
 
+/* Its own rows, not the shared one: they are sized by their padding, so a
+   long label can wrap to two lines. */
 .item {
   display: block;
   width: 100%;

@@ -15,7 +15,7 @@ import { aspectFor, upscaleBlocked, type ImagineAspect, type ImagineResolution }
 import type { ImagineProject } from '../../../shared/imagine-projects.ts'
 import {
   type GalleryItem, type ImagineAction, type ImagineJobView as ImagineJob, type ImagineObjectMode,
-  type ImaginePlacement, type ImagineQuality, type ImagineRegion, type ImagineSpeed,
+  type ImaginePlacement, type ImagineRegion,
 } from '../../../shared/imagine-types.ts'
 import type { ComposerStore } from './composer-store.ts'
 import { applyWorkflowChanges, fetchImagineJobs, readImagineChat, startImagineJob } from './gallery-api.ts'
@@ -23,7 +23,7 @@ import { SEED_MESSAGE_PREFIX, appendMessage, createProject, isSeedMessage, remem
 import { HISTORY_PROJECT_ID } from '../../../shared/imagine-projects.ts'
 import {
   STORY_MIN_SECONDS, clampResolution, clampStorySeconds, isStoryLength, megapixelsFor, sizeFor,
-  canvasMegapixelsFor, swapMegapixelsFor, videoAspectLabel, clampSeconds,
+  canvasMegapixelsFor, swapResolutionOf, videoAspectLabel, clampSeconds,
 } from './imagine-settings.ts'
 import { STORY_MINUTES_PER_CLIP, nextThoughtId, noteFromError, thoughtOf } from './imagine-messages.ts'
 import { slotsOf } from './job-cards.ts'
@@ -36,6 +36,7 @@ import { pickUpscaleStep } from './upscale-choices.ts'
 import type { ProjectNaming } from './use-project-naming.ts'
 import type { WorkflowSpec } from './workflow-specs.ts'
 import { translate } from './locale-store.ts'
+import { ACTION_TRAITS, inputKindOf } from './action-traits.ts'
 
 /**
  * What a run takes instead of the composer's state.
@@ -129,55 +130,10 @@ export interface RunOverride {
 }
 
 /**
- * The extras a run sends: what `startImagineJob` declares, plus the recipe's
- * speed and quality and the recreation's chosen frame, which the host reads
- * and that signature does not name (the page always sent them).
+ * The extras a run sends, as `startImagineJob` declares them (the recipe's
+ * speed and quality and the recreation's chosen frame included).
  */
-type JobExtras = NonNullable<Parameters<typeof startImagineJob>[3]> & {
-  readonly speed?: ImagineSpeed
-  readonly quality?: ImagineQuality
-  readonly frame?: string
-}
-
-/** Actions that read no prompt: their files say what to do. */
-const NO_PROMPT: ReadonlySet<ImagineAction> = new Set([
-  'upscale', 'bg', 'redo', 'resume', 'scanFrame', 'recreate',
-  // "Regenerate detail": with no line the studio reuses the prompt the clip
-  // was made with, so an empty field is the normal case.
-  'regenerate',
-  // "Light the photo": the text is the chosen look, not a sentence from the user.
-  'relight',
-])
-
-/** What an action does with an empty line: a word of its own, or the line as it is. */
-const EMPTY_LINE: Partial<Record<ImagineAction, string>> = { upscale: 'upscale', bg: 'bg' }
-
-/** Actions whose one input is a clip, found by kind wherever it came from. */
-const CLIP_INPUT: ReadonlySet<ImagineAction> = new Set([
-  'scanFrame', 'recreate', 'regenerate', 'objectSwap', 'swapPerson',
-])
-
-/** The kind of file each action's input must be, and the note when it is not. */
-const NEEDS: Partial<Record<ImagineAction, 'image' | 'video'>> = {
-  remix: 'image',
-  video: 'image',
-  loop: 'image',
-  bg: 'image',
-  extend: 'video',
-  redo: 'video',
-  resume: 'video',
-  scanFrame: 'video',
-  recreate: 'video',
-  regenerate: 'video',
-  objectSwap: 'video',
-  swapPerson: 'video',
-  relight: 'image',
-}
-
-/** Actions rendered on the video ladder (480p/720p). */
-const VIDEO_LADDER: ReadonlySet<ImagineAction> = new Set([
-  'video', 'loop', 'extend', 'story', 'redo', 'resume', 'recreate', 'scanFrame', 'regenerate', 'objectSwap', 'swapPerson',
-])
+type JobExtras = NonNullable<Parameters<typeof startImagineJob>[3]>
 
 /** What the runner reads of the page, current on every render. */
 export interface RunnerContext {
@@ -294,6 +250,7 @@ export function useRunner(ctx: RunnerContext) {
     if (busy !== undefined) return
     const state = composer.get()
     const { sources } = state
+    const traits = ACTION_TRAITS[action]
     /*
      * Every control the toolbar used to hold can arrive from the written line
      * instead, so each one is read from the override first and from the
@@ -307,7 +264,7 @@ export function useRunner(ctx: RunnerContext) {
      */
     const liveAspect = aspectFor(
       over?.aspect ?? state.aspect,
-      VIDEO_LADDER.has(action) ? 'video' : 'image',
+      traits.ladder,
       state.quality,
     )
     const liveSeconds = over?.seconds ?? state.seconds
@@ -315,16 +272,10 @@ export function useRunner(ctx: RunnerContext) {
     // A redo carries only what should change in the shot; nothing means the
     // same beat again, and the composer's line is not that. A resume changes
     // nothing at all.
-    const text = action === 'redo' || action === 'resume'
+    const text = traits.ownLineOnly === true
       ? (over?.prompt ?? '').trim()
-      : written.trim() || (EMPTY_LINE[action] ?? '')
-    if (action !== 'custom' && !NO_PROMPT.has(action) && text.length === 0) {
-      /*
-       * An uploaded card can have its own controls instead of the sentence
-       * (the lookbook: title and pose from the catalogue): the panel already
-       * knows whether something is missing, and the server accepts the job
-       * with no text.
-       */
+      : written.trim() || (traits.emptyLine ?? '')
+    if (traits.promptOptional !== true && text.length === 0) {
       setNote(translate('imagine.needPrompt'))
       return
     }
@@ -339,17 +290,16 @@ export function useRunner(ctx: RunnerContext) {
      * found by kind however it was staged. Named by the caller first, staged
      * otherwise.
      */
-    const reference = action === 'compose' || action === 'objectSwap' || action === 'swapPerson'
+    const reference = traits.reference === 'staged'
       ? over?.reference ?? sources.find(item => item.kind === 'image' && item.name !== from?.name)
-      // An edit's reference photo (Grok's «+»): only when the caller names one.
-      : action === 'remix' ? over?.reference : undefined
+      : traits.reference === 'named' ? over?.reference : undefined
     const overClip = over?.source?.kind === 'video' ? over.source : undefined
-    const input = CLIP_INPUT.has(action)
+    const input = traits.input === 'clip'
       ? overClip ?? (from?.kind === 'video' ? from : undefined) ?? sources.find(item => item.kind === 'video')
       : over?.source ?? (action === 'story'
         ? from ?? sources.find(item => item.kind === 'image' || item.kind === 'video')
         : from ?? sources[0])
-    const needs = NEEDS[action]
+    const needs = inputKindOf(action)
     if (needs !== undefined && (input === undefined || input.kind !== needs)) {
       setNote(translate(needs === 'image' ? 'imagine.needImage' : 'imagine.needVideo'))
       return
@@ -371,7 +321,7 @@ export function useRunner(ctx: RunnerContext) {
     }
     setNote(undefined)
     setBusy(action)
-    const liveResolution = clampResolution(VIDEO_LADDER.has(action) ? 'video' : 'image', over?.resolution ?? state.resolution)
+    const liveResolution = clampResolution(traits.ladder, over?.resolution ?? state.resolution)
     const liveLyrics = over?.lyrics ?? state.lyrics
     const extras = ((): JobExtras => {
       switch (action) {
@@ -421,10 +371,7 @@ export function useRunner(ctx: RunnerContext) {
         // A voice change carries no size, no length and no prompt: the track
         // it is given decides all three.
         case 'voice':
-          return {
-            ...over?.voice === undefined ? {} : { voice: over.voice },
-            ...over?.pitch === undefined ? {} : { pitch: over.pitch },
-          }
+          return { voice: over?.voice, pitch: over?.pitch }
         /*
          * "Object swap": the clip decides the canvas (the composer's step is
          * the area), and the mode is the one chosen
@@ -432,7 +379,7 @@ export function useRunner(ctx: RunnerContext) {
          */
         case 'objectSwap':
           return {
-            megapixels: swapMegapixelsFor(over?.resolution ?? state.resolution),
+            swapResolution: swapResolutionOf(over?.resolution ?? state.resolution),
             objectMode: over?.objectMode ?? state.objectMode,
             ...(over?.objectMode ?? state.objectMode) !== 'add'
               ? {}
@@ -458,7 +405,7 @@ export function useRunner(ctx: RunnerContext) {
         case 'swapPerson':
           return {
             // The swaps' own ladder reaches 1080p, past the clips' 720p.
-            megapixels: swapMegapixelsFor(over?.resolution ?? state.resolution),
+            swapResolution: swapResolutionOf(over?.resolution ?? state.resolution),
             ...reference === undefined ? {} : { reference: reference.name },
             ...(over?.lipSync ?? state.lipSync) ? {} : { lipSync: false },
           }
@@ -504,10 +451,9 @@ export function useRunner(ctx: RunnerContext) {
        * already a name, and a second author would shorten it.
        */
       if (naming.isNamingCandidate(project)) {
-        const sourceForTitle = action === 'music'
+        const sourceForTitle = traits.titleFrom === 'lyrics'
           ? (liveLyrics.trim() || text)
-          : action === 'bg' || action === 'upscale'
-            || action === 'recreate' || action === 'regenerate' || action === 'objectSwap' || action === 'swapPerson' || action === 'relight'
+          : traits.titleFrom === 'input'
             ? (input?.name ?? text)
             : text
         naming.titleIfNeeded(project, sourceForTitle)
@@ -517,18 +463,23 @@ export function useRunner(ctx: RunnerContext) {
         const queued = await queueJob(project, action, text, target?.name, {
           ...extras,
           ...recipe,
-          ...over?.count === undefined || over.count <= 1 ? {} : { count: over.count },
-          ...over?.upscaleTo === undefined ? {} : { upscaleTo: over.upscaleTo },
-          ...over?.region === undefined ? {} : { region: over.region },
-          ...over?.lastSource === undefined ? {} : { lastSource: over.lastSource },
-          ...over?.mask === undefined ? {} : { mask: over.mask },
-          ...over?.customWorkflowId === undefined ? {} : { customWorkflowId: over.customWorkflowId },
-          ...over?.customFields === undefined ? {} : { customFields: over.customFields },
-          ...over?.customFiles === undefined ? {} : { customFiles: over.customFiles },
+          /*
+           * Passed as they are: an undefined field drops out of the JSON, and
+           * `startImagineJob` itself leaves out a count of one. None of these
+           * is set by `extras` or `recipe`, so nothing above is overwritten.
+           */
+          count: over?.count,
+          upscaleTo: over?.upscaleTo,
+          region: over?.region,
+          lastSource: over?.lastSource,
+          mask: over?.mask,
+          customWorkflowId: over?.customWorkflowId,
+          customFields: over?.customFields,
+          customFiles: over?.customFiles,
           // The chip's model, so the prompts the host writes for this run — a
           // song's caption and tags, a story's beats — come from the model the
           // composer is showing rather than the one the deployment pinned.
-          ...state.chatModel === undefined ? {} : { model: state.chatModel },
+          model: state.chatModel,
         }, over?.quiet === true
           /*
            * The written lane has already put the user's line in the column —
@@ -587,7 +538,7 @@ export function useRunner(ctx: RunnerContext) {
       if (batchId !== undefined) adoptQueued(queue, entry => entry.batchId === batchId)
       if (projectId !== project.id) actions.openProject(project.id)
       composer.set({ prompt: '' })
-      if (action !== 'generate' && action !== 'music') composer.set({ sources: [] })
+      if (traits.keepsStaging !== true) composer.set({ sources: [] })
       // What the project became, so a caller queueing a second run from the
       // same turn builds on the jobs and the lines this one just added.
       return project
@@ -723,23 +674,29 @@ export function useRunner(ctx: RunnerContext) {
       // composer: the caller is the written lane.
       lane: true,
       project: into,
-      ...intent.aspect === undefined ? {} : { aspect: intent.aspect as ImagineAspect },
-      ...intent.resolution === undefined ? {} : { resolution: intent.resolution as ImagineResolution },
-      ...asked === undefined ? {} : { seconds: asked },
-      ...intent.count === undefined ? {} : { count: intent.count },
-      ...intent.lyrics === undefined ? {} : { lyrics: intent.lyrics },
+      /*
+       * What the reading left out stays undefined, and `run` reads every one
+       * of these with `??` or an `=== undefined` test: an absent field falls
+       * back to the composer exactly as a missing key would.
+       */
+      aspect: intent.aspect as ImagineAspect | undefined,
+      resolution: intent.resolution as ImagineResolution | undefined,
+      seconds: asked,
+      count: intent.count,
+      lyrics: intent.lyrics,
+      // A single name is not a montage: the run then reads `source`.
       ...intent.sources === undefined || intent.sources.length < 2 ? {} : { sources: intent.sources },
-      ...intent.voice === undefined ? {} : { voice: intent.voice },
-      ...intent.pitch === undefined ? {} : { pitch: intent.pitch },
-      ...source === undefined ? {} : { source },
-      ...song === undefined ? {} : { song },
-      ...reference === undefined ? {} : { reference },
-      ...intent.keepAudio === undefined ? {} : { keepAudio: intent.keepAudio },
-      ...intent.lipSync === undefined ? {} : { lipSync: intent.lipSync },
+      voice: intent.voice,
+      pitch: intent.pitch,
+      source,
+      song,
+      reference,
+      keepAudio: intent.keepAudio,
+      lipSync: intent.lipSync,
       // "Object swap": the recipe read from the sentence, which the panel does
       // not see (the line is written in the column; the composer is not involved).
-      ...intent.objectMode === undefined ? {} : { objectMode: intent.objectMode },
-      ...intent.light === undefined ? {} : { light: intent.light },
+      objectMode: intent.objectMode,
+      light: intent.light,
     }
     return await run(chained ? 'story' : intent.action, undefined, over)
   }

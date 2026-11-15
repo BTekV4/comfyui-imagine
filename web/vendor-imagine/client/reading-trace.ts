@@ -9,7 +9,7 @@
  * @module reading-trace
  */
 
-import { useSyncExternalStore } from 'react'
+import { createSignal, useSelected } from './signal.ts'
 
 /** One line of what the studio did while reading, already in the user's language. */
 export interface ImagineThought {
@@ -43,20 +43,11 @@ export interface TraceStore {
  * @returns the store the page keeps for its life.
  */
 export function createTraceStore(): TraceStore {
-  let thoughts: readonly ImagineThought[] = []
-  const listeners = new Set<() => void>()
+  const signal = createSignal<readonly ImagineThought[]>([])
   return {
-    get: () => thoughts,
-    set: (next) => {
-      const value = typeof next === 'function' ? next(thoughts) : next
-      if (value === thoughts) return
-      thoughts = value
-      for (const listener of [...listeners]) listener()
-    },
-    subscribe: (listener) => {
-      listeners.add(listener)
-      return () => { listeners.delete(listener) }
-    },
+    get: signal.get,
+    set: (next) => { signal.set(typeof next === 'function' ? next(signal.get()) : next) },
+    subscribe: signal.subscribe,
   }
 }
 
@@ -67,6 +58,5 @@ export function createTraceStore(): TraceStore {
  * @returns the selected value.
  */
 export function useTrace<T>(store: TraceStore, select: (thoughts: readonly ImagineThought[]) => T): T {
-  const read = (): T => select(store.get())
-  return useSyncExternalStore(store.subscribe, read, read)
+  return useSelected(store, select)
 }

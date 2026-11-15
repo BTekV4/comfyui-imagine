@@ -247,10 +247,10 @@ undescribed person.
 ## The workflows
 
 `workflows/` holds the graphs in ComfyUI's API format — the same JSON you get
-from "Save (API format)". `config.example.yaml` wires one of them to every
-action, with the node ids that match the shipped files; the others are
-alternative recipes for the same actions (FastH3, MiniMax H3), which take the
-same pins. [workflows/README.md](workflows/README.md) lists every file, the
+from "Save (API format)". `config.example.yaml` wires them to the actions,
+with the node ids that match the shipped files (the clip actions have a fast
+`path` and a quality `pathHigh` graph, which take the same pins).
+[workflows/README.md](workflows/README.md) lists every file, the
 config key it serves and what it does. They are examples from one machine: the
 model and LoRA names in them are the ones installed there, so adapt them to
 your ComfyUI. Change a graph, change the model, or write your own, then update

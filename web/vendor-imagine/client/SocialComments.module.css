@@ -49,16 +49,9 @@
 }
 
 .clearBtn {
+  composes: pillBtn from './social-shared.module.css';
   margin-right: auto;
   padding: 3px 10px;
-  border: 1px solid var(--imagine-line);
-  border-radius: var(--imagine-radius-pill);
-  corner-shape: round;
-  background: none;
-  color: var(--imagine-ink);
-  font: inherit;
-  font-size: 11.5px;
-  cursor: pointer;
 }
 
 .clearBtn:hover {
@@ -157,15 +150,8 @@
 }
 
 .replyBtn {
+  composes: pillBtn from './social-shared.module.css';
   padding: 2px 9px;
-  border: 1px solid var(--imagine-line);
-  border-radius: var(--imagine-radius-pill);
-  corner-shape: round;
-  background: none;
-  color: var(--imagine-ink);
-  font: inherit;
-  font-size: 11.5px;
-  cursor: pointer;
 }
 
 .replyBtn:hover {

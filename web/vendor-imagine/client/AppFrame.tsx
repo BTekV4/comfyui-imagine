@@ -23,10 +23,9 @@ import type { GalleryItem, MediaKind } from '../../../shared/imagine-types.ts'
 import { mediaUrlOf, thumbUrlOf, THUMB_SMALL } from './gallery-api.ts'
 import { formatClock } from './format.ts'
 import { translate } from './locale-store.ts'
-import { Modal } from './Modal.tsx'
+import { DialogFooter, Modal, dialogButton } from './Modal.tsx'
 import { Segmented } from './Pills.tsx'
 import { Still } from './Still.tsx'
-import modal from './Modal.module.css'
 import css from './AppFrame.module.css'
 
 /** The apps the rail opens, by view. */
@@ -76,6 +75,8 @@ function GalleryPick({ request, items, liked, onDone }: {
   const [chosen, setChosen] = useState<readonly string[]>([])
   const choices = useMemo(() => items
     .filter(item => item.kind === request.kind && (filter === 'all' || liked.has(item.name)))
+    // Kept although the host sends the inventory newest first: files the
+    // studio adds while it runs are put in front whatever their mtime.
     .slice()
     .sort((a, b) => b.mtime - a.mtime), [items, request.kind, filter, liked])
   const shown = choices.slice(0, limit)
@@ -125,19 +126,21 @@ function GalleryPick({ request, items, liked, onDone }: {
           </div>
         )}
       {(choices.length > limit || request.multiple) && (
-        <div className={`${modal.actions ?? ''} ${modal.spaced ?? ''}`}>
-          {choices.length > limit && (
-            <button type="button" className={modal.secondary} onClick={() => { setLimit(now => now + PAGE) }}>
+        <DialogFooter
+          spaced
+          hint={null}
+          lead={choices.length > limit && (
+            <button type="button" className={dialogButton.secondary} onClick={() => { setLimit(now => now + PAGE) }}>
               {translate('imagine.showMore', { count: Math.min(PAGE, choices.length - limit) })}
             </button>
           )}
-          <span className={modal.hint} />
+        >
           {request.multiple && (
-            <button type="button" className={modal.primary} disabled={chosen.length === 0} onClick={() => { onDone(chosen) }}>
+            <button type="button" className={dialogButton.primary} disabled={chosen.length === 0} onClick={() => { onDone(chosen) }}>
               {translate('imagine.appPick.add', { count: chosen.length })}
             </button>
           )}
-        </div>
+        </DialogFooter>
       )}
     </Modal>
   )

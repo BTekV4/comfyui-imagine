@@ -10,6 +10,7 @@ import { memo, type ReactNode, type RefObject } from 'react'
 import type {
   GalleryItem, ImagineObjectMode, ImaginePlacement, ModelRoute,
 } from '../../../shared/imagine-types.ts'
+import type { FrameCard } from './FrameExtractor.tsx'
 import type { ImagineAspect, ImagineResolution } from '../../../shared/imagine-media.ts'
 import { ComfyUIMark } from './comfyui-mark.tsx'
 import { useComposer, type ComposerStore } from './composer-store.ts'
@@ -95,7 +96,7 @@ interface PanelActions {
   readonly onUpload: (spec: WorkflowSpec, slot: WorkflowSlot, file: File) => Promise<void>
   readonly onRun: (spec: WorkflowSpec) => void
   readonly onFrameSaved: (item: GalleryItem) => void
-  readonly onUseFrame: (item: GalleryItem, card: 'remix' | 'video' | 'style' | 'bg') => void
+  readonly onUseFrame: (item: GalleryItem, card: FrameCard) => void
 }
 
 /** One card's panel, reading its fields from the composer store. */
@@ -194,8 +195,10 @@ export interface HomeViewProps extends PanelActions {
 
 export function HomeView(props: HomeViewProps) {
   const { store, busy, panelCard, items, composer, homeRef, onCard } = props
-  const spec = panelCard === undefined ? undefined : WORKFLOW_SPECS[panelCard]
-  if (panelCard !== undefined && spec !== undefined) {
+  // Every card id has a spec (WORKFLOW_SPECS is a full record), so an open
+  // card always has its panel.
+  if (panelCard !== undefined) {
+    const spec = WORKFLOW_SPECS[panelCard]
     return (
       <div className={css.home} ref={homeRef}>
         <WorkflowPanelBox
@@ -210,7 +213,6 @@ export function HomeView(props: HomeViewProps) {
       </div>
     )
   }
-  if (panelCard !== undefined) return null
   const customPanel = props.customPanel
   if (customPanel !== undefined) {
     return (

@@ -36,8 +36,15 @@ function loadedField(spec: FieldSpec, value: unknown): unknown {
       return typeof value === 'string' ? value : undefined
     case 'number':
       return finite(value)
-    case 'list':
-      return Array.isArray(value) && value.length > 0 ? [...value] : undefined
+    case 'list': {
+      /*
+       * The entries the settings page would accept (non-empty strings), as
+       * that page validates them: until 2026-11-15 the loader copied any
+       * array, so a `voices` list with a number in it reached the RVC check.
+       */
+      const kept = Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0) : []
+      return kept.length > 0 ? kept : undefined
+    }
     case 'object': {
       if (!isPlainObject(value)) return undefined
       const loaded: Record<string, unknown> = {}

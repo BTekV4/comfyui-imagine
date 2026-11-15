@@ -6,10 +6,22 @@
 
 import type { ImagineJobView as ImagineJob } from '../../../shared/imagine-types.ts'
 import {
-  HISTORY_PROJECT_ID, SEED_MESSAGE_PREFIX, type ImagineMessage, type ImagineProject, type ImagineRemovals,
+  HISTORY_PROJECT_ID, SEED_MESSAGE_PREFIX, type CanvasRect, type ImagineMessage, type ImagineProject, type ImagineRemovals,
 } from '../../../shared/imagine-projects.ts'
 
 export { SEED_MESSAGE_PREFIX }
+
+/**
+ * Whether a stored tile position is the same place and size as another: the
+ * store skips a rect it already holds, and a save sends only the rects that
+ * moved. One comparison for both, which used to be written out twice.
+ * @param a - the stored rect, if any.
+ * @param b - the rect to compare with.
+ * @returns true when both exist and nothing differs.
+ */
+export function sameRect(a: CanvasRect | undefined, b: CanvasRect): boolean {
+  return a !== undefined && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h && a.scale === b.scale
+}
 
 /**
  * Whether two lists hold the same entries, by identity, in the same order: a
@@ -39,8 +51,16 @@ export function isSeedMessage(message: { readonly id: string }): boolean {
  */
 export type ImagineTombstones = Readonly<Record<string, number>>
 
-/** How long a tombstone is kept before the id is forgotten. */
-const TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000
+/**
+ * How many tombstones are kept: the same ceiling as the host's
+ * (`MAX_TOMBSTONES` in server/vendor/tool-comfy/imagine-store.ts).
+ *
+ * Bounded by count, not by age, as the host is. Until 2026-11-15 this side
+ * forgot a tombstone after 30 days, which is the very thing the host's rule
+ * avoids: a browser whose saved rail still held a project deleted longer ago
+ * merged it back in and saved it again. A thousand ids are a few KB.
+ */
+const MAX_TOMBSTONES = 1000
 
 const TITLE_MAX = 36
 
@@ -581,22 +601,20 @@ export function mergeTombstones(
 }
 
 /**
- * Forget tombstones older than the TTL, so the set cannot grow without bound.
+ * Keep the most recent tombstones, up to the ceiling, so the set cannot grow
+ * without bound; the host caps its own copy the same way (`capTombstones`).
  * @param deleted - the current tombstones.
- * @param now - current epoch milliseconds.
- * @param ttl - how long a tombstone is honoured.
- * @returns the tombstones still worth carrying.
+ * @param ceiling - how many to keep.
+ * @returns the set itself when within the ceiling, else its newest entries.
  */
-export function pruneTombstones(
+export function capTombstones(
   deleted: ImagineTombstones,
-  now: number,
-  ttl: number = TOMBSTONE_TTL_MS,
+  ceiling: number = MAX_TOMBSTONES,
 ): ImagineTombstones {
-  const out: Record<string, number> = {}
-  for (const [id, at] of Object.entries(deleted)) {
-    if (now - at < ttl) out[id] = at
-  }
-  return out
+  const entries = Object.entries(deleted)
+  if (entries.length <= ceiling) return deleted
+  entries.sort(([, a], [, b]) => b - a)
+  return Object.fromEntries(entries.slice(0, ceiling))
 }
 
 /**

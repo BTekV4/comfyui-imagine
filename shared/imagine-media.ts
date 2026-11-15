@@ -51,7 +51,7 @@ export const VIDEO_ASPECT_LABELS: Readonly<Partial<Record<ImagineAspect, string>
  * exist in the node but Grok does not offer them for video, and `5:2` has no
  * label so a clip would be refused.
  */
-export const VIDEO_ASPECTS = ['2:3', '3:2', '1:1', '9:16', '16:9'] as const
+const VIDEO_ASPECTS = ['2:3', '3:2', '1:1', '9:16', '16:9'] as const
 
 /**
  * The names Grok writes next to the ratio (3/11/2026, measured in its

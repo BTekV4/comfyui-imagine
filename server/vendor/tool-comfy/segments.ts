@@ -25,13 +25,12 @@ import type { ComfyGraph } from '../comfyui/index.ts'
 import { finite, isPlainObject, trimmedText } from './guards.ts'
 import { conceptLines, lookForSegments } from './segment-concepts.ts'
 import { ensureComfyReady } from './comfy-setup.ts'
-import { eyesOf } from './eyes.ts'
 import type {
   ImagineSegment, ImagineSegmentKind, ImagineSegmentsIndex, ImagineSegmentsStatus,
 } from '../../../shared/imagine-segments.ts'
 
 /** The SAM 3 checkpoint the node loads, as ComfyUI lists it. */
-export const SAM3_CHECKPOINT = 'sam3.1_multiplex_fp16.safetensors'
+const SAM3_CHECKPOINT = 'sam3.1_multiplex_fp16.safetensors'
 
 /** The index file of a photo's folder. */
 const INDEX_FILE = 'index.json'
@@ -109,6 +108,34 @@ function segmentsGraph(image: string, concepts: string, texts: string, prefix: s
 /** A short time stamp, to keep two runs of the same photo apart. */
 const stamp = (): string => Date.now().toString(36)
 
+/** How many of a photo's masks and cut-outs are downloaded at once. */
+const DOWNLOAD_PARALLEL = 6
+
+/**
+ * Run a task over every item, at most `limit` at a time, failing as the
+ * sequential loop did: the first error stops new tasks from starting and is
+ * thrown once the ones in flight have settled. (`mapWithConcurrency` in
+ * media-tools.ts swallows errors, which here would store an analysis with
+ * missing files.)
+ */
+async function eachLimited<T>(items: readonly T[], limit: number, task: (item: T) => Promise<void>): Promise<void> {
+  let next = 0
+  let failure: { readonly error: unknown } | undefined
+  const worker = async (): Promise<void> => {
+    while (failure === undefined && next < items.length) {
+      const item = items[next] as T
+      next += 1
+      try {
+        await task(item)
+      } catch (error: unknown) {
+        failure ??= { error }
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  if (failure !== undefined) throw failure.error
+}
+
 /**
  * Analyse one photo and store what came out, replacing an older analysis.
  * @param ctx - the host: vision and ComfyUI.
@@ -117,20 +144,28 @@ const stamp = (): string => Date.now().toString(36)
  * @returns the stored index.
  * @throws when the model lists nothing, ComfyUI fails or answers no index.
  */
-export async function analyzeSegments(ctx: ImagineHost, outputDir: string, photo: string, background = false): Promise<ImagineSegmentsIndex> {
+async function analyzeSegments(ctx: ImagineHost, outputDir: string, photo: string, background = false): Promise<ImagineSegmentsIndex> {
   const path = join(outputDir, photo)
-  /*
-   * ComfyUI has the Segments node and SAM 3 (comfyui-imagine's setup), checked
-   * before the vision pass, which costs minutes: nobody is in the chat to say
-   * yes, so it installs only with «Install automatically» on.
-   */
-  await ensureComfyReady(ctx, segmentsGraph('probe.png', 'object', '[]', 'imagine-segments/probe'))
-  const sight = await lookForSegments(ctx, path, background)
-  if (sight === undefined) throw new Error(message('segments.nothingListed'))
-  const route = eyesOf(ctx)?.route
-  const texts = JSON.stringify(sight.texts)
   const stem = photo.slice(0, photo.length - extname(photo).length).replace(/[^A-Za-z0-9_-]+/g, '-').slice(0, 60)
-  const upload = await ctx.comfy.uploadImage(`segments-${stem}-${stamp()}${extname(photo)}`, await readFile(path))
+  /*
+   * Three independent steps, run together: the setup check (ComfyUI has the
+   * Segments node and SAM 3, comfyui-imagine's setup; nobody is in the chat to
+   * say yes, so it installs only with «Install automatically» on), the vision
+   * pass, which costs minutes, and the photo's upload. A check or an upload
+   * that fails stops the vision pass, so a ComfyUI without the node does not
+   * cost every new still a look; a look that lists nothing costs one upload.
+   */
+  const stop = new AbortController()
+  const [, sight, upload] = await Promise.all([
+    ensureComfyReady(ctx, segmentsGraph('probe.png', 'object', '[]', 'imagine-segments/probe')),
+    lookForSegments(ctx, path, background, stop.signal),
+    readFile(path).then(async bytes => await ctx.comfy.uploadImage(`segments-${stem}-${stamp()}${extname(photo)}`, bytes)),
+  ]).catch((error: unknown) => {
+    stop.abort()
+    throw error
+  })
+  if (sight === undefined) throw new Error(message('segments.nothingListed'))
+  const texts = JSON.stringify(sight.texts)
   const run = await ctx.comfy.run(segmentsGraph(upload.name, conceptLines(sight.concepts), texts, `imagine-segments/${stem}`))
   const indexRef = run.media.find(ref => ref.filename.endsWith('_index.json'))
   if (indexRef === undefined) throw new Error(message('segments.noIndex'))
@@ -141,14 +176,14 @@ export async function analyzeSegments(ctx: ImagineHost, outputDir: string, photo
   try {
     const nodeIndex = join(scratch, 'node-index.json')
     await ctx.comfy.fetchMediaTo(indexRef, nodeIndex)
-    const model = route === undefined ? undefined : `${route.provider}/${route.model}`
-    const index = parseNodeIndex(await readFile(nodeIndex, 'utf8'), photo, model)
+    const index = parseNodeIndex(await readFile(nodeIndex, 'utf8'), photo, sight.model)
     if (index === undefined) throw new Error(message('segments.noIndex'))
     await rm(nodeIndex)
     const wanted = new Set(index.segments.flatMap(segment => [segment.mask, segment.cut]))
-    for (const ref of run.media) {
-      if (wanted.has(ref.filename)) await ctx.comfy.fetchMediaTo(ref, join(scratch, ref.filename))
-    }
+    // Two PNGs per segment, up to 40 concepts times their count: one request
+    // at a time made the download the slowest step after the vision pass.
+    await eachLimited(run.media.filter(ref => wanted.has(ref.filename)), DOWNLOAD_PARALLEL,
+      async (ref) => { await ctx.comfy.fetchMediaTo(ref, join(scratch, ref.filename)) })
     await writeFile(join(scratch, INDEX_FILE), JSON.stringify(index))
     await rm(dir, { recursive: true, force: true })
     await rename(scratch, dir)

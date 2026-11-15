@@ -22,33 +22,11 @@
 /* Same pill as the History's "more files", under the board instead of over
    it: the two never show at once, and they must read as the same control. */
 .newMedia {
-  position: absolute;
-  left: 50%;
+  composes: floatPill from './imagine-shared.module.css';
   bottom: 16px;
-  transform: translateX(-50%);
-  z-index: 10;
-  height: 34px;
-  padding: 0 16px;
-  border: 1px solid var(--imagine-line);
-  border-radius: var(--imagine-radius-pill);
-  corner-shape: round;
-  background: var(--imagine-surface);
-  color: inherit;
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-  box-shadow: var(--imagine-shadow);
 }
 
-.newMedia:hover {
-  background: var(--imagine-hover);
-}
-
-/* `scale`, not `transform`: the translate above centres the pill, and a
-   transform here would replace it and jump it out from under the cursor. */
-.newMedia:active {
-  scale: 0.97;
-}
+/* Hover and press come with the composed pill. */
 
 .boardHand {
   cursor: grab;

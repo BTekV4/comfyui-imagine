@@ -228,21 +228,33 @@ export async function findStoryByFile(name: string): Promise<StoryManifest | und
     if (manifest?.label === label) return manifest
   }
   // Not indexed yet (a story written by another process, or before the first
-  // look): read every record once and index them all.
+  // look): read every record once and index them all. The directory's order
+  // is kept, so the first match still wins.
+  return (await readAllStoryManifests()).find(manifest => manifest.label === label)
+}
+
+/**
+ * Every well-formed story record on disk, in the directory's order.
+ *
+ * A few at a time ({@link MANIFEST_READS}) rather than all at once, and every
+ * record read fills the label index, so the boot scan and the file lookup
+ * share one reading and leave the index warm.
+ * @returns the records; empty when the directory cannot be read.
+ */
+export async function readAllStoryManifests(): Promise<StoryManifest[]> {
   let entries: string[]
   try {
     entries = await readdir(storiesDir())
   } catch {
-    return undefined
+    return []
   }
-  // A few at a time, and in the directory's order: the first match still wins.
   const manifests = await mapWithConcurrency(entries.filter(entry => entry.endsWith('.json')), MANIFEST_READS,
     async entry => readStoryManifest(entry.slice(0, -'.json'.length)))
-  let found: StoryManifest | undefined
+  const found: StoryManifest[] = []
   for (const manifest of manifests) {
     if (manifest === undefined) continue
     storyByLabel.set(manifest.label, manifest.storyId)
-    if (manifest.label === label) found ??= manifest
+    found.push(manifest)
   }
   return found
 }

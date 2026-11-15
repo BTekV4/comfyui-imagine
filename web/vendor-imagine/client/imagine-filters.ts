@@ -231,6 +231,24 @@ export function originOf(tool: GalleryTool | undefined): HistoryOrigin {
 }
 
 /**
+ * The History's filters as one test on a file, without the order: the
+ * counting below needs which files pass, not in what order.
+ * @param filters - the seats in force.
+ * @param now - epoch milliseconds the periods are measured back from.
+ * @returns whether a file is kept.
+ */
+function historyMatcher(filters: HistoryFilters, now: number): (item: GalleryItem) => boolean {
+  const hours = PERIOD_HOURS[filters.period]
+  const floor = hours === undefined ? undefined : now - hours * 60 * 60 * 1000
+  const kinds = new Set(filters.kinds)
+  const origins = new Set(filters.origins)
+  return item =>
+    (floor === undefined || item.mtime >= floor)
+    && (kinds.size === 0 || kinds.has(item.kind))
+    && (origins.size === 0 || origins.has(originOf(item.tool)))
+}
+
+/**
  * Narrow and order the inventory for the History.
  *
  * The order runs after the filters. `recent` returns the filtered array
@@ -246,14 +264,7 @@ export function filterHistory(
   filters: HistoryFilters,
   now: number,
 ): readonly GalleryItem[] {
-  const hours = PERIOD_HOURS[filters.period]
-  const floor = hours === undefined ? undefined : now - hours * 60 * 60 * 1000
-  const kinds = new Set(filters.kinds)
-  const origins = new Set(filters.origins)
-  const kept = items.filter(item =>
-    (floor === undefined || item.mtime >= floor)
-    && (kinds.size === 0 || kinds.has(item.kind))
-    && (origins.size === 0 || origins.has(originOf(item.tool))))
+  const kept = items.filter(historyMatcher(filters, now))
   // `filter` already made a new array, so it is sorted in place.
   if (filters.order === 'oldest') kept.sort((a, b) => a.mtime - b.mtime || a.name.localeCompare(b.name))
   if (filters.order === 'name') kept.sort((a, b) => a.name.localeCompare(b.name))
@@ -277,7 +288,8 @@ export function historyKindCounts(
   filters: HistoryFilters,
   now: number,
 ): Readonly<Record<MediaKind, number>> {
-  return kindCounts(filterHistory(items, { ...filters, kinds: [] }, now))
+  // Filtered only: sorting the whole result to count it was wasted work.
+  return kindCounts(items.filter(historyMatcher({ ...filters, kinds: [] }, now)))
 }
 
 /**

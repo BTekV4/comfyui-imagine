@@ -7,14 +7,12 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { stat, unlink } from 'node:fs/promises'
+import { unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { lookWith, type VisionCapable } from './imagine-models.ts'
 import type { ModelRoute } from '../../../shared/imagine-types.ts'
-import { ffmpegTo } from './media-tools.ts'
-import { H3_WINDOW_SECONDS } from './h3-windows.ts'
-import { stripAudioDirections } from './video-prompt.ts'
+import { FPS, ffmpegTo, frameAt } from './media-tools.ts'
 
 /**
  * How long one vision read of the swap's texts pass may take.
@@ -33,26 +31,12 @@ const STRIP_MOMENTS = [0.1, 0.5, 0.9] as const
 const STRIP_FRAME_HEIGHT = 400
 
 /**
- * One frame of the strip, at the second asked for, scaled to the strip's height.
- *
- * A seek that lands past the last frame the file can decode writes nothing at
- * all — ffmpeg with `-update 1` exits 0 and leaves no file — so the frame is
- * checked, and the clip's final frame stands in for a moment that is not
- * there (the same guard as the contact sheet of `recreate-video.ts`).
- * @param clip - absolute path of the clip.
- * @param out - the frame to write.
- * @param at - the second to read.
+ * The length a clip is read as when its own cannot be: 124 frames at 24 fps,
+ * the span one H3 pass renders at the native canvas. Only where the three
+ * frames are taken depends on it, and a frame past the end falls back to the
+ * clip's last one.
  */
-async function stripFrame(clip: string, out: string, at: number): Promise<void> {
-  const scale = ['-vf', `scale=-2:${String(STRIP_FRAME_HEIGHT)}`]
-  await ffmpegTo(out, ['-v', 'error', '-y', '-ss', String(at), '-i', clip, '-frames:v', '1', ...scale, '-update', '1', out], 60_000)
-    .catch(() => undefined)
-  try {
-    await stat(out)
-  } catch {
-    await ffmpegTo(out, ['-v', 'error', '-y', '-sseof', '-0.5', '-i', clip, ...scale, '-update', '1', out], 60_000)
-  }
-}
+const UNKNOWN_CLIP_SECONDS = 124 / FPS
 
 /**
  * Three frames spread over the clip, stacked top to bottom in time order, as
@@ -67,19 +51,26 @@ async function stripFrame(clip: string, out: string, at: number): Promise<void> 
  * same reason.
  * @param clip - absolute path of the clip.
  * @param duration - its length in seconds; not finite or not positive reads as
- *   one swap window.
+ *   {@link UNKNOWN_CLIP_SECONDS}.
  * @param prefix - the scratch file's name prefix, for the journal and `/tmp`.
  * @returns the absolute path of the strip; the caller removes it.
  */
 export async function clipStrip(clip: string, duration: number, prefix: string): Promise<string> {
-  const span = Number.isFinite(duration) && duration > 0 ? duration : H3_WINDOW_SECONDS
+  const span = Number.isFinite(duration) && duration > 0 ? duration : UNKNOWN_CLIP_SECONDS
   const stamp = randomUUID()
   const frames = STRIP_MOMENTS.map((fraction, index) => ({
     at: span * fraction,
     path: join(tmpdir(), `${prefix}-${stamp}-${String(index)}.png`),
   }))
   try {
-    await Promise.all(frames.map(async ({ path, at }) => stripFrame(clip, path, at)))
+    /*
+     * Each frame at the strip's height; a moment past the last decodable frame
+     * takes the clip's final one (`orLast`), so the stack always has three
+     * inputs.
+     */
+    await Promise.all(frames.map(async ({ path, at }) => frameAt(clip, path, {
+      at, orLast: true, height: STRIP_FRAME_HEIGHT, timeoutMs: 60_000,
+    })))
     const out = join(tmpdir(), `${prefix}-${stamp}.png`)
     // ffmpegTo removes a half-written strip when the stacking fails.
     return await ffmpegTo(out, [
@@ -116,35 +107,3 @@ export async function readTwice(
     ?? await lookWith(vision, path, instruction, route, SWAP_LOOK_TIMEOUT_MS, { maxSide: 1024 })
 }
 
-/**
- * The two audio fields of a written shot, cleaned of prohibitions and never
- * empty.
- *
- * The finished clip normally carries the plate's own track (`layPlateAudio`),
- * so nothing written here is heard — but a plate with no audio keeps the
- * model's soundtrack, and "no voices" in the soundscape is then spoken exactly
- * as it was on the clips of 2026-10-31. An emptied soundscape becomes room tone
- * and an emptied score `N/A`, the values the format reads as "nothing".
- * @param soundscape - the `overall_soundscape` the pass wrote.
- * @param music - the `non_diegetic_music` the pass wrote; any spelling of
- *   "n/a" is read as none.
- * @param label - who is writing, for the journal line.
- * @returns the two fields, ready for the shot document.
- */
-export function cleanAudioFields(
-  soundscape: string,
-  music: string,
-  label: string,
-): { readonly soundscape: string; readonly music: string } {
-  const sound = stripAudioDirections(soundscape.trim())
-  const score = stripAudioDirections(/^n\/?a\.?$/i.test(music.trim()) ? 'N/A' : music.trim())
-  for (const cleaned of [sound, score]) {
-    if (cleaned.stripped.length > 0) {
-      console.warn(`[imagine] ${label}: removed ${String(cleaned.stripped.length)} negative audio directions: ${cleaned.stripped.join(' | ').slice(0, 300)}`)
-    }
-  }
-  return {
-    soundscape: sound.text.trim().length === 0 ? 'Room tone.' : sound.text.trim(),
-    music: score.text.trim().length === 0 ? 'N/A' : score.text.trim(),
-  }
-}

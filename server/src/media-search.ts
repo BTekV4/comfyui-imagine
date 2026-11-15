@@ -16,6 +16,12 @@
  * that it did not. Notes of vanished files are left out (a deleted file must
  * not come back from a search): that is what the media folder's date is for.
  * Two searches that find the index old share one rebuild.
+ *
+ * A rebuild is incremental: each note's text is kept with the note's mtime and
+ * size, and only a note that is new or changed is read and parsed again. Every
+ * finished job moves the media folder (and adds a note), and until 2026-11-15
+ * the next search re-read all the notes for it, some 1600 small files. When
+ * only the media folder moved, the notes are not even listed again.
  * @module server/media-search
  */
 
@@ -43,6 +49,13 @@ interface Entry {
 interface Index {
   readonly stamp: string
   readonly entries: readonly Entry[]
+}
+
+/** A note's text as last read, and the version of the note it came from. */
+interface Known {
+  /** `mtimeMs/size` of the note when it was read. */
+  readonly version: string
+  readonly text: string
 }
 
 /**
@@ -90,23 +103,66 @@ async function noteText(file: string): Promise<string> {
 }
 
 /**
- * Build the index of the notes that still have their file.
- * @param folder - the notes folder.
- * @param names - the notes seen in the folder.
- * @param present - the names of the files the gallery really has.
- * @returns the entries with a text, in folder order.
+ * The notes folder as last listed: the note files in folder order, with the
+ * version (`mtimeMs/size`) of each, and the folder's own mtime at that time.
  */
-async function build(folder: string, names: readonly string[], present: ReadonlySet<string>): Promise<Entry[]> {
-  const entries: Entry[] = []
+interface Listing {
+  readonly mtime: number
+  readonly notes: readonly { readonly file: string; readonly version: string }[]
+}
+
+/**
+ * List the notes folder with each note's version, a `stat` per note in batches.
+ * @param folder - the notes folder.
+ * @param mtime - the folder's mtime, read before the listing.
+ * @returns the listing; empty when the folder cannot be read.
+ */
+async function listNotes(folder: string, mtime: number): Promise<Listing> {
+  const names = (await readdir(folder).catch(() => [] as string[]))
+    .filter(name => name.endsWith('.json') && !name.startsWith('.'))
+  const notes: { file: string; version: string }[] = []
   for (let at = 0; at < names.length; at += BATCH) {
     const slice = names.slice(at, at + BATCH)
-    const read = await Promise.all(slice.map(async (file) => {
-      const name = file.slice(0, -'.json'.length)
-      if (!present.has(name)) return undefined
-      const text = await noteText(join(folder, file))
-      return text.length === 0 ? undefined : { name, text }
-    }))
-    for (const entry of read) if (entry !== undefined) entries.push(entry)
+    const infos = await Promise.all(slice.map(async file => await stat(join(folder, file)).catch(() => undefined)))
+    slice.forEach((file, i) => {
+      const info = infos[i]
+      // A note removed between the listing and its stat is simply gone.
+      if (info !== undefined) notes.push({ file, version: `${String(info.mtimeMs)}/${String(info.size)}` })
+    })
+  }
+  return { mtime, notes }
+}
+
+/**
+ * Build the index of the notes that still have their file, reading only the
+ * notes `known` does not hold at their current version.
+ * @param folder - the notes folder.
+ * @param listing - the notes seen in the folder.
+ * @param present - the names of the files the gallery really has.
+ * @param known - the texts read before, by note file; updated in place, and
+ *   pruned of the notes no longer listed.
+ * @returns the entries with a text, in folder order.
+ */
+async function build(
+  folder: string,
+  listing: Listing,
+  present: ReadonlySet<string>,
+  known: Map<string, Known>,
+): Promise<Entry[]> {
+  const listed = new Set(listing.notes.map(note => note.file))
+  for (const file of known.keys()) if (!listed.has(file)) known.delete(file)
+  // Notes of vanished files are not read: a deleted file must not come back.
+  const stale = listing.notes.filter(note => present.has(note.file.slice(0, -'.json'.length)) && known.get(note.file)?.version !== note.version)
+  for (let at = 0; at < stale.length; at += BATCH) {
+    const slice = stale.slice(at, at + BATCH)
+    const texts = await Promise.all(slice.map(async note => await noteText(join(folder, note.file))))
+    slice.forEach((note, i) => { known.set(note.file, { version: note.version, text: texts[i] ?? '' }) })
+  }
+  const entries: Entry[] = []
+  for (const note of listing.notes) {
+    const name = note.file.slice(0, -'.json'.length)
+    const text = known.get(note.file)?.text ?? ''
+    if (present.has(name) && text.length > 0) entries.push({ name, text })
   }
   return entries
 }
@@ -119,12 +175,16 @@ async function build(folder: string, names: readonly string[], present: Readonly
 export function createMediaSearchRoute(outputDir: string): Handler {
   const folder = dataPath('comfy', 'notes')
   let index: Promise<Index> | undefined
+  // Kept across rebuilds; only touched by the one rebuild running at a time.
+  const known = new Map<string, Known>()
+  let listing: Listing | undefined
 
-  const rebuild = async (stamp: string): Promise<Index> => {
-    const names = await readdir(folder).catch(() => [] as string[])
+  const rebuild = async (stamp: string, notesMtime: number): Promise<Index> => {
+    // The folder's mtime moves whenever a note is added, rewritten (by rename)
+    // or removed: when it has not, the last listing and its versions still hold.
+    if (listing?.mtime !== notesMtime) listing = await listNotes(folder, notesMtime)
     const present = await mediaNames(outputDir)
-    const notes = names.filter(name => name.endsWith('.json') && !name.startsWith('.'))
-    return { stamp, entries: await build(folder, notes, present) }
+    return { stamp, entries: await build(folder, listing, present, known) }
   }
 
   const current = async (): Promise<Index> => {
@@ -141,9 +201,13 @@ export function createMediaSearchRoute(outputDir: string): Handler {
     // The promise, not its value, is what is kept: a second search arriving
     // during the rebuild waits for this one instead of starting its own.
     if (index !== known) return await (index as Promise<Index>)
-    const building = rebuild(stamp)
+    const building = rebuild(stamp, notesInfo?.mtimeMs ?? 0)
     index = building
-    building.catch(() => { if (index === building) index = undefined })
+    building.catch(() => {
+      if (index === building) index = undefined
+      // A failed rebuild may have left the listing half-trusted: list again next time.
+      listing = undefined
+    })
     return await building
   }
 

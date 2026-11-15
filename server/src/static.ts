@@ -50,7 +50,7 @@ const gzipAsync = promisify(gzip)
  * the first time it is asked for and keeping the result costs a few hundred
  * KB of memory and saves ~70 % of the JS on every cold load.
  */
-const packed = new Map<string, { readonly tag: string; readonly br: Promise<Buffer>; readonly gzip: Promise<Buffer> }>()
+const packed = new Map<string, { readonly tag: string; br?: Promise<Buffer>; gzip?: Promise<Buffer> }>()
 
 /**
  * More entries than one build has files: what is left belongs to bundles a
@@ -58,21 +58,33 @@ const packed = new Map<string, { readonly tag: string; readonly br: Promise<Buff
  */
 const PACKED_MAX = 300
 
-function packedOf(file: string, tag: string): { br: Promise<Buffer>; gzip: Promise<Buffer> } {
-  const known = packed.get(file)
-  if (known?.tag === tag) return known
-  if (packed.size >= PACKED_MAX) packed.clear()
-  const raw = readFile(file)
-  const entry = {
-    tag,
-    br: raw.then(bytes => brotliAsync(bytes, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 9 } })),
-    gzip: raw.then(bytes => gzipAsync(bytes, { level: 9 })),
+/**
+ * One file of the build compressed one way, made the first time that encoding
+ * is asked for. Each encoding is made on its own: every browser asks for
+ * brotli, and computing the gzip beside it (as until 2026-11-15) spent a
+ * level-9 pass per file that almost nobody downloads.
+ * @param file - the file.
+ * @param tag - its version (size + date): a new version starts over.
+ * @param encoding - the encoding asked for.
+ * @returns the compressed bytes.
+ */
+function packedOf(file: string, tag: string, encoding: 'br' | 'gzip'): Promise<Buffer> {
+  let entry = packed.get(file)
+  if (entry?.tag !== tag) {
+    if (packed.size >= PACKED_MAX) packed.clear()
+    entry = { tag }
+    packed.set(file, entry)
   }
+  const known = entry[encoding]
+  if (known !== undefined) return known
+  const made = readFile(file).then(bytes => encoding === 'br'
+    ? brotliAsync(bytes, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 9 } })
+    : gzipAsync(bytes, { level: 9 }))
+  entry[encoding] = made
   // A failed read must not stay cached for the next request.
-  entry.br.catch(() => { packed.delete(file) })
-  entry.gzip.catch(() => { packed.delete(file) })
-  packed.set(file, entry)
-  return entry
+  const kept = entry
+  made.catch(() => { if (kept[encoding] === made) delete kept[encoding] })
+  return made
 }
 
 /**
@@ -213,8 +225,7 @@ export async function serveStatic(webDir: string, req: IncomingMessage, res: Ser
   if (encoding !== undefined) {
     let body: Buffer
     try {
-      const entry = packedOf(file, tag)
-      body = await (encoding === 'br' ? entry.br : entry.gzip)
+      body = await packedOf(file, tag, encoding)
     } catch {
       res.writeHead(404).end()
       return

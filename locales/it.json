@@ -1249,5 +1249,6 @@
   "imagine.workflowSwapPersonNoLipSync": "Cambio personaggio (senza lip-sync)",
   "imagine.workflowVideoChain": "Crea video (lungo, scene concatenate)",
   "imagine.workflowExtendChain": "Estendi video (lungo, scene concatenate)",
-  "imagine.workflowLoopChain": "Ciclo (lungo, scene concatenate)"
+  "imagine.workflowLoopChain": "Ciclo (lungo, scene concatenate)",
+  "imagine.cropFree": "Libero"
 }

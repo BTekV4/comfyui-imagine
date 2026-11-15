@@ -8,6 +8,8 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { translate } from './locale-store.ts'
 import { DRAW_STYLES, PALETTE_PRESETS, mainColors, type DrawStyleId } from '../../../shared/imagine-post-tools.ts'
+import { Segmented } from './Pills.tsx'
+import { IconPencil } from './canvas-icons.tsx'
 import css from './PostPanel.module.css'
 
 /* ── «Colori» ─────────────────────────────────────────────────────────────── */
@@ -55,7 +57,7 @@ export function ColorsTool({ colors, onColors, onExtract, onApply, busy }: {
         ))}
       </div>
       <button type="button" className={css.softButton} onClick={onExtract}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m14 6 4 4M4 20l2.5-.5L19 7a2 2 0 0 0-3-3L3.5 16.5Z" /></svg>
+        <IconPencil size={14} strokeWidth={2} />
         {translate('imagine.paletteExtract')}
       </button>
       <span className={css.sectionTitle} style={{ fontSize: 12, paddingTop: 6 }}>{translate('imagine.paletteExplore')}</span>
@@ -76,8 +78,11 @@ export function ColorsTool({ colors, onColors, onExtract, onApply, busy }: {
 
 /* ── «Disegna» ────────────────────────────────────────────────────────────── */
 
+/** The two drawing tools of the switch. */
+const DRAW_TOOLS = ['brush', 'eraser'] as const
+
 /** Grok's colours for the brush. */
-export const DRAW_COLORS = ['#FFFFFF', '#000000', '#EF4444', '#F97316', '#FACC15', '#22C55E', '#3B82F6'] as const
+const DRAW_COLORS = ['#FFFFFF', '#000000', '#EF4444', '#F97316', '#FACC15', '#22C55E', '#3B82F6'] as const
 
 interface Stroke {
   readonly color: string
@@ -248,10 +253,15 @@ export function DrawTool({ brush, onBrush, erase, onErase, color, onColor, style
         <input type="range" min={2} max={48} step={1} value={brush} aria-label={translate('imagine.brushSize')} onChange={(event) => { onBrush(Number(event.currentTarget.value)) }} />
         <span className={css.dotLarge} aria-hidden="true" />
       </div>
-      <div className={css.segmented} role="radiogroup" aria-label={translate('imagine.drawTool')}>
-        <button type="button" role="radio" aria-checked={!erase} className={css.segment} onClick={() => { onErase(false) }}>{translate('imagine.brush')}</button>
-        <button type="button" role="radio" aria-checked={erase} className={css.segment} onClick={() => { onErase(true) }}>{translate('imagine.eraser')}</button>
-      </div>
+      <Segmented
+        label={translate('imagine.drawTool')}
+        values={DRAW_TOOLS}
+        value={erase ? 'eraser' : 'brush'}
+        onPick={(tool) => { onErase(tool === 'eraser') }}
+        format={tool => translate(tool === 'eraser' ? 'imagine.eraser' : 'imagine.brush')}
+        group={css.segmented}
+        pill={css.segment}
+      />
       <span className={css.sectionTitle}>{translate('imagine.drawColors')}</span>
       <div className={css.colorRow}>
         {DRAW_COLORS.map(entry => (
@@ -280,7 +290,7 @@ export function DrawTool({ brush, onBrush, erase, onErase, color, onColor, style
               new Picker().open().then((picked) => { onColor(picked.sRGBHex.toUpperCase()); onErase(false) }, () => undefined)
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m14 6 4 4M4 20l2.5-.5L19 7a2 2 0 0 0-3-3L3.5 16.5Z" /></svg>
+            <IconPencil size={14} strokeWidth={2} />
           </button>
         )}
       </div>

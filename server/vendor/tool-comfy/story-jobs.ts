@@ -9,7 +9,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { readFile, readdir, rename, stat, unlink } from 'node:fs/promises'
+import { readFile, rename, stat, unlink } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { ImagineHost } from '../../src/host.ts'
 import { message, withLanguage } from '../../src/messages.ts'
@@ -18,10 +18,11 @@ import type { LoadedWorkflow } from './index.ts'
 import { AAC_192K, FASTSTART, ffmpegTo, h264Out, probeMedia, runProbe } from './media-tools.ts'
 import { kindOf, probePixels, safeBasename } from './gallery.ts'
 import { GUIDE_SECONDS } from './extend-video.ts'
+import { CHAIN_SCENE_SECONDS } from './video-prompt.ts'
 import { fadedStart, joinCuts, montageShots, renderedSeconds } from './montage.ts'
 import { lookAtShots, orderShots, shotNote } from './shot-order.ts'
 import {
-  finalFileName, findStoryByFile, readStoryManifest, shotOfFileName, storiesDir, storyLabel,
+  finalFileName, findStoryByFile, readAllStoryManifests, readStoryManifest, shotOfFileName, storyLabel,
   updateStoryManifest, writeStoryManifest,
   type StoryManifest, type StoryShotRecord,
 } from './story-manifest.ts'
@@ -153,13 +154,17 @@ function songStartOf(shots: readonly number[], index: number, songSeconds?: numb
 
 /**
  * Seconds of new material each clip of a story adds, unless told otherwise.
- * Six since 2026-11-15, as every chain in the studio: Openjutsu's plans and
- * the Context Loop scenes render at most six seconds at a time.
+ * The studio's one chain unit since 2026-11-15 ({@link CHAIN_SCENE_SECONDS}):
+ * Openjutsu's plans and the Context Loop scenes render at most six seconds at
+ * a time, and a story clip is cut to the same length so the two never drift.
  */
-const STORY_CLIP_SECONDS = 6
+const STORY_CLIP_SECONDS = CHAIN_SCENE_SECONDS
 
-/** Longest chained shot unless the workflow says otherwise (was 9, the 16 GB card's margin; now the studio's six). */
-const CHAINED_SHOT_SECONDS = 6
+/**
+ * Longest chained shot unless the workflow says otherwise: the same chain
+ * unit (it was 9, the 16 GB card's margin for a ten-second shot).
+ */
+const CHAINED_SHOT_SECONDS = CHAIN_SCENE_SECONDS
 
 /** How long a story runs when neither the request nor a song says. */
 const DEFAULT_STORY_SECONDS = 30
@@ -436,10 +441,11 @@ async function storyTiming(
   const overlap = chained ? GUIDE_SECONDS : 0
   /*
    * A chained shot carries the previous shot's context on top of its own
-   * frames: at ten seconds it peaks at 15.6-15.8 GB of the card's 16.3 and
-   * fails whenever anything else is resident (measured, twice in one day);
-   * at nine it peaks at 14.9 GB with the same picture. The deployment can
-   * raise it back — `chainShotSeconds` — knowing the odds.
+   * frames: at ten seconds it peaked at 15.6-15.8 GB of the card's 16.3 and
+   * failed whenever anything else was resident (measured, twice in one day),
+   * at nine at 14.9 GB with the same picture. It is now the studio's six
+   * ({@link CHAINED_SHOT_SECONDS}); the deployment can raise it back —
+   * `chainShotSeconds` — knowing the odds.
    */
   const longest = chained
     ? Math.min(request.clipSeconds ?? STORY_CLIP_SECONDS, clips.chainShotSeconds ?? CHAINED_SHOT_SECONDS)
@@ -557,7 +563,7 @@ function storyJobs(
          * Shot n travels from photo n to photo n+1, so the video moves through
          * the pictures instead of cutting between them: the frame it ends on
          * is the frame the next shot opens with. More shots than photos when
-         * the video is longer than the pictures can fill at ten seconds each,
+         * the video is longer than the pictures can fill at one shot each,
          * and then they come back round in order — the last shot of the loop
          * arrives at the photo the first one left from.
          *
@@ -881,14 +887,7 @@ export async function resumeUnfinishedStories(
   now: number = Date.now(),
 ): Promise<string[]> {
   if (workflows.videoOnSong === undefined) return []
-  let ids: string[]
-  try {
-    ids = (await readdir(storiesDir())).filter(name => name.endsWith('.json')).map(name => name.slice(0, -'.json'.length))
-  } catch {
-    return []
-  }
-  const manifests = (await Promise.all(ids.map(async id => readStoryManifest(id))))
-    .filter((manifest): manifest is StoryManifest => manifest !== undefined)
+  const manifests = await readAllStoryManifests()
   const newestStart = manifests.reduce((latest, manifest) => Math.max(latest, manifest.createdAt), 0)
   // Only a song montage with shots on the clock, recently started and not
   // yet finished. finals is set when the cut is written, so a done story is

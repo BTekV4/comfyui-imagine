@@ -8,6 +8,7 @@
  */
 import { translate } from './locale-store.ts'
 import { useRef, type ReactNode } from 'react'
+import { Glyph, IconGrid, IconHand, IconImage, IconText, IconUpload, IconVideo } from './canvas-icons.tsx'
 import { IconPointer, Tooltip } from '../../shims/primitives/index.ts'
 import type { ImagineCanvasTool } from './gallery-store.ts'
 import css from './CanvasToolbar.module.css'
@@ -15,17 +16,12 @@ import css from './CanvasToolbar.module.css'
 /** Ctrl on Windows and Linux, ⌘ on a Mac, as Grok's shortcut labels. */
 const MOD = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+'
 
-const S = ({ children }: { children: ReactNode }) => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
-)
-// Grok's glyphs: the hand is the four-way move mark, the video a camera, the
-// text a bare T, the upload an arrow out of a tray.
-const IconHand = () => <S><path d="M12 3v18M3 12h18M12 3 9.5 5.5M12 3l2.5 2.5M12 21l-2.5-2.5M12 21l2.5-2.5M3 12l2.5-2.5M3 12l2.5 2.5M21 12l-2.5-2.5M21 12l-2.5 2.5" /></S>
-const IconImage = () => <S><rect x="3.5" y="4.5" width="17" height="15" rx="3" /><circle cx="9" cy="10" r="1.6" /><path d="m4 17 5-4.5 4 3.5 2.5-2 4.5 3.5" /></S>
-const IconVideoTool = () => <S><rect x="3" y="6" width="13" height="12" rx="2.5" /><path d="m16 10.5 5-3v9l-5-3" /></S>
-const IconText = () => <S><path d="M5 5h14M12 5v15" /></S>
-const IconUpload = () => <S><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5" /><path d="M4 14v3.5A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5V14" /></S>
-const IconGrid = () => <S><rect x="4" y="4" width="7" height="7" rx="1.5" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" /></S>
+/*
+ * Grok's glyphs (canvas-icons.tsx): the hand is the four-way move mark, the
+ * video a camera, the text a bare T, the upload an arrow out of a tray. The
+ * bar draws them at 18 px with a slightly lighter line than the tiles.
+ */
+const TOOL_GLYPH = { size: 18, strokeWidth: 1.7 } as const
 
 function Tool({ label, shortcut, on, onClick, children }: { label: string; shortcut?: string; on?: boolean; onClick: () => void; children: ReactNode }) {
   return (
@@ -73,7 +69,7 @@ export function CanvasToolbar(props: CanvasToolbarProps) {
       <div className={css.pill} role="group" aria-label={translate('imagine.canvasTools')} data-imagine-tools>
         <Tooltip label={translate('imagine.zoomOut')} side="top" delayMs={150} portal>
           <button type="button" className={css.tool} aria-label={translate('imagine.zoomOut')} disabled={!props.canZoomOut} onClick={props.onZoomOut}>
-            <S><path d="M5 12h14" /></S>
+            <Glyph {...TOOL_GLYPH}><path d="M5 12h14" /></Glyph>
           </button>
         </Tooltip>
         <Tooltip label={translate('imagine.fitToView')} side="top" delayMs={150} portal>
@@ -83,7 +79,7 @@ export function CanvasToolbar(props: CanvasToolbarProps) {
         </Tooltip>
         <Tooltip label={translate('imagine.zoomIn')} side="top" delayMs={150} portal>
           <button type="button" className={css.tool} aria-label={translate('imagine.zoomIn')} disabled={!props.canZoomIn} onClick={props.onZoomIn}>
-            <S><path d="M5 12h14M12 5v14" /></S>
+            <Glyph {...TOOL_GLYPH}><path d="M5 12h14M12 5v14" /></Glyph>
           </button>
         </Tooltip>
       </div>
@@ -92,15 +88,15 @@ export function CanvasToolbar(props: CanvasToolbarProps) {
           <IconPointer size={18} />
         </Tool>
         <Tool label={translate('imagine.toolHand')} shortcut={`${MOD}P`} on={!textArmed && tool === 'hand'} onClick={() => { onTool('hand') }}>
-          <IconHand />
+          <IconHand {...TOOL_GLYPH} />
         </Tool>
         {ownBoard && (
           <>
             <span className={css.rule} role="separator" aria-orientation="vertical" />
-            <Tool label={translate('imagine.genImage')} shortcut={`${MOD}I`} onClick={props.onGenerateImage}><IconImage /></Tool>
-            <Tool label={translate('imagine.genVideo')} shortcut={`${MOD}U`} onClick={props.onGenerateVideo}><IconVideoTool /></Tool>
-            <Tool label={translate('imagine.toolText')} shortcut={`${MOD}E`} on={textArmed} onClick={props.onText}><IconText /></Tool>
-            <Tool label={translate('imagine.toolUpload')} onClick={() => { picker.current?.click() }}><IconUpload /></Tool>
+            <Tool label={translate('imagine.genImage')} shortcut={`${MOD}I`} onClick={props.onGenerateImage}><IconImage {...TOOL_GLYPH} /></Tool>
+            <Tool label={translate('imagine.genVideo')} shortcut={`${MOD}U`} onClick={props.onGenerateVideo}><IconVideo {...TOOL_GLYPH} /></Tool>
+            <Tool label={translate('imagine.toolText')} shortcut={`${MOD}E`} on={textArmed} onClick={props.onText}><IconText {...TOOL_GLYPH} /></Tool>
+            <Tool label={translate('imagine.toolUpload')} onClick={() => { picker.current?.click() }}><IconUpload {...TOOL_GLYPH} /></Tool>
             <input
               ref={picker}
               type="file"
@@ -116,7 +112,7 @@ export function CanvasToolbar(props: CanvasToolbarProps) {
           </>
         )}
         <span className={css.rule} role="separator" aria-orientation="vertical" />
-        <Tool label={translate('imagine.arrangeGrid')} onClick={props.onRegrid}><IconGrid /></Tool>
+        <Tool label={translate('imagine.arrangeGrid')} onClick={props.onRegrid}><IconGrid {...TOOL_GLYPH} /></Tool>
       </div>
       {/* The zoom's twin on the far side, so the tools sit in the middle. */}
       <span className={css.balance} aria-hidden="true" />

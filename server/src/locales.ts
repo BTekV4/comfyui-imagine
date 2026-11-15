@@ -19,18 +19,18 @@
 import { copyFile, mkdir, readdir, readFile, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { message } from './messages.ts'
-import { notAllowed, readObject, restOf, sendJson } from './route-kit.ts'
+import { LANGUAGE_CODE, notAllowed, readObject, restOf, sendJson } from './route-kit.ts'
 import { fileStamp, setAside } from './set-aside.ts'
 import { localeName } from '../../shared/locale-names.ts'
 import type { LocalePackView } from '../../shared/plugin-types.ts'
 import type { WebRoute } from './host.ts'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
-/** An accepted language code: `it`, `pt-BR`, no paths. */
-const CODE = /^[a-z]{2}(-[A-Za-z]{2,4})?$/
+/** An accepted language code: `it`, `pt-BR`, no paths (the one pattern the request readers use too). */
+const CODE = LANGUAGE_CODE
 
 /** The base language: compiled, always present, not removable. */
-export const BASE_LOCALE = 'en'
+const BASE_LOCALE = 'en'
 
 /** The language packs, as `main.ts` uses them. */
 export interface LocalePacks {
@@ -113,6 +113,44 @@ export async function createLocalePacks(options: {
   /** A file exists and is a file. */
   const isFile = async (file: string): Promise<boolean> => stat(file).then(info => info.isFile(), () => false)
 
+  /*
+   * The parsed packs, by path, with the file's mtime and size when read. Every
+   * page load fetches the active pack, and the list of the available ones
+   * parsed every source and every installed pack in full only to count keys:
+   * now a pack is parsed again only when its file changed. A file that does
+   * not parse is not kept, so its error is read fresh each time.
+   */
+  const parsed = new Map<string, { readonly version: string; readonly data: Record<string, string> }>()
+
+  /**
+   * A pack file, parsed and checked, from the cache when the file is unchanged.
+   * @param file - the pack file.
+   * @param info - its `stat`, when the caller has it already.
+   * @returns the pack's keys and texts.
+   * @throws {LocaleError} 400 as {@link readPackFile} does, when the file is missing too.
+   */
+  const pack = async (file: string, info?: { mtimeMs: number; size: number }): Promise<Record<string, string>> => {
+    let seen = info
+    if (seen === undefined) {
+      try {
+        seen = await stat(file)
+      } catch (error: unknown) {
+        parsed.delete(file)
+        throw new LocaleError(400, message('locale.packMissing', { code: basename(file, '.json'), reason: error instanceof Error ? error.message : String(error) }))
+      }
+    }
+    const version = `${String(seen.mtimeMs)}/${String(seen.size)}`
+    const known = parsed.get(file)
+    if (known?.version === version) return known.data
+    parsed.delete(file)
+    const data = await readPackFile(file)
+    parsed.set(file, { version, data })
+    return data
+  }
+
+  /** A pack's key count, as the page compares them. */
+  const keysIn = async (file: string): Promise<number> => Object.keys(await pack(file)).length
+
   /**
    * A pack as the page reads it, counting the keys; undefined when the
    * repository has no readable source for it.
@@ -131,13 +169,13 @@ export async function createLocalePacks(options: {
     if (srcDir === undefined) return undefined
     let covers: number
     try {
-      covers = Object.keys(await readPackFile(join(srcDir, `${code}.json`))).length
+      covers = await keysIn(join(srcDir, `${code}.json`))
     } catch {
       return undefined
     }
     const installedFile = join(options.dir, `${code}.json`)
     if (!await isFile(installedFile)) return { code, name: localeName(code), installed: false, covers }
-    const installedCovers = await readPackFile(installedFile).then(data => Object.keys(data).length, () => 0)
+    const installedCovers = await keysIn(installedFile).catch(() => 0)
     return { code, name: localeName(code), installed: true, covers, installedCovers, behind: installedCovers < covers }
   }
 
@@ -148,10 +186,12 @@ export async function createLocalePacks(options: {
     async read(code) {
       const wanted = checkCode(code)
       const file = join(options.dir, `${wanted}.json`)
-      if (!await isFile(file)) {
+      // One stat: whether the pack is there, and whether the cached copy still holds.
+      const info = await stat(file).catch(() => undefined)
+      if (info?.isFile() !== true) {
         throw new LocaleError(404, message('locale.packMissing', { code: wanted, reason: 'ENOENT' }))
       }
-      return { code: wanted, data: await readPackFile(file) }
+      return { code: wanted, data: await pack(file, info) }
     },
     async available() {
       if (srcDir === undefined) return []
@@ -175,7 +215,7 @@ export async function createLocalePacks(options: {
       if (!await isFile(source)) throw new LocaleError(404, message('locale.notAvailable', { code: wanted }))
       // The keys are checked before copying: a broken pack must not reach
       // `<data>`.
-      await readPackFile(source)
+      await pack(source)
       await mkdir(options.dir, { recursive: true })
       const installed = join(options.dir, `${wanted}.json`)
       if (await isFile(installed)) {
@@ -229,7 +269,7 @@ export function createLocalePacksRoutes(packs: LocalePacks): readonly WebRoute[]
  * @param packs - the packs system.
  * @returns the route to register on the host.
  */
-export function createLocalePacksRoute(packs: LocalePacks): WebRoute {
+function createLocalePacksRoute(packs: LocalePacks): WebRoute {
   const answer = async (run: () => Promise<unknown>, res: ServerResponse, status = 200): Promise<void> => {
     try {
       sendJson(res, status, await run() as Record<string, unknown>)

@@ -22,7 +22,7 @@ export class HttpError extends Error {
 }
 
 /** The largest JSON body a host route accepts (the erase mask is the biggest). */
-export const MAX_JSON_BYTES = 32 * 1024 * 1024
+const MAX_JSON_BYTES = 32 * 1024 * 1024
 
 /**
  * The request body as bytes, refused past `maxBytes` with an `HttpError(413)`.
@@ -210,6 +210,25 @@ export function restOf(req: IncomingMessage, res: ServerResponse, prefix: string
 }
 
 /**
+ * A language code the server accepts from a client or a pack file name: `it`,
+ * `pt-BR`, `zh-Hant`; never a path. One pattern for the request readers here
+ * and the packs in locales.ts: until 2026-11-15 they had two, and a pack the
+ * server installs (`zh-Hant`) was a language the request readers refused.
+ */
+export const LANGUAGE_CODE = /^[a-z]{2}(-[A-Za-z]{2,4})?$/
+
+/**
+ * The value of one cookie of a request.
+ * @param req - the request.
+ * @param name - the cookie's name.
+ * @returns the raw value, or undefined when the request does not carry it.
+ */
+export function cookieOf(req: IncomingMessage, name: string): string | undefined {
+  return String(req.headers.cookie ?? '').split(';').map(part => part.trim())
+    .find(part => part.startsWith(`${name}=`))?.slice(name.length + 1)
+}
+
+/**
  * The interface language the client declares on every call
  * (`x-app-language`), for the messages the server composes.
  *
@@ -221,7 +240,7 @@ export function restOf(req: IncomingMessage, res: ServerResponse, prefix: string
 export function languageOf(req: IncomingMessage): string | undefined {
   const raw = req.headers['x-app-language']
   const value = Array.isArray(raw) ? raw[0] : raw
-  return typeof value === 'string' && /^[a-z]{2}(-[A-Z]{2})?$/.test(value) ? value : undefined
+  return typeof value === 'string' && LANGUAGE_CODE.test(value) ? value : undefined
 }
 
 /**
@@ -238,12 +257,10 @@ export function languageOf(req: IncomingMessage): string | undefined {
  */
 export function pageLanguageOf(req: IncomingMessage): string | undefined {
   const valid = (value: string | null | undefined): string | undefined =>
-    typeof value === 'string' && /^[a-z]{2}(-[A-Z]{2})?$/.test(value) ? value : undefined
+    typeof value === 'string' && LANGUAGE_CODE.test(value) ? value : undefined
   const fromQuery = valid(new URL(req.url ?? '/', 'http://x').searchParams.get('lang'))
   if (fromQuery !== undefined) return fromQuery
-  const cookie = String(req.headers.cookie ?? '').split(';').map(part => part.trim())
-    .find(part => part.startsWith('imagine_locale='))?.slice('imagine_locale='.length)
-  return valid(cookie) ?? languageOf(req)
+  return valid(cookieOf(req, 'imagine_locale')) ?? languageOf(req)
 }
 
 /**
@@ -255,9 +272,8 @@ export function pageLanguageOf(req: IncomingMessage): string | undefined {
  * @returns the code, or undefined when nothing says.
  */
 export function shownLanguageOf(req: IncomingMessage): string | undefined {
-  const shown = String(req.headers.cookie ?? '').split(';').map(part => part.trim())
-    .find(part => part.startsWith('imagine_shown_locale='))?.slice('imagine_shown_locale='.length)
-  return shown !== undefined && /^[a-z]{2}(-[A-Z]{2})?$/.test(shown) ? shown : pageLanguageOf(req)
+  const shown = cookieOf(req, 'imagine_shown_locale')
+  return shown !== undefined && LANGUAGE_CODE.test(shown) ? shown : pageLanguageOf(req)
 }
 
 /** A byte range requested with `range`. */
@@ -313,7 +329,7 @@ export function galleryName(value: unknown, kind: 'image' | 'video'): string | u
  * @param what - the sentence's head, e.g. «taglio non riuscito».
  * @param error - what was thrown.
  */
-export function sendFailure(res: ServerResponse, status: number, what: string, error: unknown): void {
+function sendFailure(res: ServerResponse, status: number, what: string, error: unknown): void {
   /*
    * The sentence's head is a fixed entry of the table, but here it is already
    * joined to the reason: `sendJson` would only find it whole. The head is
@@ -341,7 +357,7 @@ export const stamp = (): string => Date.now().toString(36)
  * @param name - the new file's basename.
  * @throws when the file is missing or is not gallery media.
  */
-export async function galleryEntryOf(outputDir: string, name: string): Promise<GalleryItem> {
+async function galleryEntryOf(outputDir: string, name: string): Promise<GalleryItem> {
   const item = await galleryItemOf(outputDir, name)
   if (item === undefined) throw new Error(message('gallery.notAFile', { name }))
   return item

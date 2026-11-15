@@ -7,13 +7,14 @@
  * @module use-board-camera
  */
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import type { CanvasRect } from '../../../shared/imagine-projects.ts'
 import type { ImagineJobView as ImagineJob } from '../../../shared/imagine-types.ts'
 import {
   BOARD_COLUMN, clampZoom, isMouseWheel, openingCamera, revealCamera, wheelPixels, zoomAbout,
 } from './canvas-layout.ts'
 import { isTypingTarget } from './typing.ts'
+import { createSignal, useSelected } from './signal.ts'
 import { STACKED_QUERY, useMediaQuery } from './use-media-query.ts'
 
 /** What the board's view is: where the camera sits, how far in, and the text tool. */
@@ -49,22 +50,19 @@ export interface CanvasSession {
  * @returns the session the page keeps for the life of the studio.
  */
 export function createCanvasSession(): CanvasSession {
-  let state: CanvasViewState = { camera: { x: 0, y: 0 }, zoom: 1, textArmed: false }
-  const listeners = new Set<() => void>()
+  const signal = createSignal<CanvasViewState>({ camera: { x: 0, y: 0 }, zoom: 1, textArmed: false })
   return {
-    get: () => state,
+    get: signal.get,
+    // The zoom is clamped on the way in, and a change to nothing is no change.
     set: (next) => {
+      const state = signal.get()
       const zoom = next.zoom === undefined ? state.zoom : clampZoom(next.zoom)
       const camera = next.camera ?? state.camera
       const textArmed = next.textArmed ?? state.textArmed
       if (zoom === state.zoom && camera === state.camera && textArmed === state.textArmed) return
-      state = { camera, zoom, textArmed }
-      for (const listener of [...listeners]) listener()
+      signal.set({ camera, zoom, textArmed })
     },
-    subscribe: (listener) => {
-      listeners.add(listener)
-      return () => { listeners.delete(listener) }
-    },
+    subscribe: signal.subscribe,
     framed: undefined,
     shownLive: new Set(),
     shownFiles: { framed: false, names: new Set() },
@@ -78,8 +76,7 @@ export function createCanvasSession(): CanvasSession {
  * @returns the selected value.
  */
 export function useCanvasView<T>(session: CanvasSession, select: (state: CanvasViewState) => T): T {
-  const read = useCallback(() => select(session.get()), [session, select])
-  return useSyncExternalStore(session.subscribe, read, read)
+  return useSelected(session, select)
 }
 
 /** What the camera reads of the board. */

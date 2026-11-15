@@ -12,6 +12,7 @@ import { translate } from './locale-store.ts'
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import type { CanvasNote } from '../../../shared/imagine-projects.ts'
 import type { ComfyLocaleKey } from './locales.ts'
+import { IconBin } from '../../shims/primitives/index.ts'
 import css from './CanvasNotes.module.css'
 
 /** The label of each alignment button. */
@@ -223,7 +224,7 @@ export function CanvasNoteView({ note, zoom, selected, editing, onSelect, onEdit
             ))}
             <span className={css.rule} />
             <button type="button" className={css.btn} aria-label={translate('imagine.delete')} title={translate('imagine.delete')} onClick={onDelete}>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true"><path d="M2.5 4h9M5.5 4V2.5h3V4M4 4l.6 7.5h4.8L10 4" /></svg>
+              <IconBin strokeWidth={2.4} />
             </button>
           </div>
         </>

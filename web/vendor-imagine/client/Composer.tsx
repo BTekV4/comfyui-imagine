@@ -29,10 +29,11 @@ import {
 } from '../../../shared/imagine-media.ts'
 import { useComposer, type ComposerStore } from './composer-store.ts'
 import { ImagineModelSelect } from './ImagineModelSelect.tsx'
-import { Pills, type PillClasses } from './Pills.tsx'
+import { Pills, Segmented, type PillClasses } from './Pills.tsx'
 import { Still } from './Still.tsx'
 import { useDismiss } from './use-dismiss.ts'
 import { useEvent } from './use-event.ts'
+import { AudioMark } from './imagine-bits.tsx'
 import shared from './imagine-shared.module.css'
 import css from './Composer.module.css'
 
@@ -135,7 +136,7 @@ function Composer({
             {sources.map(item => (
               <span key={item.name} className={css.sourceChip} data-imagine-staged={item.name}>
                 {item.kind === 'audio'
-                  ? <span className={shared.audioThumb} aria-hidden="true">♪</span>
+                  ? <AudioMark className={shared.audioThumb} />
                   : <Still className={css.sourceThumb} src={thumbUrlOf(item.name, THUMB_SMALL, item.mtime)} />}
                 {/*
                   * Every chip carries its own remove, the single one included:
@@ -322,30 +323,24 @@ function Composer({
             */}
           {mode === 'video' && (
             <>
-              <div className={css.seg} aria-label={translate('imagine.resolution')}>
-                {VIDEO_RESOLUTIONS.map(entry => (
-                  <button
-                    key={entry}
-                    type="button"
-                    data-on={clampResolution('video', resolution) === entry || undefined}
-                    onClick={() => { onResolution(entry) }}
-                  >
-                    {entry}
-                  </button>
-                ))}
-              </div>
-              <div className={css.seg} aria-label={translate('imagine.duration')}>
-                {clipSecondsFor(clampResolution('video', resolution)).map(entry => (
-                  <button
-                    key={entry}
-                    type="button"
-                    data-on={seconds === entry || undefined}
-                    onClick={() => { onSeconds(entry) }}
-                  >
-                    {`${String(entry)} s`}
-                  </button>
-                ))}
-              </div>
+              {/* `resolution` is already clamped for the mode by ComposerBox. */}
+              <Segmented
+                label={translate('imagine.resolution')}
+                values={VIDEO_RESOLUTIONS}
+                value={resolution}
+                onPick={onResolution}
+                group={css.seg}
+                pill={undefined}
+              />
+              <Segmented
+                label={translate('imagine.duration')}
+                values={clipSecondsFor(resolution)}
+                value={seconds}
+                onPick={onSeconds}
+                format={entry => `${String(entry)} s`}
+                group={css.seg}
+                pill={undefined}
+              />
             </>
           )}
               {(mode === 'image' || mode === 'video') && (
@@ -489,7 +484,8 @@ function ComposerOptions({ mode, aspect, quality, resolution, onAspect, onResolu
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
   useDismiss(box, () => { setOpen(false) }, open)
-  const shown = clampResolution(mode, resolution)
+  // Already clamped for the mode by ComposerBox: no second clamp here.
+  const shown = resolution
   // The ratio this surface really offers, not the one the store keeps from
   // another mode or another recipe.
   const shownAspect = aspectFor(aspect, mode, quality)
@@ -502,7 +498,8 @@ function ComposerOptions({ mode, aspect, quality, resolution, onAspect, onResolu
   return (
     <div className={css.optWrap} ref={box}>
       <button type="button" className={css.aspectBtn} aria-expanded={open} aria-label={translate('imagine.settings.title')} onClick={() => { setOpen(current => !current) }}>
-        <RatioMark aspect={aspect} />
+        {/* The shape of the ratio the chip names, not the stored one. */}
+        <RatioMark aspect={shownAspect} />
         {summary}
       </button>
       {open && (

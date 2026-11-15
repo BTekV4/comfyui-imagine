@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react'
 import type { GalleryItem } from '../../../shared/imagine-types.ts'
 import { fetchFileDetails, wordsOf, type FileOrigin } from './file-origin.ts'
 import { RefPicker } from './SegmentsPanel.tsx'
+import { IconArrowUp } from './canvas-icons.tsx'
 import css from './ViewerPrompt.module.css'
 
 export type { FileOrigin } from './file-origin.ts'
@@ -93,7 +94,7 @@ export function ViewerPrompt({ item, busy, placeholder, onEdit, onRerun, onAsk }
         >
           {rerun
             ? translate('imagine.runAgain')
-            : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+            : <IconArrowUp />}
         </button>
       </div>
     </form>

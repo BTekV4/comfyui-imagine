@@ -55,6 +55,45 @@ export function startSpeak(
  */
 const SPEAK_TIMEOUT_MS = 300_000
 
+/**
+ * The error a speech service's refusal is reported with: its status and the
+ * start of what it said.
+ * @param response - the answer that was not ok.
+ * @returns the error to throw.
+ */
+export async function serviceError(response: Response): Promise<Error> {
+  const detail = await response.text().catch(() => '')
+  return new Error(message('speak.serviceAnswered', { status: response.status, detail: detail.length === 0 ? '' : `: ${detail.slice(0, 200)}` }))
+}
+
+/**
+ * Read a text out loud on the speech service (OpenAI's `/audio/speech`).
+ *
+ * The `speak` job and the `voice` job through the service sent the same
+ * request each with its own copy until 2026-11-15; only the voice differs.
+ * @param target - the configured speech endpoint.
+ * @param text - what to say.
+ * @param voice - the voice to say it in.
+ * @param signal - the job's cancellation and deadline.
+ * @returns the audio, in `target.format`.
+ * @throws {Error} when the service refuses or the request fails.
+ */
+export async function speech(target: SpeakTarget, text: string, voice: string, signal: AbortSignal): Promise<Uint8Array> {
+  const response = await fetch(`${target.baseURL.replace(/\/+$/, '')}/audio/speech`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: target.model,
+      input: text,
+      voice,
+      response_format: target.format,
+    }),
+    signal,
+  })
+  if (!response.ok) throw await serviceError(response)
+  return new Uint8Array(await response.arrayBuffer())
+}
+
 /** One speech request, run behind the job it belongs to; a cancel aborts it. */
 async function speakInto(target: SpeakTarget, outputDir: string, job: ImagineJob): Promise<void> {
   patchJob(job.id, { status: 'running', startedAt: Date.now() })
@@ -62,22 +101,7 @@ async function speakInto(target: SpeakTarget, outputDir: string, job: ImagineJob
   const timer = setTimeout(() => { controller.abort() }, SPEAK_TIMEOUT_MS)
   timer.unref()
   try {
-    const response = await fetch(`${target.baseURL.replace(/\/+$/, '')}/audio/speech`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model: target.model,
-        input: job.prompt,
-        voice: target.voice,
-        response_format: target.format,
-      }),
-      signal: controller.signal,
-    })
-    if (!response.ok) {
-      const detail = await response.text().catch(() => '')
-      throw new Error(message('speak.serviceAnswered', { status: response.status, detail: detail.length === 0 ? '' : `: ${detail.slice(0, 200)}` }))
-    }
-    const bytes = new Uint8Array(await response.arrayBuffer())
+    const bytes = await speech(target, job.prompt, target.voice, controller.signal)
     // A cancel that landed while the audio was on its way wins: no file.
     if (isSettled(job.id)) return
     const name = `speak_text-${job.id.replace(/-/g, '').slice(0, 8)}.${target.format}`

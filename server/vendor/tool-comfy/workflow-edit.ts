@@ -16,6 +16,7 @@ import { basename, dirname, join } from 'node:path'
 import { serialized, writeFileAtomic } from '../atomic-write/index.ts'
 import type { ComfyGraph } from '../comfyui/index.ts'
 import { message } from '../../src/messages.ts'
+import { isPlainObject } from './guards.ts'
 import { danglingLinks } from './lora.ts'
 import type { WorkflowDiff, WorkflowField, WorkflowScalar, WorkflowValueChange } from '../../../shared/imagine-chat.ts'
 
@@ -247,9 +248,7 @@ export async function editWorkflowFile(
   return serialized(path, async () => {
     const [text, info] = await Promise.all([readFile(path, 'utf8'), stat(path)])
     const stored: unknown = JSON.parse(text)
-    if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) {
-      throw new Error(message('graph.apiObject'))
-    }
+    if (!isPlainObject(stored)) throw new Error(message('graph.apiObject'))
     const next = change(stored as ComfyGraph)
     const dangling = danglingLinks(next)
     if (dangling.length > 0) throw new Error(message('graph.brokenLinks', { links: dangling.join(', ') }))
@@ -294,11 +293,13 @@ export function patchWorkflow(diff: readonly WorkflowDiff[]): (graph: ComfyGraph
  * The runner, the settings page and the chat all hold the loaded object, not
  * a lookup: emptying it into the new graph is what makes them all see the
  * edit. Each holder gets its own copy, so no two loaded workflows share nodes
- * a later run could change in one place.
+ * a later run could change in one place. The holder that already is `next`
+ * (a personal card just reloaded, adopted by its own readers) is left alone.
  * @param target - the loaded graph, changed in place.
  * @param next - the graph it should now be.
  */
 export function replaceGraphInPlace(target: ComfyGraph, next: ComfyGraph): void {
+  if (target === next) return
   const copy = structuredClone(next)
   for (const key of Object.keys(target)) Reflect.deleteProperty(target, key)
   Object.assign(target, copy)

@@ -20,8 +20,6 @@ export const PALETTE_PRESETS = [
   { id: 'sepia', colors: ['#F1E4CE', '#C8A165', '#8A5A2B', '#3B2412'] },
 ] as const
 
-export type PalettePresetId = typeof PALETTE_PRESETS[number]['id']
-
 /** A few named colours, for the words that go with each hex in the sentence. */
 const NAMED: readonly (readonly [string, number, number, number])[] = [
   ['black', 15, 15, 15], ['charcoal', 60, 60, 60], ['grey', 128, 128, 128], ['silver', 192, 192, 192], ['white', 245, 245, 245],
@@ -39,7 +37,7 @@ export function rgbOf(hex: string): [number, number, number] | undefined {
 }
 
 /** Numbers as `#RRGGBB`. */
-export function hexOf(r: number, g: number, b: number): string {
+function hexOf(r: number, g: number, b: number): string {
   return `#${[r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('').toUpperCase()}`
 }
 

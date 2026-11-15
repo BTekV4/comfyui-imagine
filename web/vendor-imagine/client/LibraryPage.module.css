@@ -114,9 +114,9 @@
   object-fit: cover;
 }
 
+/* The shared note, quieter, on the card's own bed. */
 .audio {
-  display: grid;
-  place-items: center;
+  composes: audioGlyph from './imagine-shared.module.css';
   width: 100%;
   height: 100%;
   font-size: 34px;

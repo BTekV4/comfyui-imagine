@@ -173,10 +173,16 @@ export function createLlm(
     return isThinkingLevel(value) ? value : THINKING_DEFAULT
   }
 
-  /** How long the list of levels the gateway declares is kept as valid. */
+  /** How long a provider's `/models` answer is kept as valid. */
   const LEVELS_TTL_MS = 60_000
-  /** The last list read, per provider and model. */
-  const levelsCache = new Map<string, { at: number; levels: readonly string[] }>()
+  /**
+   * The last `/models` read, per provider (and its address): the catalogue and
+   * the thinking levels of every model come from the same answer. Keyed by
+   * model until 2026-11-15, so the settings page opening made two identical
+   * requests, and each model picked one more. The read in flight is kept
+   * too, so two callers share it; a failed read is dropped.
+   */
+  const entriesCache = new Map<string, { at: number; entries: Promise<ModelEntryRaw[]> }>()
 
   /** One `/models` entry: the id and what the gateway declares about the model. */
   interface ModelEntryRaw {
@@ -184,8 +190,20 @@ export function createLlm(
     readonly capabilities?: { readonly effort_tiers?: unknown }
   }
 
-  /** The models a provider lists, with their capabilities. */
+  /** The models a provider lists, with their capabilities, at most {@link LEVELS_TTL_MS} old. */
   const modelEntries = async (name: string): Promise<ModelEntryRaw[]> => {
+    const key = `${name}\u001f${baseOf(providerOf(name))}`
+    const hit = entriesCache.get(key)
+    if (hit !== undefined && Date.now() - hit.at < LEVELS_TTL_MS) return await hit.entries
+    const entries = fetchModelEntries(name)
+    const kept = { at: Date.now(), entries }
+    entriesCache.set(key, kept)
+    entries.catch(() => { if (entriesCache.get(key) === kept) entriesCache.delete(key) })
+    return await entries
+  }
+
+  /** One `/models` request to a provider. */
+  const fetchModelEntries = async (name: string): Promise<ModelEntryRaw[]> => {
     const provider = providerOf(name)
     const response = await fetch(`${baseOf(provider)}/models`, {
       headers: headersOf(provider),
@@ -351,7 +369,7 @@ export function createLlm(
 
   /**
    * The ids a provider's `/models` lists, sorted: what the settings page
-   * offers from the gateway today.
+   * offers from the gateway (at most a minute old).
    * @param name - the provider.
    * @throws when it does not answer or answers an error.
    */
@@ -365,26 +383,19 @@ export function createLlm(
    * `capabilities.effort_tiers` in `/v1/models`.
    *
    * No list of our own: the gateway knows which tiers a model accepts, and a
-   * new tier shows up in the selector without touching the code. The result
-   * is kept for a minute: the page asks for it when it opens, and one HTTP
-   * request per opening is fine.
+   * new tier shows up in the selector without touching the code. The
+   * provider's `/models` answer is kept for a minute and shared with
+   * {@link listModels}: the page asks for both when it opens.
    * @param route - the model in force.
    * @returns the tier names, possibly empty when the gateway says nothing.
    */
   async function thinkingLevels(route: ModelRoute): Promise<readonly string[]> {
-    const key = `${route.provider}\u001f${route.model}`
-    const hit = levelsCache.get(key)
-    if (hit !== undefined && Date.now() - hit.at < LEVELS_TTL_MS) return hit.levels
     const entries = await modelEntries(route.provider)
     const wanted = entries.find(entry => entry.id === route.model)
     const tiers = wanted?.capabilities?.effort_tiers
-    const levels = Array.isArray(tiers)
-      ? tiers
-        .filter((tier): tier is string => typeof tier === 'string' && isThinkingLevel(tier))
-        .map(tier => tier as string)
+    return Array.isArray(tiers)
+      ? tiers.filter((tier): tier is string => typeof tier === 'string' && isThinkingLevel(tier))
       : []
-    levelsCache.set(key, { at: Date.now(), levels })
-    return levels
   }
 
   return { llm: { stream }, auxiliary: { analyzeImage }, listModels, thinkingLevels }

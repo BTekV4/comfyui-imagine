@@ -5,15 +5,16 @@
 
 import { translate } from './locale-store.ts'
 import { Fragment, memo, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
-import { IconPlayOutlineRegular, IconSendOutlineRegular, Tooltip } from '../../shims/primitives/index.ts'
+import { IconSendOutlineRegular, Tooltip } from '../../shims/primitives/index.ts'
 import type { CanvasRect } from '../../../shared/imagine-projects.ts'
 import { mediaUrlOf, shotNumberOf, thumbUrlOf, THUMB_TILE } from './gallery-api.ts'
 import type { GalleryItem, ImagineJobView as ImagineJob } from '../../../shared/imagine-types.ts'
-import { formatClock, formatEta } from './format.ts'
-import { GeneratingLabel, progressStageLabel, qualityLabelOf } from './imagine-bits.tsx'
-import { Percent, ProgressBar, useJobProgress } from './job-progress.tsx'
+import { formatClock } from './format.ts'
+import { AudioMark, GeneratingLabel, qualityLabelOf } from './imagine-bits.tsx'
+import { joinStage, Percent, ProgressBar, stageLineOf, useJobProgress } from './job-progress.tsx'
 import { MediaActionIcon, mediaActions, type MediaActionKind } from './media-actions.tsx'
 import { claimAudioFocus, useAudioFocus, useMediaTransport } from './media-playback.ts'
+import { PlayToggle, SeekBar } from './transport-bar.tsx'
 import { Still } from './Still.tsx'
 import css from './Tile.module.css'
 
@@ -35,9 +36,7 @@ export const PendingTile = memo(function PendingTile({
   onStop: (id: string) => void
 }) {
   const progress = useJobProgress(job.id)?.progress
-  const percent = progress?.percent
-  const stage = progress?.nodeClass === undefined ? undefined : progressStageLabel(progress.nodeClass)
-  const eta = progress?.etaSeconds === undefined ? undefined : translate('imagine.etaLeft', { time: formatEta(progress.etaSeconds) })
+  const { percent, stage, eta } = stageLineOf(progress)
   return (
     <article
       className={`${css.tile}${picked ? ` ${css.picked}` : ''}${dragging ? ` ${css.dragging}` : ''}`}
@@ -69,11 +68,7 @@ export const PendingTile = memo(function PendingTile({
           <Percent value={percent} />
         </span>
         {(stage !== undefined || eta !== undefined) && percent !== undefined && (
-          <span className={css.pendingStage}>
-            {stage === undefined ? undefined : translate(stage)}
-            {stage !== undefined && eta !== undefined ? ' · ' : undefined}
-            {eta}
-          </span>
+          <span className={css.pendingStage}>{joinStage(stage, eta)}</span>
         )}
         {progress?.maxSteps !== undefined && progress.maxSteps > 0 && <ProgressBar value={percent} />}
         {/*
@@ -123,9 +118,7 @@ function ToolIcon({ label, onClick, disabled, danger, children }: {
  * being enlarged than over the empty frame a placeholder tile would be.
  */
 function UpscaleProgress({ job }: { job: ImagineJob }) {
-  const progress = useJobProgress(job.id)?.progress
-  const percent = progress?.percent
-  const eta = progress?.etaSeconds === undefined ? undefined : translate('imagine.etaLeft', { time: formatEta(progress.etaSeconds) })
+  const { percent, eta } = stageLineOf(useJobProgress(job.id)?.progress)
   return (
     <div className={css.upscaling}>
       <span className={css.upscalingLabel}>
@@ -326,7 +319,7 @@ export const Tile = memo(function Tile({
             : audio
               ? (
                 <div className={css.audioPad}>
-                  <span className={css.audioMark} aria-hidden="true">♪</span>
+                  <AudioMark className={css.audioMark} />
                   <audio
                     ref={mediaRef}
                     src={mediaUrlOf(item.name)}
@@ -396,24 +389,8 @@ export const Tile = memo(function Tile({
               onPointerDown={(event) => { event.stopPropagation() }}
               onClick={(event) => { event.stopPropagation() }}
             >
-              <button
-                type="button"
-                className={css.reelPlay}
-                aria-label={playing ? translate('imagine.pause') : translate('imagine.play')}
-                onClick={togglePlay}
-              >
-                <IconPlayOutlineRegular size={14} />
-              </button>
-              <input
-                className={css.reelSeek}
-                type="range"
-                min={0}
-                max={duration || 0}
-                step={0.05}
-                value={currentTime}
-                aria-label={translate('imagine.play')}
-                onChange={(event) => { transport.seek(Number(event.currentTarget.value)) }}
-              />
+              <PlayToggle transport={transport} onToggle={togglePlay} className={css.reelPlay} size={14} />
+              <SeekBar transport={transport} className={css.reelSeek} />
               <span>{`${formatClock(currentTime)} / ${formatClock(duration ?? 0)}`}</span>
             </div>
           )}

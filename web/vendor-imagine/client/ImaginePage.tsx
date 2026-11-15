@@ -20,6 +20,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import type { CanvasNote, ImagineProject } from '../../../shared/imagine-projects.ts'
 import { HISTORY_PROJECT_ID } from '../../../shared/imagine-projects.ts'
 import { IMAGINE_ASPECTS } from '../../../shared/imagine-media.ts'
+import type { FrameCard } from './FrameExtractor.tsx'
 import type { GalleryItem, ImagineAction } from '../../../shared/imagine-types.ts'
 import type { WorkflowProposal } from '../../../shared/imagine-chat.ts'
 import { readDismissedScans, rememberDismissedScan } from './dismissed-scans.ts'
@@ -667,11 +668,13 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
    *
    * Only the block: the pictures stay on the board, and a render already
    * started from it keeps going (its own Stop is in the live row). A new scan
-   * has a new job id and gets its own block.
+   * has a new job id and gets its own block. Through useEvent like the
+   * handlers above: a fresh closure here broke ChatColumn's memo on every
+   * page render.
    */
-  const onDismissChoose = (scanId: string): void => {
+  const onDismissChoose = useEvent((scanId: string): void => {
     setDismissedScans(rememberDismissedScan(scanId))
-  }
+  })
   /** Empty the column. The project, its board and its files stay. */
   const onClearChat = useEvent(() => {
     if (current === undefined || current.messages.length === 0) return
@@ -749,7 +752,7 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
   const onPanelUpload = useEvent(uploadToSlot)
   const onPanelRun = useEvent(runner.runPanel)
   const onFrameSaved = useEvent((item: GalleryItem) => { addItems([item]) })
-  const onUseFrame = useEvent((item: GalleryItem, card: 'remix' | 'video' | 'style' | 'bg') => {
+  const onUseFrame = useEvent((item: GalleryItem, card: FrameCard) => {
     openPanel(card)
     composer.set({ sources: [item] })
   })
@@ -904,7 +907,7 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
       <div className={css.stage}>
         <StageHeader
           view={view}
-          title={current?.title}
+          hasProject={current !== undefined}
           onHistory={onHistory}
           canvasHidden={canvasHidden}
           chatHidden={chatHidden}

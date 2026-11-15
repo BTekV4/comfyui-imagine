@@ -10,12 +10,16 @@ import { useRef, useState } from 'react'
 import {
   HISTORY_KINDS, HISTORY_KIND_KEYS, HISTORY_ORDERS, HISTORY_ORDER_KEYS, HISTORY_ORIGINS,
   HISTORY_ORIGIN_KEYS, HISTORY_PERIODS, HISTORY_PERIOD_KEYS,
-  historyNarrowed, type HistoryFilters,
+  historyNarrowed, type HistoryFilters, type HistoryView,
 } from './imagine-filters.ts'
 import type { MediaKind } from '../../../shared/imagine-types.ts'
+import { Segmented } from './Pills.tsx'
 import { useDismiss } from './use-dismiss.ts'
 import css from './HistoryFilterBar.module.css'
 import { translate } from './locale-store.ts'
+
+/** The board's two layouts, in the order the switch shows them. */
+const HISTORY_VIEWS: readonly HistoryView[] = ['grid', 'list']
 
 /** Which of the bar's two menus is open, or none. */
 type OpenMenu = 'origin' | 'order' | undefined
@@ -54,20 +58,16 @@ export function HistoryFilterBar({ filters, counts, total, shown, onChange }: Hi
 
   return (
     <div ref={bar} className={css.bar} data-imagine-tools>
-      <div className={css.seat} role="group" aria-label={translate('imagine.filterPeriod')}>
-        {HISTORY_PERIODS.map(period => (
-          <button
-            key={period}
-            type="button"
-            className={css.chip}
-            data-on={filters.period === period || undefined}
-            aria-pressed={filters.period === period}
-            onClick={() => { onChange({ ...filters, period }) }}
-          >
-            {translate(HISTORY_PERIOD_KEYS[period])}
-          </button>
-        ))}
-      </div>
+      {/* Single choices: the shared radio group, as on the other pages. */}
+      <Segmented
+        label={translate('imagine.filterPeriod')}
+        values={HISTORY_PERIODS}
+        value={filters.period}
+        onPick={(period) => { onChange({ ...filters, period }) }}
+        format={period => translate(HISTORY_PERIOD_KEYS[period])}
+        group={css.seat}
+        pill={css.chip}
+      />
 
       <div className={css.seat} role="group" aria-label={translate('imagine.filterKind')}>
         <button
@@ -158,26 +158,15 @@ export function HistoryFilterBar({ filters, counts, total, shown, onChange }: Hi
           )}
         </div>
 
-        <div className={css.seat} role="group" aria-label={translate('imagine.filterView')}>
-          <button
-            type="button"
-            className={css.chip}
-            data-on={filters.view === 'grid' || undefined}
-            aria-pressed={filters.view === 'grid'}
-            onClick={() => { onChange({ ...filters, view: 'grid' }) }}
-          >
-            {translate('imagine.viewGrid')}
-          </button>
-          <button
-            type="button"
-            className={css.chip}
-            data-on={filters.view === 'list' || undefined}
-            aria-pressed={filters.view === 'list'}
-            onClick={() => { onChange({ ...filters, view: 'list' }) }}
-          >
-            {translate('imagine.viewList')}
-          </button>
-        </div>
+        <Segmented
+          label={translate('imagine.filterView')}
+          values={HISTORY_VIEWS}
+          value={filters.view}
+          onPick={(view) => { onChange({ ...filters, view }) }}
+          format={view => translate(view === 'grid' ? 'imagine.viewGrid' : 'imagine.viewList')}
+          group={css.seat}
+          pill={css.chip}
+        />
       </div>
 
       <span className={css.count} data-history-count={String(shown)}>

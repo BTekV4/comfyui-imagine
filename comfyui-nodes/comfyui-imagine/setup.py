@@ -16,8 +16,8 @@ Routes (all JSON):
   POST /imagine/setup/restart   restart ComfyUI (needed after installing packs)
 """
 
+import asyncio
 import hashlib
-import io
 import json
 import logging
 import os
@@ -25,11 +25,13 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
 import urllib.request
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 
 import folder_paths
 import nodes
@@ -131,6 +133,15 @@ def _pack_view(key):
     return view
 
 
+def _pack_views(keys):
+    """The views of the missing packs, their registry calls made side by side:
+    one after the other, a slow registry would add up to 8 s per pack."""
+    if len(keys) < 2:
+        return [_pack_view(key) for key in keys]
+    with ThreadPoolExecutor(max_workers=min(len(keys), 8)) as pool:
+        return list(pool.map(_pack_view, keys))
+
+
 def _check(prompt):
     missing_packs, missing_models, unknown_classes, unknown_files = set(), set(), set(), set()
     substitutions = {}
@@ -162,7 +173,7 @@ def _check(prompt):
     size = sum(FILES[name]["size"] for name in missing_models)
     return {
         "ready": not (missing_packs or missing_models or unknown_classes or unknown_files),
-        "packs": [_pack_view(key) for key in sorted(missing_packs)],
+        "packs": _pack_views(sorted(missing_packs)),
         "models": [{"name": name, "folder": FILES[name]["folder"], "size": FILES[name]["size"], **({"gated": FILES[name]["gated"]} if "gated" in FILES[name] else {})} for name in sorted(missing_models)],
         "bytes": size,
         # What Imagine writes in the graph instead: a variant chosen for this GPU.
@@ -231,17 +242,59 @@ def _registry_status(pack, timeout=30):
         return str(json.loads(r.read()).get("status", "")).replace("NodeVersionStatus", "") or None
 
 
-def _tree_sha256(z):
-    """A zip's files hashed by content, top folder stripped: GitHub's archives
-    are generated on demand and their bytes can change, their files cannot."""
+def _zip_root(z):
+    """The top folder every file of a zip sits in ("" when there is none), as GitHub's archives have."""
     names = [n for n in z.namelist() if not n.endswith("/")]
     root = names[0].split("/")[0] + "/"
-    strip = all(n.startswith(root) for n in names)
-    lines = "".join(f"{n[len(root):] if strip else n}\0{hashlib.sha256(z.read(n)).hexdigest()}\n" for n in sorted(names))
-    return hashlib.sha256(lines.encode()).hexdigest(), (root if strip else "")
+    return root if all(n.startswith(root) for n in names) else ""
 
 
-def _install_pack(key, pack, tokens):
+def _tree_sha256(hashes):
+    """A zip's files hashed by content, top folder stripped: GitHub's archives
+    are generated on demand and their bytes can change, their files cannot.
+
+    hashes: {path without the top folder: SHA-256 of its content}.
+    """
+    lines = "".join(f"{name}\0{hashes[name]}\n" for name in sorted(hashes))
+    return hashlib.sha256(lines.encode()).hexdigest()
+
+
+def _extract_github(pack, staging):
+    """Download a GitHub archive to a temporary file and unpack it into staging,
+    hashing each file while it is written: the archive is never held in memory
+    and each member is inflated once. The caller discards staging on failure."""
+    with tempfile.TemporaryFile() as archive:
+        with urllib.request.urlopen(urllib.request.Request(pack["url"], headers={"User-Agent": "comfyui-imagine-setup"}), timeout=300) as r:
+            shutil.copyfileobj(r, archive, CHUNK)
+        archive.seek(0)
+        with zipfile.ZipFile(archive) as z:
+            root = _zip_root(z)
+            hashes = {}
+            for name in z.namelist():
+                if name.endswith("/"):
+                    continue
+                digest = hashlib.sha256()
+                # Files outside the top folder (none in a GitHub archive) are hashed, not written.
+                if name.startswith(root):
+                    path = os.path.realpath(os.path.join(staging, name[len(root):]))
+                    if not path.startswith(os.path.realpath(staging) + os.sep):
+                        raise RuntimeError(f"{pack['name']}: unsafe path in the archive")
+                    os.makedirs(os.path.dirname(path), exist_ok=True)
+                    with z.open(name) as src, open(path, "wb") as out:
+                        for block in iter(lambda: src.read(CHUNK), b""):
+                            out.write(block)
+                            digest.update(block)
+                else:
+                    with z.open(name) as src:
+                        for block in iter(lambda: src.read(CHUNK), b""):
+                            digest.update(block)
+                hashes[name[len(root):]] = digest.hexdigest()
+    # Checked before the caller moves staging into custom_nodes, so a changed archive never lands.
+    if _tree_sha256(hashes) != pack["treeSha256"]:
+        raise RuntimeError(f"{pack['name']}: the files on GitHub are not the pinned ones, not installed")
+
+
+def _install_pack(pack, tokens):
     base = folder_paths.get_folder_paths("custom_nodes")[0]
     target = os.path.join(base, pack["folder"])
     if not os.path.isdir(target):
@@ -250,20 +303,11 @@ def _install_pack(key, pack, tokens):
         staging = target + ".installing"
         shutil.rmtree(staging, ignore_errors=True)
         if pack.get("source") == "github":
-            with urllib.request.urlopen(urllib.request.Request(pack["url"], headers={"User-Agent": "comfyui-imagine-setup"}), timeout=300) as r:
-                z = zipfile.ZipFile(io.BytesIO(r.read()))
-            tree, root = _tree_sha256(z)
-            if tree != pack["treeSha256"]:
-                raise RuntimeError(f"{pack['name']}: the files on GitHub are not the pinned ones, not installed")
-            for name in z.namelist():
-                if name.endswith("/") or not name.startswith(root):
-                    continue
-                path = os.path.realpath(os.path.join(staging, name[len(root):]))
-                if not path.startswith(os.path.realpath(staging) + os.sep):
-                    raise RuntimeError(f"{pack['name']}: unsafe path in the archive")
-                os.makedirs(os.path.dirname(path), exist_ok=True)
-                with open(path, "wb") as out:
-                    out.write(z.read(name))
+            try:
+                _extract_github(pack, staging)
+            except Exception:
+                shutil.rmtree(staging, ignore_errors=True)
+                raise
         else:
             archive = os.path.join(base, f".{pack['folder']}.zip")
             _download(pack["url"], archive, pack["size"], pack["sha256"], tokens, pack["name"])
@@ -284,7 +328,7 @@ def _run(packs, models, tokens):
         for key in packs:
             pack = MANIFEST["packs"][key]
             _set(step=f"Installing {pack['name']} {pack['version']}", file=pack["name"], fileSize=pack.get("size", 0), fileDone=0)
-            _install_pack(key, pack, tokens)
+            _install_pack(pack, tokens)
             with _lock:
                 _task["doneBefore"] += pack.get("size", 0)
                 _task["done"] = _task["doneBefore"]
@@ -321,16 +365,22 @@ def _progress():
 routes = PromptServer.instance.routes
 
 
-@routes.get("/imagine/setup/status")
-async def setup_status(request):
-    return web.json_response({
+def _status():
+    return {
         "version": VERSION,
         "boot": BOOT,
         "packs": {key: {"name": p["name"], "version": p["version"], "installed": _pack_installed(p), "loaded": _pack_loaded(p)} for key, p in MANIFEST["packs"].items()},
         "gpu": {"name": torch.cuda.get_device_name(0), "computeCapability": CAPABILITY} if CAPABILITY is not None else None,
         "models": {name: {"folder": m["folder"], "size": m["size"], "present": _model_present(name, m)} for name, m in FILES.items()},
         "task": _progress(),
-    })
+    }
+
+
+@routes.get("/imagine/setup/status")
+async def setup_status(request):
+    # Off the event loop: it looks up every model file on disk (a slow or network
+    # models folder would stall /ws and /prompt for every client meanwhile).
+    return web.json_response(await asyncio.get_running_loop().run_in_executor(None, _status))
 
 
 @routes.post("/imagine/setup/check")
@@ -339,7 +389,10 @@ async def setup_check(request):
     prompt = body.get("prompt")
     if not isinstance(prompt, dict):
         return web.json_response({"error": "prompt must be an API-format graph"}, status=400)
-    return web.json_response(_check(prompt))
+    # _check asks the Comfy Registry (blocking HTTPS, up to 8 s) for each missing
+    # pack: run in a worker thread, it leaves ComfyUI's aiohttp loop free to
+    # serve /ws progress and /prompt meanwhile. It only reads module state.
+    return web.json_response(await asyncio.get_running_loop().run_in_executor(None, _check, prompt))
 
 
 @routes.post("/imagine/setup/install")

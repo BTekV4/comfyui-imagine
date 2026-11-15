@@ -351,7 +351,7 @@ interface WrittenPost {
  * generated), so four short lines are asked for and nothing else.
  * @returns the instruction text.
  */
-export function factsInstruction(isReel: boolean, project: ProjectContext | undefined): string {
+function factsInstruction(isReel: boolean, project: ProjectContext | undefined): string {
   // The project title is what the user called the shoot ("2B Nier", "CAT GIRL
   // SAKURA"): a far better witness of who is in costume than a guess from one
   // frame, which is how posts got the wrong franchise. Its description says
@@ -382,7 +382,7 @@ sicurezza: scrivi ok se il corpo è coperto; scrivi no se si vedono capezzoli, g
  * @param recent - captions already used, which must not come back.
  * @returns the instruction text.
  */
-export function captionInstruction(
+function captionInstruction(
   facts: SeenFacts,
   type: PostType,
   prompt: string | undefined,
@@ -424,7 +424,7 @@ hashtag: ${isReel ? 'un hashtag' : 'due hashtag'} concreti sul tema, separati da
  * @param name - the gallery item name.
  * @returns title, description and recent requests, or undefined.
  */
-export async function projectContext(name: string | undefined): Promise<ProjectContext | undefined> {
+async function projectContext(name: string | undefined): Promise<ProjectContext | undefined> {
   if (!name) return undefined
   try {
     const store = await loadImagineStore()

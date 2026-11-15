@@ -274,19 +274,20 @@ export async function loadPacks(): Promise<void> {
 }
 
 /**
- * Choose a language and tell the page.
+ * Choose a language: write the choice and reload the page.
+ *
+ * A reload, not a live switch: modules translate some constants once, at
+ * load (main.tsx, the weekday names in dates.ts), so only a fresh page
+ * speaks the new language everywhere. This used to switch in place, fetch
+ * the pack and tell the page, and its one caller then reloaded at once,
+ * throwing the fetch and the re-render away. The page loads the pack itself
+ * on the way back up.
  * @param next - the language to use from now on.
  */
 export function setLocale(next: string): void {
   if (next === current) return
-  fellBackFrom = undefined
-  current = next
   store(next)
-  applyDocumentLanguage(next)
-  window.dispatchEvent(new Event(EVENT))
-  if (BUILT_IN_DICTS[next] === undefined) {
-    void packOf(next).then(() => { window.dispatchEvent(new Event(EVENT)) }, () => undefined)
-  }
+  window.location.reload()
 }
 
 /**

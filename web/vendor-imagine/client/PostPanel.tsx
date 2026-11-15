@@ -13,7 +13,7 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { IconDots, Tooltip } from '../../shims/primitives/index.ts'
 import type { GalleryItem } from '../../../shared/imagine-types.ts'
-import { IconSegments } from './canvas-icons.tsx'
+import { CropIcon, IconPencil, IconPrecise, IconSegments } from './canvas-icons.tsx'
 import { mediaUrlOf } from './gallery-api.ts'
 import { translate } from './locale-store.ts'
 import { MediaActionIcon, type MediaAction, type MediaActionKind } from './media-actions.tsx'
@@ -28,15 +28,8 @@ const BIG: readonly MediaActionKind[] = ['bg', 'video', 'extend', 'publish']
 /** The small icons at the foot, before «more». */
 const SMALL: readonly MediaActionKind[] = ['like', 'copy', 'download']
 
-const S = ({ children }: { children: ReactNode }) => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
-)
-/** Grok's «Modifica precisa»: a brush over a dotted zone. */
-const IconPrecise = () => <S><path d="M4 20c1.5 0 3-1 3-3a2 2 0 1 0-4 0" /><path d="m7 15 9.5-9.5a2.1 2.1 0 0 1 3 3L10 18" /><path d="M14 4.5 15.5 3M19.5 9 21 7.5" /></S>
-const IconCropTool = () => <S><path d="M6 2v14a2 2 0 0 0 2 2h14" /><path d="M18 22V8a2 2 0 0 0-2-2H2" /></S>
 /** Grok's «Colori»: a full colour wheel. */
 const IconColors = () => <span aria-hidden="true" style={{ display: 'block', width: 20, height: 20, borderRadius: '50%', background: 'conic-gradient(from 180deg, #6155f5, #cb30e0, #ff383c, #ff8d28, #ffcc00, #34c759, #0088ff, #6155f5)' }} />
-const IconDraw = () => <S><path d="m15 5 4 4" /><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19l-4 1Z" /></S>
 
 export function PostPanel({
   item, tool, onTool, actions, liked, onAction, children,
@@ -56,14 +49,14 @@ export function PostPanel({
   useDismiss(menuBox, () => { setMenu(false) }, menu)
   const big = BIG.map(kind => actions.find(action => action.kind === kind)).filter((action): action is MediaAction => action !== undefined)
   const small = SMALL.map(kind => actions.find(action => action.kind === kind)).filter((action): action is MediaAction => action !== undefined)
-  const shown = new Set<MediaActionKind>([...BIG, ...SMALL, 'region', 'crop', 'open'])
+  const shown = new Set<MediaActionKind>([...BIG, ...SMALL])
   const more = actions.filter(action => !shown.has(action.kind))
   const tools: readonly { id: PostTool; label: string; icon: ReactNode }[] = [
     { id: 'segments', label: translate('imagine.segments'), icon: <IconSegments size={20} /> },
-    { id: 'precise', label: translate('imagine.regionEdit'), icon: <IconPrecise /> },
+    { id: 'precise', label: translate('imagine.regionEdit'), icon: <IconPrecise size={20} /> },
     { id: 'colors', label: translate('imagine.colors'), icon: <IconColors /> },
-    { id: 'crop', label: translate('imagine.crop'), icon: <IconCropTool /> },
-    { id: 'draw', label: translate('imagine.draw'), icon: <IconDraw /> },
+    { id: 'crop', label: translate('imagine.crop'), icon: <CropIcon size={20} strokeWidth={1.8} /> },
+    { id: 'draw', label: translate('imagine.draw'), icon: <IconPencil size={20} /> },
   ]
   const fire = (action: MediaAction, target: HTMLElement): void => {
     setMenu(false)

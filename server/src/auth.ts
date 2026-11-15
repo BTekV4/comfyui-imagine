@@ -12,7 +12,7 @@ import { readFile, stat } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { parsePasswordRecord, verifyPassword, type PasswordRecord } from './password.ts'
 import { languageKind, messageIn } from './messages.ts'
-import { languageOf, pageLanguageOf, readBody } from './route-kit.ts'
+import { cookieOf, languageOf, pageLanguageOf, readBody } from './route-kit.ts'
 
 const COOKIE = 'imagine-auth'
 const COOKIE_DAYS = 365
@@ -80,8 +80,7 @@ export function createAuth(options: {
   }
 
   const valid = (req: IncomingMessage): boolean => {
-    const raw = String(req.headers.cookie ?? '').split(';').map(part => part.trim())
-      .find(part => part.startsWith(`${COOKIE}=`))?.slice(COOKIE.length + 1)
+    const raw = cookieOf(req, COOKIE)
     if (raw === undefined) return false
     const [body, sig] = raw.split('.')
     if (body === undefined || sig === undefined) return false

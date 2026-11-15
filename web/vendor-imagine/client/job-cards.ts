@@ -1,23 +1,24 @@
 /**
- * The cards of "New generation": what each one is called, the line under
- * it, its cover and the composer mode its panel opens in.
+ * The cards of "New generation": their order, their cover and the composer
+ * mode each panel opens in.
  *
- * Kept beside `WORKFLOW_SPECS` rather than inside it: the cards speak through
- * the locale keys and the panels in plain Italian, and the two read
- * differently on purpose (a card says "Generate", its panel explains what to
- * write). Every card has a spec; `JobCardId` is the key they share.
+ * What a card is called and the line under it are its panel's (`titleKey`,
+ * `summaryKey` in workflow-specs.ts): the two had been written out twice, one
+ * locale key apiece, and agreed on every card (checked 2026-11-15). Every card
+ * has a spec; `JobCardId` is the key they share.
  * @module job-cards
  */
 
 import type { GalleryItem } from '../../../shared/imagine-types.ts'
 import type { ImagineMode } from './imagine-settings.ts'
-import type { WorkflowSpec } from './workflow-specs.ts'
+import { WORKFLOW_SPECS, type WorkflowCardId, type WorkflowSpec } from './workflow-specs.ts'
 
-export const JOB_CARDS = [
-  { id: 'generate', title: 'imagine.generate', hint: 'imagine.actionGenerateHint', cover: '/imagine/generate.webp' },
-  { id: 'remix', title: 'imagine.remix', hint: 'imagine.actionRemixHint', cover: '/imagine/edit.webp' },
-  { id: 'style', title: 'imagine.changeStyle', hint: 'imagine.actionStyleHint', cover: '/imagine/style.webp' },
-  { id: 'video', title: 'imagine.makeVideo', hint: 'imagine.actionVideoHint', cover: '/imagine/video.webp' },
+/** Each card's id and cover, in the order the home shows them. */
+const CARD_COVERS = [
+  { id: 'generate', cover: '/imagine/generate.webp' },
+  { id: 'remix', cover: '/imagine/edit.webp' },
+  { id: 'style', cover: '/imagine/style.webp' },
+  { id: 'video', cover: '/imagine/video.webp' },
   /*
    * The two new cards have home-made covers from our own renders: for
    * "Object swap" a before/after diptych of the same frame (the blue dress
@@ -26,22 +27,29 @@ export const JOB_CARDS = [
    * looks thumbnail, so on the home page they were indistinguishable
    * (2026-11-06).
    */
-  { id: 'objectSwap', title: 'imagine.objectSwap', hint: 'imagine.actionObjectSwapHint', cover: '/imagine/objectSwap.webp' },
+  { id: 'objectSwap', cover: '/imagine/objectSwap.webp' },
   // Its cover is our own render of two invented people (2026-11-15).
-  { id: 'swapPerson', title: 'imagine.swapPerson', hint: 'imagine.actionSwapPersonHint', cover: '/imagine/swapPerson.webp' },
-  { id: 'relight', title: 'imagine.relight', hint: 'imagine.actionRelightHint', cover: '/imagine/relight.webp' },
-  { id: 'recreate', title: 'imagine.recreateVideo', hint: 'imagine.actionRecreateHint', cover: '/imagine/recreate.webp' },
-  { id: 'regenerate', title: 'imagine.regenerateDetail', hint: 'imagine.actionRegenerateHint', cover: '/imagine/regenerate-detail.webp' },
-  { id: 'compose', title: 'imagine.compose', hint: 'imagine.actionComposeHint', cover: '/imagine/compose.webp' },
-  { id: 'loop', title: 'imagine.makeLoop', hint: 'imagine.actionLoopHint', cover: '/imagine/loop.webp' },
-  { id: 'bg', title: 'imagine.bgRemoval', hint: 'imagine.actionBgHint', cover: '/imagine/bg.webp' },
-  { id: 'frames', title: 'imagine.extractFrames', hint: 'imagine.actionFramesHint', cover: '/imagine/frames.webp' },
-  { id: 'upscale', title: 'imagine.upscale', hint: 'imagine.actionUpscaleHint', cover: '/imagine/upscale.webp' },
-  { id: 'music', title: 'imagine.makeMusic', hint: 'imagine.actionMusicHint', cover: '/imagine/music.webp' },
-  { id: 'voice', title: 'imagine.changeVoice', hint: 'imagine.actionVoiceHint', cover: '/imagine/voce.webp' },
-  { id: 'tts', title: 'imagine.makeSpeech', hint: 'imagine.actionSpeechHint', cover: '/imagine/tts.webp' },
-  { id: 'clip', title: 'imagine.makeClip', hint: 'imagine.actionClipHint', cover: '/imagine/clip.webp' },
-] as const
+  { id: 'swapPerson', cover: '/imagine/swapPerson.webp' },
+  { id: 'relight', cover: '/imagine/relight.webp' },
+  { id: 'recreate', cover: '/imagine/recreate.webp' },
+  { id: 'regenerate', cover: '/imagine/regenerate-detail.webp' },
+  { id: 'compose', cover: '/imagine/compose.webp' },
+  { id: 'loop', cover: '/imagine/loop.webp' },
+  { id: 'bg', cover: '/imagine/bg.webp' },
+  { id: 'frames', cover: '/imagine/frames.webp' },
+  { id: 'upscale', cover: '/imagine/upscale.webp' },
+  { id: 'music', cover: '/imagine/music.webp' },
+  { id: 'voice', cover: '/imagine/voce.webp' },
+  { id: 'tts', cover: '/imagine/tts.webp' },
+  { id: 'clip', cover: '/imagine/clip.webp' },
+] as const satisfies readonly { readonly id: WorkflowCardId; readonly cover: string }[]
+
+/** The cards, each with its panel's title and summary as the locale keys it shows. */
+export const JOB_CARDS = CARD_COVERS.map(card => ({
+  ...card,
+  title: WORKFLOW_SPECS[card.id].titleKey,
+  hint: WORKFLOW_SPECS[card.id].summaryKey,
+}))
 
 /**
  * The cards that move: the animated file that covers them (2026-11-02).
@@ -61,7 +69,7 @@ export const CARD_MOTION: Partial<Record<JobCardId, string>> = {
 }
 
 /** One card of the home's grid. */
-export type JobCardId = (typeof JOB_CARDS)[number]['id']
+export type JobCardId = (typeof CARD_COVERS)[number]['id']
 
 /**
  * The composer mode each card's panel opens in.

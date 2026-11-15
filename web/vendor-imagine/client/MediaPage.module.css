@@ -103,35 +103,22 @@
 .menuBox { position: relative; }
 
 .menu {
+  composes: popMenu from './imagine-shared.module.css';
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
   min-width: 206px;
-  padding: 6px;
-  border: 1px solid rgb(255 255 255 / 0.08);
-  border-radius: 14px;
   background: var(--imagine-chip);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 0.45);
 }
 
 .menuHead { display: block; padding: 8px 10px 4px; font-size: 12px; color: var(--imagine-dim); }
 
 .menuItem {
-  display: flex;
-  align-items: center;
-  width: 100%;
+  composes: popItem from './imagine-shared.module.css';
   height: 32px;
-  padding: 0 10px;
-  border: none;
-  border-radius: 9px;
-  background: transparent;
   color: var(--imagine-ink-soft);
-  font: inherit;
   font-size: 14px;
-  cursor: pointer;
 }
-
-.menuItem:hover { background: rgb(255 255 255 / 0.07); }
 .menuLabel { flex: 1; text-align: left; }
 
 .grid {

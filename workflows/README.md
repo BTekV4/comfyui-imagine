@@ -37,36 +37,24 @@ or it keeps using the copy in memory.
 
 ## Video
 
-The clip graphs are MiniMax H3. There are up to four recipes per action, all
-with the same pins, so they are interchangeable in `path` / `pathHigh`:
+The clip graphs are MiniMax H3, in two recipes per action with the same pins,
+so they are interchangeable in `path` / `pathHigh`:
 
 - **Pika fast** — base H3 weights plus the Pika turbo LoRA, 4 steps. The
   default `path`.
 - **Pika quality** — base H3 weights plus the Pika LoRA, 6 steps. The default
   `pathHigh` (used for "Quality: high" / "Speed: slow").
-- **FastH3** — the distilled FastH3 weights, 8 steps. Earlier default; one
-  graph instead of two.
-- **MiniMax H3** — base weights with the MiniMax turbo LoRA (4-step sampler).
-  The oldest recipe, kept for reference.
 
 | File | Config key(s) | What it does |
 |---|---|---|
 | `comfyui_video_i2v_pika_fast_API.json` | `createVideo`, `recreateVideo` (default `path`) | Image to video, with an optional end frame. |
 | `comfyui_video_i2v_pika_quality_API.json` | `createVideo`, `recreateVideo` (default `pathHigh`) | Same, quality recipe. |
-| `comfyui_video_i2v_fasth3_API.json` | `createVideo`, `recreateVideo` (alternative) | Same, FastH3 recipe. |
 | `comfyui_video_loop_pika_fast_API.json` | `loopVideo` (default `path`) | Animated loop: the latent's end wraps onto its start (`MiniMaxH3Loop`), the photo is a reference. |
 | `comfyui_video_loop_pika_quality_API.json` | `loopVideo` (default `pathHigh`) | Same, quality recipe. |
-| `comfyui_video_loop_seamless_fasth3_API.json` | `loopVideo` (alternative) | Same wrapped loop, FastH3 recipe. |
-| `comfyui_video_loop_fasth3_API.json` | `loopVideo` (alternative, older) | Loop by pinning the photo as both first and last frame (FastH3). The loop point tends to be the clip's largest jump; superseded by the wrapped graphs. |
 | `comfyui_video_extend_pika_fast_API.json` | `extendVideo` (default `path`) | Continues an existing clip from its tail. |
 | `comfyui_video_extend_pika_quality_API.json` | `extendVideo` (default `pathHigh`) | Same, quality recipe. |
-| `comfyui_video_extend_fasth3_API.json` | `extendVideo` (alternative) | Same, FastH3 recipe. |
-| `comfyui_video_extend_minimax_h3_API.json` | `extendVideo` (alternative) | Same, MiniMax H3 + turbo LoRA recipe. |
 | `comfyui_video_song_pika_fast_API.json` | `videoOnSong` (default `path`) | A clip that sings a given track: the song slice is anchored at a frame, so the mouth follows it; shots chain into each other. |
 | `comfyui_video_song_pika_quality_API.json` | `videoOnSong` (default `pathHigh`) | Same, quality recipe. |
-| `comfyui_video_song_fasth3_API.json` | `videoOnSong` (alternative) | Same, FastH3 (OmniRef) recipe. |
-| `comfyui_video_r2v_minimax_h3_song_API.json` | `videoOnSong` (alternative) | Same, MiniMax H3 + turbo LoRA recipe. |
-| `comfyui_video_r2v_minimax_h3_song_LIPSYNC_API.json` | `videoOnSong` (alternative) | The MiniMax H3 song graph without the audio pre-roll: the protected audio latent is the song slice itself, aligned at the start. It has no `1682:602` node, so drop the `songPreroll*` pins with it. |
 | `comfyui_video_object_swap_API.json` | `objectSwap` (default) | "Edit object", mode *change*: the tracked object is replaced, optionally from a photo. |
 | `comfyui_video_object_swap_remove_API.json` | `objectSwapRemove` (default) | Mode *remove*: the masked object is regenerated as the surrounding scene. |
 | `comfyui_video_object_swap_background_API.json` | `objectSwapBackground` (default) | Mode *background*: the mask is inverted, the surroundings are redrawn and the subject stays. No photo. |

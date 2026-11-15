@@ -9,10 +9,10 @@
 import { useEffect, useRef, type RefObject } from 'react'
 
 /** How far past the screen, above and below, cards stay drawn (px). */
-export const BAND_MARGIN = 1600
+const BAND_MARGIN = 1600
 
 /** The grain the drawn band moves by, so a scroll re-renders once per step (px). */
-export const BAND_STEP = 400
+const BAND_STEP = 400
 
 /**
  * The band worth drawing around a view, quantized to {@link BAND_STEP}.

@@ -10,17 +10,37 @@ import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateA
 
 /**
  * Run `callback` every `ms` while the tab is visible.
+ *
+ * A callback that returns a promise is not called again until that promise
+ * settles: a plain `setInterval` fired the next request while the last one
+ * was still out, so on a slow host two reads of the same route overlapped and
+ * the older answer could land last.
  * @param callback - the work; always the latest one passed, so it may close over fresh state.
  * @param ms - the period, or null to stop.
  */
-export function useVisibleInterval(callback: () => void, ms: number | null): void {
+export function useVisibleInterval(callback: () => void | Promise<unknown>, ms: number | null): void {
   const latest = useRef(callback)
   latest.current = callback
+  /*
+   * Whether the last call is still running. A ref, not a variable of the
+   * effect: a change of `ms` restarts the timer while a call may be out, and
+   * the new timer must still wait for it.
+   */
+  const running = useRef(false)
   useEffect(() => {
     if (ms === null) return
     let handle: ReturnType<typeof setInterval> | undefined
+    const fire = (): void => {
+      if (running.current) return
+      const result = latest.current()
+      if (result instanceof Promise) {
+        running.current = true
+        const done = (): void => { running.current = false }
+        result.then(done, done)
+      }
+    }
     const start = (): void => {
-      if (handle === undefined) handle = setInterval(() => { latest.current() }, ms)
+      if (handle === undefined) handle = setInterval(fire, ms)
     }
     const stop = (): void => {
       if (handle !== undefined) clearInterval(handle)
@@ -30,7 +50,7 @@ export function useVisibleInterval(callback: () => void, ms: number | null): voi
       if (document.hidden) {
         stop()
       } else {
-        latest.current()
+        fire()
         start()
       }
     }
@@ -75,7 +95,8 @@ export function usePolled<T>(read: () => Promise<T>, ms: number | null): {
     }
   }, [])
   useEffect(() => { void reload() }, [reload])
-  useVisibleInterval(() => { void reload() }, ms)
+  // Handed the promise, so a slow read is not started again on top of itself.
+  useVisibleInterval(reload, ms)
   return { data, loaded, reload, update: setData }
 }
 

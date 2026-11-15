@@ -10,9 +10,9 @@
  * @module tool-comfy/imagine-jobs
  */
 
+import { SWAP_PLAN_RESOLUTION } from '../../../shared/imagine-sizing.ts'
 import { randomUUID } from 'node:crypto'
 import type { ImagineHost } from '../../src/host.ts'
-import { windowSecondsOf } from './h3-windows.ts'
 import type { ImagineWorkflows } from './workflow-fields.ts'
 import { keepPaintedMask, putJob, type ImagineJob, type SpeakTarget } from './job-queue.ts'
 import { MAX_JOB_COUNT, readJobRequest, routeRequest, type ImagineJobRequest } from './job-request.ts'
@@ -83,16 +83,22 @@ export async function startImagineJob(
       ...action === 'scanFrame' && request.candidates !== undefined ? { candidates: request.candidates } : {},
       ...recreate && request.keepAudio === true ? { keepAudio: true } : {},
       ...action === 'swapPerson' && request.lipSync === false ? { lipSync: false } : {},
-      // The swaps' step on a graph that plans its own clips: 480p (0.4 MP) or 1080p (2.07 MP); 720p keeps the graph's 736p.
-      ...(action === 'swapPerson' || action === 'objectSwap') && request.megapixels !== undefined
-        && (request.megapixels < 0.6 || request.megapixels > 1.5)
-        ? { planResolution: request.megapixels < 0.6 ? '480p' : '1080p' }
+      // The swaps' step on a graph that plans its own clips: 720p keeps the graph's own 736p.
+      ...(action === 'swapPerson' || action === 'objectSwap') && request.swapResolution !== undefined
+        && SWAP_PLAN_RESOLUTION[request.swapResolution] !== undefined
+        ? { planResolution: SWAP_PLAN_RESOLUTION[request.swapResolution] }
         : {},
       ...plan.recreateSeconds === undefined ? {} : { seconds: plan.recreateSeconds },
-      ...action === 'objectSwap' ? { seconds: windowSecondsOf(request) } : {},
-      // The composer's size for the actions that have one, the clip's own
-      // canvas for an object swap or a recreation — never the composer's there,
-      // which would letterbox or crop the plate.
+      /*
+       * No length for an object swap: its graph plans its own clips on the
+       * plate, and a length stamped here would land in the file's note as the
+       * clip's duration, whatever the clip really lasts.
+       *
+       * The composer's size for the actions that have one, the clip's own
+       * canvas for a recreation — never the composer's there, which would
+       * letterbox or crop the reference. An object swap carries none: its
+       * graph sizes the render from `planResolution`.
+       */
       ...plan.size === undefined ? {} : { size: plan.size },
       ...request.aspectRatio === undefined ? {} : { aspectRatio: request.aspectRatio },
       ...request.seconds === undefined || recreate ? {} : { seconds: request.seconds },

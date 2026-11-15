@@ -2,7 +2,7 @@
  * What the studio knows about one produced file, kept beside the file's life.
  *
  * Two things the chat needs about a picture on the board and could not have:
- * how it was made — the action, the look, the pose, the format — and what is
+ * how it was made — the action, the prompt, the format — and what is
  * in it. The first lives on the job, and the job map is pruned half an hour
  * after a run; the second was a description the chat cached in memory for the
  * files staged in it, and only those. So "rifai queste foto in 9:16" met a
@@ -24,15 +24,21 @@ import type { HostEdit, ImagineAction } from '../../../shared/imagine-types.ts'
 export interface ImagineFileOrigin {
   /** The studio action that made it, or the host's own edit (trim, crop, …). */
   readonly action: ImagineAction | HostEdit
-  /** The prompt, or the look's title for a lookbook run. */
+  /** The prompt the run was given. */
   readonly prompt: string
+  /**
+   * @deprecated Legacy lookbook: no run writes it any more. Still read from
+   * older notes on disk, which media search and «Dettagli» show.
+   */
   readonly pose?: string
   readonly aspect?: string
   readonly resolution?: string
   readonly seconds?: number
   /** The file the run started from, when it started from one. */
   readonly source?: string
+  /** @deprecated Legacy `look` action: no run writes it; read from older notes only. */
   readonly changes?: string
+  /** @deprecated Legacy `look` action: no run writes it; read from older notes only. */
   readonly subject?: string
   /** How well a sung shot's mouth followed the voice, 0-1, when measured. */
   readonly lipsync?: number

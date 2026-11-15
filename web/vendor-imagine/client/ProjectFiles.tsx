@@ -8,7 +8,9 @@ import type { ComfyLocaleKey } from './locales.ts'
 import { useMemo, useState } from 'react'
 import { mediaUrlOf, thumbUrlOf, THUMB_SMALL } from './gallery-api.ts'
 import type { GalleryItem } from '../../../shared/imagine-types.ts'
+import { IconFolderCloseRegular } from '../../shims/primitives/index.ts'
 import { Still } from './Still.tsx'
+import { AudioMark } from './imagine-bits.tsx'
 import css from './ProjectFiles.module.css'
 
 const FOLDERS: readonly { kind: GalleryItem['kind']; label: ComfyLocaleKey }[] = [
@@ -40,7 +42,8 @@ export function ProjectFiles({ items, onFullscreen, onShowOnCanvas }: ProjectFil
           return (
             <div key={folder.kind}>
               <button type="button" className={css.folder} aria-expanded={open[folder.kind] !== false} onClick={() => { setOpen(state => ({ ...state, [folder.kind]: state[folder.kind] === false })) }}>
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true"><path d="M1.5 4.5a1 1 0 0 1 1-1h3.6l1.4 1.5h6a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-8Z" /></svg>
+                {/* The rail's and All media's folder, at this row's size and weight. */}
+                <IconFolderCloseRegular size={14} strokeWidth={1.4} />
                 <span className={css.folderName}>{translate(folder.label)}</span>
                 <span className={css.count}>{String(inside.length)}</span>
               </button>
@@ -55,7 +58,7 @@ export function ProjectFiles({ items, onFullscreen, onShowOnCanvas }: ProjectFil
                   onDoubleClick={() => { onFullscreen(item) }}
                 >
                   {item.kind === 'audio'
-                    ? <span className={css.note} aria-hidden="true">♪</span>
+                    ? <AudioMark className={css.note} />
                     : <Still className={css.fileThumb} lazy src={thumbUrlOf(item.name, THUMB_SMALL, item.mtime)} />}
                   <span className={css.fileName}>{item.name}</span>
                 </button>

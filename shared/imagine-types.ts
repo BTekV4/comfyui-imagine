@@ -30,8 +30,6 @@ export interface ModelEntry {
   readonly provider: string
   readonly id: string
   readonly name?: string
-  /** Whether the model reads images. */
-  readonly vision?: boolean
 }
 
 /** One tag of «Tutti i media» (GET/POST /api/tags). */
@@ -173,6 +171,14 @@ export interface ImagineRegion {
   readonly w: number
   readonly h: number
 }
+
+/**
+ * The smallest side of a region, as a fraction of the photo's: a zone thinner
+ * than 2% is a stray click, not an edit. One number for the server, which
+ * clamps a region and drops one under it, and the MCP, which refuses it with
+ * a reason before queueing anything.
+ */
+export const MIN_REGION_SIDE = 0.02
 
 /** Job states the studio page polls. */
 export type ImagineJobStatus = 'queued' | 'running' | 'done' | 'error' | 'cancelled'
@@ -370,8 +376,6 @@ export interface MusicClipRequest {
   readonly size?: string
   /** The model the composer's chip is showing. */
   readonly model?: ModelRoute
-  /** The poses to photograph, in order; cycled when there are fewer than shots. */
-  readonly poses?: readonly string[]
   /**
    * The project the video belongs to, when the studio has one.
    *

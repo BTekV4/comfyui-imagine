@@ -115,21 +115,22 @@ function usePlugins() {
   const [languageNote, setLanguageNote] = useState<Note>()
 
   const load = async (): Promise<void> => {
-    try {
-      const next = await getJson<PluginsData>('/comfy-plugins', 'HTTP')
+    // The two lists do not depend on each other: ask for both at once and
+    // let each settle into its own state.
+    const [plugins, packs] = await Promise.allSettled([
+      getJson<PluginsData>('/comfy-plugins', 'HTTP'),
+      getJson<LocalePacksData>('/comfy-locales-available', 'HTTP'),
+    ])
+    if (plugins.status === 'fulfilled') {
       // The studio hides a plugin's UI while it is off: tell it what is on now.
-      notePlugins(next.plugins)
-      setData(next)
+      notePlugins(plugins.value.plugins)
+      setData(plugins.value)
       setError(undefined)
-    } catch (failure: unknown) {
-      setError(messageOf(failure))
+    } else {
+      setError(messageOf(plugins.reason))
     }
-    try {
-      setLanguages((await getJson<LocalePacksData>('/comfy-locales-available', 'HTTP')).packs)
-    } catch {
-      // Without the language list the page is still useful: the plugins are there.
-      setLanguages([])
-    }
+    // Without the language list the page is still useful: the plugins are there.
+    setLanguages(packs.status === 'fulfilled' ? packs.value.packs : [])
   }
   useEffect(() => { void load() }, [])
 

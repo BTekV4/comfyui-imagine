@@ -42,7 +42,7 @@ export const COVER_TYPES: readonly CoverType[] = (['webp', 'png', 'jpg', 'mp4', 
 export const COVER_MAX_BYTES = 20 * 1024 * 1024
 
 /** The type of an extension (with or without the dot), case-insensitive. */
-export function coverTypeByExt(ext: string): CoverType | undefined {
+function coverTypeByExt(ext: string): CoverType | undefined {
   const lower = ext.toLowerCase()
   const dotted = lower.startsWith('.') ? lower : `.${lower}`
   return COVER_TYPES.find(type => type.ext === dotted)

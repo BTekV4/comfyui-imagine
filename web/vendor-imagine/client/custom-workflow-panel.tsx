@@ -8,10 +8,9 @@
  * description) and the derived controls as props.
  * @module client/custom-workflow-panel
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getJson } from './http.ts'
-import { mediaUrlOf } from './gallery-api.ts'
-import { formatClock } from './format.ts'
+import { FrameScrubber } from './FrameScrubber.tsx'
 import { LoraRows, useCustomLoras } from './custom-loras.tsx'
 import { messageOf } from './message-of.ts'
 import { uploadGalleryItem } from './gallery-api.ts'
@@ -20,10 +19,8 @@ import type { WorkflowSpec } from './workflow-specs.ts'
 import { deriveCustomWorkflowControls, type CustomGraph } from './custom-workflow-spec.ts'
 import { IMAGE_RESOLUTIONS, IMAGINE_ASPECTS, type ImagineAspect, type ImagineResolution } from '../../../shared/imagine-media.ts'
 import { sizeFor } from './imagine-settings.ts'
-import { DEFAULT_OBJECT_PLACEMENT } from '../../../shared/imagine-types.ts'
-import { DEFAULT_RELIGHT_LOOK } from '../../../shared/relight-looks.ts'
 import type {
-  GalleryItem, ImagineObjectMode, MediaKind, ModelRoute,
+  GalleryItem, MediaKind,
 } from '../../../shared/imagine-types.ts'
 import type { CustomWorkflow } from './custom-workflows-view.tsx'
 import own from './CustomWorkflows.module.css'
@@ -73,62 +70,6 @@ function stillMegapixels(aspect: ImagineAspect, resolution: ImagineResolution): 
   const [width, height] = sizeFor(aspect, resolution).split('x').map(Number)
   if (width === undefined || height === undefined) return 0
   return Math.round(width * height / 10_000) / 100
-}
-
-/**
- * The frame of a staged clip, picked with the same scrubber «Estrai fotogrammi»
- * shows: a player, a time slider and the buttons that move by a second or by a
- * frame. The value sent is the time, in seconds; the graph turns it into the
- * frame index with the clip's own fps.
- * @param props - the clip, the current time and the callback.
- * @returns the scrubber.
- */
-function FrameScrubber({ clip, time, onChange }: {
-  readonly clip: GalleryItem
-  readonly time: number
-  readonly onChange: (seconds: number) => void
-}) {
-  const player = useRef<HTMLVideoElement>(null)
-  const [duration, setDuration] = useState(clip.duration ?? 0)
-  useEffect(() => { setDuration(clip.duration ?? 0) }, [clip.name, clip.duration])
-  const seek = (next: number): void => {
-    const clamped = Math.min(Math.max(0, next), Math.max(0, duration - 0.001))
-    onChange(clamped)
-    if (player.current !== null) {
-      player.current.pause()
-      player.current.currentTime = clamped
-    }
-  }
-  return (
-    <div className={own.frame}>
-      <video
-        ref={player}
-        className={own.framePlayer}
-        src={mediaUrlOf(clip.name)}
-        preload="metadata"
-        playsInline
-        muted
-        onLoadedMetadata={(event) => { if (Number.isFinite(event.currentTarget.duration)) setDuration(event.currentTarget.duration) }}
-        onSeeked={(event) => { onChange(event.currentTarget.currentTime) }}
-      />
-      <input
-        className={own.inputBox}
-        type="range"
-        min={0}
-        max={Math.max(duration, 0.001)}
-        step={0.001}
-        value={Math.min(time, Math.max(duration, 0.001))}
-        onChange={(event) => { seek(Number(event.target.value)) }}
-      />
-      <div className={own.frameRow}>
-        <button type="button" className={own.frameStep} onClick={() => { seek(time - 1) }}>−1 s</button>
-        <button type="button" className={own.frameStep} onClick={() => { seek(time - 1 / 30) }}>−1f</button>
-        <span className={own.frameClock}>{formatClock(time, 3)} / {formatClock(duration, 3)}</span>
-        <button type="button" className={own.frameStep} onClick={() => { seek(time + 1 / 30) }}>+1f</button>
-        <button type="button" className={own.frameStep} onClick={() => { seek(time + 1) }}>+1 s</button>
-      </div>
-    </div>
-  )
 }
 
 export function CustomWorkflowPanel({ workflow, items, busy, onBack, onRun, onRunBatch, onGalleryAdd }: CustomWorkflowPanelProps) {
@@ -217,18 +158,20 @@ export function CustomWorkflowPanel({ workflow, items, busy, onBack, onRun, onRu
     if (fields.length === 0) return
     let live = true
     void (async () => {
-      const known: Record<string, readonly string[]> = {}
-      for (const combo of fields) {
+      // The lists do not depend on each other: ask for all of them at once
+      // instead of one round trip to ComfyUI after the other.
+      const lists = await Promise.all(fields.map(async (combo) => {
         try {
           const body = await getJson<{ options: readonly string[] }>(
             `/comfy-custom-workflows/${workflow.id}/options?node=${encodeURIComponent(combo.node)}&field=${encodeURIComponent(combo.field)}`,
             'workflow',
           )
-          known[combo.key] = body.options
+          return [combo.key, body.options] as const
         } catch {
-          known[combo.key] = []
+          return [combo.key, [] as readonly string[]] as const
         }
-      }
+      }))
+      const known: Record<string, readonly string[]> = Object.fromEntries(lists)
       if (live) setComboOptions(known)
     })()
     return () => { live = false }
@@ -391,11 +334,20 @@ export function CustomWorkflowPanel({ workflow, items, busy, onBack, onRun, onRu
             <span className={own.inputLabel}>{input.label}</span>
             {input.kind === 'frame'
               ? (
-                <FrameScrubber
-                  clip={stagedClip as GalleryItem}
-                  time={Number(value) || 0}
-                  onChange={(seconds) => { setInputValues(current => ({ ...current, [key]: String(seconds) })) }}
-                />
+                /*
+                 * The scrubber «Estrai fotogrammi» shows, shorter here among
+                 * the other fields. The value sent is the time, in seconds;
+                 * the graph turns it into the frame index with the clip's
+                 * own fps.
+                 */
+                <div className={own.frame}>
+                  <FrameScrubber
+                    compact
+                    clip={stagedClip as GalleryItem}
+                    time={Number(value) || 0}
+                    onChange={(seconds) => { setInputValues(current => ({ ...current, [key]: String(seconds) })) }}
+                  />
+                </div>
               )
               : input.kind === 'boolean'
                 ? (
@@ -448,14 +400,7 @@ export function CustomWorkflowPanel({ workflow, items, busy, onBack, onRun, onRu
       prompt={prompt}
       aspect={aspect}
       resolution={resolution}
-      references={10}
-      objectMode={'change' as ImagineObjectMode}
-      placement={DEFAULT_OBJECT_PLACEMENT}
-      light={DEFAULT_RELIGHT_LOOK.id}
       seconds={seconds}
-      lyrics={''}
-      keepAudio={false}
-      lipSync
       busy={busy}
       note={error}
       onBack={onBack}
@@ -464,20 +409,8 @@ export function CustomWorkflowPanel({ workflow, items, busy, onBack, onRun, onRu
       onPrompt={setPrompt}
       onAspect={setAspect}
       onResolution={setResolution}
-      onReferences={() => undefined}
-      onObjectMode={() => undefined}
-      onPlacement={() => undefined}
-      onLight={() => undefined}
       onSeconds={setSeconds}
-      onLyrics={() => undefined}
-      onKeepAudio={() => undefined}
-      onLipSync={() => undefined}
-      onModel={(_route: ModelRoute) => undefined}
       onRun={run}
-      upscaleTo={undefined}
-      onUpscaleTo={() => undefined}
-      onFrameSaved={() => undefined}
-      onUseFrame={() => undefined}
       batch={controlsOf.batch === undefined || batchValues.length < 2
         ? undefined
         : { count: batchValues.length, label: batchLabel, onRun: runBatch }}

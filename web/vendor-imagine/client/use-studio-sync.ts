@@ -7,7 +7,8 @@
  * One tick for the queue, through `useVisibleInterval` (it sleeps with the
  * tab hidden and catches up at once when it shows again): every second while
  * a job this board owns is live or a read is owed, every three seconds
- * otherwise. The stages of a music video are adopted on that same tick — they
+ * otherwise, and backing off up to thirty seconds while the host keeps
+ * failing. A tick never starts while the last is still out. The stages of a music video are adopted on that same tick — they
  * used to have a fetch of the queue of their own every three seconds.
  * @module use-studio-sync
  */
@@ -16,12 +17,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObjec
 import type { CanvasRect, ImagineProject } from '../../../shared/imagine-projects.ts'
 import type { GalleryItem, ImagineJobView as ImagineJob } from '../../../shared/imagine-types.ts'
 import {
-  acceptGallery, fetchGallery, fetchImagineJobs, fetchImagineStudio, fetchSocialPosts, jobIsLive, saveImagineStudio,
+  acceptGallery, fetchGallery, fetchImagineJobs, fetchImagineStudio, fetchSocialPostsIfChanged, jobIsLive, saveImagineStudio,
   type ImagineStudio, type SocialPost,
 } from './gallery-api.ts'
 import {
-  absorbJobFiles, ensureHistoryProject, followRenames, mergeProjects, mergeTombstones, pruneTombstones,
-  purgeEmptyProjects, rememberJob, sameList, stripRemoved, upscaleReplacements, type ImagineTombstones,
+  absorbJobFiles, capTombstones, ensureHistoryProject, followRenames, mergeProjects, mergeTombstones,
+  purgeEmptyProjects, rememberJob, sameList, sameRect, stripRemoved, upscaleReplacements, type ImagineTombstones,
 } from './imagine-projects.ts'
 import { jobDoneText, jobsFingerprint, noticeText } from './imagine-messages.ts'
 import { jobProgress } from './job-progress.tsx'
@@ -61,11 +62,6 @@ function sameContent(a: unknown, b: unknown): boolean {
   return keys.every(key => sameContent(left[key], right[key]))
 }
 
-/** Whether two saved positions are the same place and size. */
-function sameRect(a: CanvasRect | undefined, b: CanvasRect): boolean {
-  return a !== undefined && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h && a.scale === b.scale
-}
-
 /** What the sync reads of the page, current on every render. */
 export interface StudioSyncContext {
   /** Whether the Instagram plugin is there: its queue is read only then. */
@@ -96,6 +92,24 @@ export function useStudioSync(ctx: StudioSyncContext) {
   const [jobs, setJobs] = useState<readonly ImagineJob[]>([])
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const [syncPending, setSyncPending] = useState(false)
+  /**
+   * Reads of the host that failed in a row, capped at 5. While it is above
+   * zero the queue tick backs off (2 s, 4 s … 30 s) instead of running at the
+   * fast rate: a failure also marks a read as owed (`syncPending`), and that
+   * alone used to put an unreachable host, or a proxy answering 502, on one
+   * request per second per open tab, for as long as the tab stayed open.
+   */
+  const [failures, setFailures] = useState(0)
+  const failuresRef = useRef(0)
+  const hostAnswered = (): void => {
+    if (failuresRef.current === 0) return
+    failuresRef.current = 0
+    setFailures(0)
+  }
+  const hostFailed = (): void => {
+    failuresRef.current = Math.min(failuresRef.current + 1, 5)
+    setFailures(failuresRef.current)
+  }
   /** A rejected PUT, kept on screen until one succeeds: see `persist`. */
   const [saveFailed, setSaveFailed] = useState(false)
   const [socialPosts, setSocialPosts] = useState<readonly SocialPost[]>([])
@@ -271,6 +285,7 @@ export function useStudioSync(ctx: StudioSyncContext) {
        * nothing to merge, and the rest of the pass (purge, naming, writes) is
        * the work of a rail that just arrived.
        */
+      hostAnswered()
       if (studio === undefined) {
         setStatus('idle')
         setSyncPending(galleryOwedRef.current)
@@ -284,11 +299,10 @@ export function useStudioSync(ctx: StudioSyncContext) {
         deleted: { ...studio.deleted },
       }
       // Tombstones travel with the projects and win over both copies, so a
-      // delete survives a merge with a stale rail from another browser.
-      const tombstones = pruneTombstones(
-        mergeTombstones(deletedRef.current, studio.deleted ?? {}),
-        Date.now(),
-      )
+      // delete survives a merge with a stale rail from another browser. They
+      // are capped by count as the host caps them, never expired by age:
+      // forgetting an old one would let that stale rail bring it back.
+      const tombstones = capTombstones(mergeTombstones(deletedRef.current, studio.deleted ?? {}))
       actions.setDeleted(tombstones)
       // Removals win over both copies too: the richer copy of a project is
       // the one that still lists a file somebody took out of it.
@@ -331,8 +345,10 @@ export function useStudioSync(ctx: StudioSyncContext) {
     } catch {
       galleryOwedRef.current = true
       setStatus('error')
-      // Ask the live tick to try again instead of leaving the canvas behind.
+      // Ask the live tick to try again instead of leaving the canvas behind;
+      // it does so on a backed-off period while the host keeps failing.
       setSyncPending(true)
+      hostFailed()
     }
   }
   const reloadOnceRef = useRef(reloadOnce)
@@ -427,16 +443,25 @@ export function useStudioSync(ctx: StudioSyncContext) {
        * filed it in. Once per job, so work of the other sessions does not
        * re-read a tick.
        */
+      // Every known job id once per tick, rather than a scan of every
+      // project's list for every job in the queue.
+      const known = new Set(projectsRef.current.flatMap(project => project.jobIds))
       const unknown = next.filter(job => (jobIsLive(job) || job.status === 'done')
         && !lookedUpJobsRef.current.has(job.id)
-        && !projectsRef.current.some(project => project.jobIds.includes(job.id)))
+        && !known.has(job.id))
       for (const job of unknown) lookedUpJobsRef.current.add(job.id)
       if (galleryOwedRef.current || unknown.length > 0
-        || next.filter(job => !jobIsLive(job)).length !== settledRef.current) await reload()
-      else setStatus('idle')
+        || next.filter(job => !jobIsLive(job)).length !== settledRef.current) {
+        // The full read says itself whether the host answered.
+        await reload()
+      } else {
+        setStatus('idle')
+        hostAnswered()
+      }
     } catch {
       // Keep the last snapshot: a dropped tick must not blank the canvas.
       setSyncPending(true)
+      hostFailed()
     }
   }
 
@@ -450,7 +475,12 @@ export function useStudioSync(ctx: StudioSyncContext) {
    */
   const ownedJobIds = useMemo(() => new Set(projects.flatMap(project => project.jobIds)), [projects])
   const live = jobs.some(job => jobIsLive(job) && ownedJobIds.has(job.id))
-  useVisibleInterval(() => { void reloadJobs() }, live || syncPending ? 1000 : 3000)
+  /*
+   * The promise is handed to the interval, so a tick never starts while the
+   * last one is still out (a slow host used to get two queue reads at once).
+   */
+  const pollMs = failures > 0 ? Math.min(1000 * 2 ** failures, 30_000) : live || syncPending ? 1000 : 3000
+  useVisibleInterval(reloadJobs, pollMs)
   useEffect(() => { void reload() }, [reload])
 
   /*
@@ -459,12 +489,15 @@ export function useStudioSync(ctx: StudioSyncContext) {
    * nobody touching the page.
    */
   const postsSeenRef = useRef<string | undefined>(undefined)
-  const reloadPosts = useCallback(() => {
+  const reloadPosts = useCallback(async (): Promise<void> => {
     if (!social) return
-    fetchSocialPosts()
+    await fetchSocialPostsIfChanged()
       .then((list) => {
+        // A 304: the host says nothing changed.
+        if (list === undefined) return
         // The same queue again is not a change: setting it re-rendered the
-        // whole studio every 20 seconds for nothing.
+        // whole studio every 20 seconds for nothing. Compared by content
+        // because the plugin route sends no ETag yet, so every read is a body.
         const seen = JSON.stringify(list)
         if (seen === postsSeenRef.current) return
         postsSeenRef.current = seen
@@ -472,7 +505,7 @@ export function useStudioSync(ctx: StudioSyncContext) {
       })
       .catch(() => { /* the rail simply keeps the list it has */ })
   }, [social])
-  useEffect(() => { reloadPosts() }, [reloadPosts])
+  useEffect(() => { void reloadPosts() }, [reloadPosts])
   useVisibleInterval(reloadPosts, social ? 20_000 : null)
 
   // The History is always on the rail; its board is the inventory, filtered.

@@ -13,6 +13,7 @@ import { mediaUrlOf } from './gallery-api.ts'
 import type { GalleryItem, ImagineRegion } from '../../../shared/imagine-types.ts'
 import { DialogFooter, Modal, dialogButton } from './Modal.tsx'
 import { useMaskPainter } from './mask-painter.ts'
+import { Segmented } from './Pills.tsx'
 import { MIN_ZONE, ZoneFrame } from './ZoneFrame.tsx'
 import css from './RegionEditDialog.module.css'
 
@@ -44,6 +45,9 @@ export function BrushTools({ label, brush, erase, onBrush, onErase }: {
 
 /** The long side the mask is painted at; the host scales it to the photo. */
 const MASK_SIDE = 1024
+
+/** How the zone is drawn: a dragged box or a painted mask. */
+const REGION_MODES = ['box', 'brush'] as const
 
 export function RegionEditDialog({ item, onClose, onRun }: {
   item: GalleryItem
@@ -79,10 +83,15 @@ export function RegionEditDialog({ item, onClose, onRun }: {
   return (
     <Modal title={translate('imagine.regionEdit')} onClose={onClose}>
       <div className={css.toolbar}>
-        <div className={css.modes} role="radiogroup" aria-label={translate('imagine.regionMode')}>
-          <button type="button" role="radio" aria-checked={mode === 'box'} className={css.mode} data-on={mode === 'box' || undefined} onClick={() => { setMode('box') }}>{translate('imagine.regionBox')}</button>
-          <button type="button" role="radio" aria-checked={mode === 'brush'} className={css.mode} data-on={mode === 'brush' || undefined} onClick={() => { setMode('brush') }}>{translate('imagine.brush')}</button>
-        </div>
+        <Segmented
+          label={translate('imagine.regionMode')}
+          values={REGION_MODES}
+          value={mode}
+          onPick={setMode}
+          format={entry => translate(entry === 'box' ? 'imagine.regionBox' : 'imagine.brush')}
+          group={css.modes}
+          pill={css.mode}
+        />
         {mode === 'brush' && <BrushTools label={translate('imagine.size')} brush={brush} erase={erase} onBrush={setBrush} onErase={setErase} />}
       </div>
       <p className={css.lead}>

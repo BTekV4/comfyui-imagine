@@ -19,7 +19,7 @@ import { dataPath } from '../home-paths/index.ts'
 import { message } from '../../src/messages.ts'
 import type { Config } from './index.ts'
 import { isPlainObject } from './guards.ts'
-import { ALL_WORKFLOW_FIELDS, WORKFLOW_KEYS, WORKFLOW_ROWS, type FieldSpec } from './workflow-fields.ts'
+import { ALL_WORKFLOW_FIELDS, RETIRED_WORKFLOW_FIELDS, WORKFLOW_KEYS, WORKFLOW_ROWS, type FieldSpec } from './workflow-fields.ts'
 import type { ImagineSettingOp } from '../../../shared/imagine-types.ts'
 
 /** Version this module writes and accepts. */
@@ -330,9 +330,17 @@ function parseImagineOverrides(value: unknown): { overrides: ImagineOverrides; e
   if (isPlainObject(workflows)) {
     const accepted: Record<string, Record<string, unknown>> = {}
     for (const [key, patch] of Object.entries(workflows)) {
-      const problem = workflowPatchProblem(key, patch)
+      /*
+       * A field that was retired is dropped before the check, not refused: a
+       * file written while it was still on the page would otherwise lose the
+       * whole layer to it. The next save writes the file without it.
+       */
+      const current = isPlainObject(patch)
+        ? Object.fromEntries(Object.entries(patch).filter(([field]) => !RETIRED_WORKFLOW_FIELDS.has(field)))
+        : patch
+      const problem = workflowPatchProblem(key, current)
       if (problem !== undefined) errors.push(problem)
-      else if (isPlainObject(patch)) accepted[key] = patch
+      else if (isPlainObject(current)) accepted[key] = current
     }
     if (Object.keys(accepted).length > 0) overrides.workflows = accepted
   }
