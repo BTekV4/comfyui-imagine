@@ -13,7 +13,7 @@ import { thumbUrlOf, THUMB_SMALL } from './gallery-api.ts'
 import type { GalleryItem } from '../../../shared/imagine-types.ts'
 import { ImagineModelSelect } from './ImagineModelSelect.tsx'
 import {
-  LOOP_SECONDS, VIDEO_RESOLUTIONS, videoSecondsFor,
+  LOOP_SECONDS, SWAP_RESOLUTIONS, VIDEO_RESOLUTIONS, videoSecondsFor,
 } from './imagine-settings.ts'
 import {
   IMAGE_RESOLUTIONS, IMAGINE_ASPECTS, type ImagineAspect, type ImagineResolution,
@@ -69,6 +69,8 @@ export interface WorkflowPanelProps {
   readonly lyrics: string
   /** "Recreate video": whether the reference clip's soundtrack is kept. */
   readonly keepAudio: boolean
+  /** "Character swap": whether the new person mouths the clip's vocals. */
+  readonly lipSync: boolean
   readonly busy: boolean
   readonly note: string | undefined
   readonly onBack: () => void
@@ -84,6 +86,7 @@ export interface WorkflowPanelProps {
   readonly onSeconds: (value: number) => void
   readonly onLyrics: (value: string) => void
   readonly onKeepAudio: (value: boolean) => void
+  readonly onLipSync: (value: boolean) => void
   readonly onModel: (route: ModelRoute) => void
   readonly onRun: () => void
   /**
@@ -275,7 +278,7 @@ export function WorkflowPanel(props: WorkflowPanelProps) {
   ]
   const isVideo = spec.videoCanvas === true || spec.options.includes('seconds')
     || spec.options.includes('loopSeconds')
-  const resolutions: readonly ImagineResolution[] = isVideo ? VIDEO_RESOLUTIONS : IMAGE_RESOLUTIONS
+  const resolutions: readonly ImagineResolution[] = spec.swapCanvas === true ? SWAP_RESOLUTIONS : isVideo ? VIDEO_RESOLUTIONS : IMAGE_RESOLUTIONS
   const resolution = resolutions.includes(props.resolution) ? props.resolution : resolutions[resolutions.length - 1] ?? '720p'
   const seconds = spec.options.includes('loopSeconds') ? LOOP_SECONDS : videoSecondsFor(resolution)
   const canRun = missing.length === 0 && !props.busy
@@ -368,6 +371,30 @@ export function WorkflowPanel(props: WorkflowPanelProps) {
                 {props.keepAudio
                   ? translate('imagine.keepAudioOn')
                   : translate('imagine.keepAudioOff')}
+              </p>
+            </div>
+          )}
+
+          {/*
+            * "Character swap": Openjutsu's «No lip-sync», shown the other way
+            * round. Off, H3 hears silence and is told nobody sings: for music
+            * the people only move to.
+            */}
+          {spec.options.includes('lipSync') && (
+            <div className={css.block}>
+              <h3 className={css.blockTitle}>{translate('imagine.label.audio')}</h3>
+              <label className={css.check}>
+                <input
+                  type="checkbox"
+                  checked={props.lipSync}
+                  onChange={(event) => { props.onLipSync(event.target.checked) }}
+                />
+                <span>{translate('imagine.lipSyncHint')}</span>
+              </label>
+              <p className={css.dropHint}>
+                {props.lipSync
+                  ? translate('imagine.lipSyncOn')
+                  : translate('imagine.lipSyncOff')}
               </p>
             </div>
           )}

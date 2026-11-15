@@ -151,11 +151,15 @@ function songStartOf(shots: readonly number[], index: number, songSeconds?: numb
   return Math.min(start, Math.max(0, songSeconds - length))
 }
 
-/** Seconds of new material each clip of a story adds, unless told otherwise. */
-const STORY_CLIP_SECONDS = 10
+/**
+ * Seconds of new material each clip of a story adds, unless told otherwise.
+ * Six since 2026-11-15, as every chain in the studio: Openjutsu's plans and
+ * the Context Loop scenes render at most six seconds at a time.
+ */
+const STORY_CLIP_SECONDS = 6
 
-/** Longest chained shot unless the workflow says otherwise: what the 16 GB card renders with margin. */
-const CHAINED_SHOT_SECONDS = 9
+/** Longest chained shot unless the workflow says otherwise (was 9, the 16 GB card's margin; now the studio's six). */
+const CHAINED_SHOT_SECONDS = 6
 
 /** How long a story runs when neither the request nor a song says. */
 const DEFAULT_STORY_SECONDS = 30

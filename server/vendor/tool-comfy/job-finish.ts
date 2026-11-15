@@ -50,6 +50,8 @@ interface FinishRun {
   readonly args: Record<string, unknown>
   /** The length of the clip a continuation extends. */
   readonly extendDuration: number | undefined
+  /** The produced file is already the source followed by its continuation (a chained extend). */
+  readonly wholeClip?: boolean
   readonly shot: DeliveredShot | undefined
   readonly writtenPrompt: string | undefined
   readonly lipsync: number | undefined
@@ -214,7 +216,7 @@ async function deliveredFiles(run: FinishRun): Promise<readonly ComfyProducedFil
    * frames, generated a second time — so that overlap is dropped and the
    * two are crossfaded over the single frame the seam is worth.
    */
-  if (job.action === 'extend' && job.source !== undefined && sourceKind === 'video' && files.length > 0) {
+  if (job.action === 'extend' && run.wholeClip !== true && job.source !== undefined && sourceKind === 'video' && files.length > 0) {
     const videoFile = files.find(f => f.kind === 'video')
     if (videoFile !== undefined) {
       const concatenated = await joinAtSeam(join(outputDir, job.source), videoFile.path, run.extendDuration ?? 0, outputDir)

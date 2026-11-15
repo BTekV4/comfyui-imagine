@@ -27,6 +27,8 @@ export const JOB_CARDS = [
    * (2026-11-06).
    */
   { id: 'objectSwap', title: 'imagine.objectSwap', hint: 'imagine.actionObjectSwapHint', cover: '/imagine/objectSwap.webp' },
+  // Its cover is our own render of two invented people (2026-11-15).
+  { id: 'swapPerson', title: 'imagine.swapPerson', hint: 'imagine.actionSwapPersonHint', cover: '/imagine/swapPerson.webp' },
   { id: 'relight', title: 'imagine.relight', hint: 'imagine.actionRelightHint', cover: '/imagine/relight.webp' },
   { id: 'recreate', title: 'imagine.recreateVideo', hint: 'imagine.actionRecreateHint', cover: '/imagine/recreate.webp' },
   { id: 'regenerate', title: 'imagine.regenerateDetail', hint: 'imagine.actionRegenerateHint', cover: '/imagine/regenerate-detail.webp' },
@@ -53,6 +55,7 @@ export const CARD_MOTION: Partial<Record<JobCardId, string>> = {
   video: '/imagine/video',
   loop: '/imagine/loop',
   objectSwap: '/imagine/objectSwap',
+  swapPerson: '/imagine/swapPerson',
   relight: '/imagine/relight',
   recreate: '/imagine/recreate',
 }
@@ -75,6 +78,7 @@ export const CARD_MODE: Readonly<Record<JobCardId, ImagineMode>> = {
   style: 'style',
   video: 'video',
   objectSwap: 'image',
+  swapPerson: 'image',
   relight: 'image',
   recreate: 'recreate',
   regenerate: 'regenerate',

@@ -204,6 +204,33 @@ toolComfy:
         strength: 1.25
         token: r34l1sm
 
+    # The same action past six seconds (with no last frame): the Context Loop's
+    # I2V chain, Openjutsu's way. One scene of at most 6 s after the other, each
+    # starting from the last frames of the one before, a checkpoint per scene,
+    # the scenes joined inside ComfyUI. The studio writes one prompt per scene
+    # (planJson) and the run name the checkpoints go under (runName). Same model
+    # and LoRAs as the Pika fast graph.
+    createVideoChain:
+      path: ./workflows/comfyui_video_i2v_chain_API.json
+      outputExt: mp4
+      imageNodeId: "27"
+      promptNodeId: ip
+      promptField: value
+      seedNodeId: "24"
+      seedField: base_seed
+      sizeNodeId: "24"
+      planJson:
+        nodeId: "24"
+        field: plan_json
+      runName:
+        nodeId: "24"
+        field: run_name
+      realism:
+        nodeId: real
+        field: strength_model
+        strength: 1.25
+        token: r34l1sm
+
     # The clip a "recreate" renders from its redrawn opening frame. Left out,
     # recreate uses createVideo; here it is the same graph, spelt out.
     recreateVideo:
@@ -254,6 +281,30 @@ toolComfy:
         strength: 1.25
         token: r34l1sm
 
+    # A background past six seconds: the Context Loop's chain of scenes of at
+    # most 6 s; a core switch gives the LAST scene the still as its last frame,
+    # and the studio then dissolves the tail over the head like the old chain.
+    loopVideoChain:
+      path: ./workflows/comfyui_video_loop_chain_API.json
+      outputExt: mp4
+      imageNodeId: "27"
+      promptNodeId: ip
+      promptField: value
+      seedNodeId: "24"
+      seedField: base_seed
+      sizeNodeId: "24"
+      planJson:
+        nodeId: "24"
+        field: plan_json
+      runName:
+        nodeId: "24"
+        field: run_name
+      realism:
+        nodeId: real
+        field: strength_model
+        strength: 1.25
+        token: r34l1sm
+
     # Continue an existing clip (the "extend" action): the tail of the clip
     # goes into the video node.
     extendVideo:
@@ -275,6 +326,32 @@ toolComfy:
         field: value
       realism:
         nodeId: "1682:200"
+        field: strength_model
+        strength: 1.25
+        token: r34l1sm
+
+    # The continuation past six seconds: the Context Loop's external-video
+    # chain. The whole clip is the first scene's context and is laid in front of
+    # the new scenes inside ComfyUI, so the studio does not join anything; each
+    # scene is at most 6 s and continues the one before, with a checkpoint each.
+    extendVideoChain:
+      path: ./workflows/comfyui_video_extend_chain_API.json
+      outputExt: mp4
+      videoNodeId: src
+      videoField: file
+      promptNodeId: ip
+      promptField: value
+      seedNodeId: "24"
+      seedField: base_seed
+      sizeNodeId: "24"
+      planJson:
+        nodeId: "24"
+        field: plan_json
+      runName:
+        nodeId: "24"
+        field: run_name
+      realism:
+        nodeId: real
         field: strength_model
         strength: 1.25
         token: r34l1sm
@@ -326,146 +403,163 @@ toolComfy:
         loadNodeId: "1682:501"
         saveNodeId: "1682:500"
 
-    # "Edit object": a windowed H3 swap whose tracked subject is an object,
-    # one window of the clip per run (`canvasMegapixels` caps the canvas to
-    # keep a window fast). One entry per mode, each with its own graph.
-    # subjectText is what the segmenter tracks; referenceText and sceneText
-    # are the two halves of the prompt.
+    # "Edit object": Openjutsu's object graph, one file per mode. It plans the
+    # clip in 6 s clips with 39 frames of overlap, renders and joins them itself
+    # (MiniMaxH3ChainLoopStart) with a checkpoint per clip, so the whole video
+    # goes in one prompt and a rerun resumes from the last finished clip.
+    # subjectText is what SAM follows (for background: what stays), referenceText
+    # what it becomes (for remove: what shows instead); planResolution takes
+    # «480p» from the composer's lower step, else the graph's 736p.
 
     # Mode "change": the tracked object is replaced (optionally from a photo).
     objectSwap:
       path: ./workflows/comfyui_video_object_swap_API.json
       outputExt: mp4
-      imageNodeId: "9"
-      videoNodeId: "30"
-      videoField: file
-      seedNodeId: "42"
+      imageNodeId: "2"
+      videoNodeId: "5"
+      videoField: video
+      seedNodeId: "7"
       seedField: seed
-      sizeNodeId: "900"
-      canvasMegapixels: 0.58
+      promptNodeId: ip
+      promptField: value
       subjectText:
-        nodeId: p0
-        field: text
-      referenceText:
-        nodeId: "10"
-        field: values.a
-      sceneText:
-        nodeId: "10"
-        field: values.b
-      seconds:
-        nodeId: "32"
+        nodeId: tg
         field: value
-      windowStart:
-        nodeId: "35"
-        field: start_time
+      referenceText:
+        nodeId: tc
+        field: value
+      planResolution:
+        nodeId: "7"
+        field: resolution
 
     # Mode "remove": the masked area is regenerated as the surrounding scene.
     objectSwapRemove:
       path: ./workflows/comfyui_video_object_swap_remove_API.json
       outputExt: mp4
-      videoNodeId: "30"
-      videoField: file
-      seedNodeId: "42"
+      videoNodeId: "5"
+      videoField: video
+      seedNodeId: "7"
       seedField: seed
-      sizeNodeId: "900"
-      canvasMegapixels: 0.58
+      promptNodeId: ip
+      promptField: value
       subjectText:
-        nodeId: p0
-        field: text
-      referenceText:
-        nodeId: "10"
-        field: values.a
-      sceneText:
-        nodeId: "10"
-        field: values.b
-      seconds:
-        nodeId: "32"
+        nodeId: tg
         field: value
-      windowStart:
-        nodeId: "35"
-        field: start_time
+      referenceText:
+        nodeId: tc
+        field: value
+      planResolution:
+        nodeId: "7"
+        field: resolution
 
     # Mode "background": the mask is inverted, so the surroundings are redrawn
     # and the tracked subject stays. Takes no photo.
     objectSwapBackground:
       path: ./workflows/comfyui_video_object_swap_background_API.json
       outputExt: mp4
-      videoNodeId: "30"
-      videoField: file
-      seedNodeId: "42"
+      videoNodeId: "5"
+      videoField: video
+      seedNodeId: "7"
       seedField: seed
-      sizeNodeId: "900"
-      canvasMegapixels: 0.58
+      promptNodeId: ip
+      promptField: value
       subjectText:
-        nodeId: p0
-        field: text
-      referenceText:
-        nodeId: "10"
-        field: values.a
-      sceneText:
-        nodeId: "10"
-        field: values.b
-      seconds:
-        nodeId: "32"
+        nodeId: tg
         field: value
-      windowStart:
-        nodeId: "35"
-        field: start_time
+      referenceText:
+        nodeId: tc
+        field: value
+      planResolution:
+        nodeId: "7"
+        field: resolution
 
     # Mode "add", described in words: the object is drawn inside the box the
     # user placed, written as JSON keyframes into the placement node.
     objectSwapAdd:
       path: ./workflows/comfyui_video_object_swap_add_API.json
       outputExt: mp4
-      videoNodeId: "30"
-      videoField: file
-      seedNodeId: "42"
+      videoNodeId: "5"
+      videoField: video
+      seedNodeId: "7"
       seedField: seed
-      sizeNodeId: "900"
-      canvasMegapixels: 0.58
+      promptNodeId: ip
+      promptField: value
       referenceText:
-        nodeId: "10"
-        field: values.a
-      sceneText:
-        nodeId: "10"
-        field: values.b
-      seconds:
-        nodeId: "32"
+        nodeId: tc
         field: value
-      windowStart:
-        nodeId: "35"
-        field: start_time
       placementText:
-        nodeId: p_place
-        field: placement
+        nodeId: pl
+        field: value
+      planResolution:
+        nodeId: "7"
+        field: resolution
 
     # Mode "add" from a photo of the object: chosen instead of objectSwapAdd
     # when the request carries a photo.
     objectSwapAddPhoto:
       path: ./workflows/comfyui_video_object_swap_add_photo_API.json
       outputExt: mp4
-      imageNodeId: "9"
-      videoNodeId: "30"
-      videoField: file
-      seedNodeId: "42"
+      imageNodeId: "2"
+      videoNodeId: "5"
+      videoField: video
+      seedNodeId: "7"
       seedField: seed
-      sizeNodeId: "900"
-      canvasMegapixels: 0.58
+      promptNodeId: ip
+      promptField: value
       referenceText:
-        nodeId: "10"
-        field: values.a
-      sceneText:
-        nodeId: "10"
-        field: values.b
-      seconds:
-        nodeId: "32"
+        nodeId: tc
         field: value
-      windowStart:
-        nodeId: "35"
-        field: start_time
       placementText:
-        nodeId: p_place
-        field: placement
+        nodeId: pl
+        field: value
+      planResolution:
+        nodeId: "7"
+        field: resolution
+
+    # «Character swap»: Openjutsu's one-click graph. The main person of the clip
+    # becomes the one in the photo; Qwen3-VL 8B describes both and writes the
+    # shots, SAM 3.1 follows the person, and the graph renders 6 s clips with 39
+    # frames of overlap and joins them itself (MiniMaxH3ChainLoopStart), so the
+    # whole clip goes in one prompt, lip-sync on (the mouth follows the clip's
+    # audio); «Lip-sync» off picks swapPersonNoLipSync below. The line from the
+    # chat lands on `ip`, which the graph does not read.
+    swapPerson:
+      path: ./workflows/comfyui_video_character_swap_API.json
+      outputExt: mp4
+      imageNodeId: "2"
+      videoNodeId: "5"
+      videoField: video
+      seedNodeId: "11"
+      seedField: seed
+      promptNodeId: ip
+      promptField: value
+      # The card's «Lip-sync» switch writes node 68 (no_lip_sync) both ways.
+      noLipSync:
+        nodeId: "68"
+        field: value
+      planResolution:
+        nodeId: "11"
+        field: resolution
+
+    # The same swap with «Lip-sync» off: Openjutsu's graph as exported, where H3
+    # hears silence, the mannequins show the faces and the plan says nobody
+    # sings. The lip-sync graph above has none of those nodes.
+    swapPersonNoLipSync:
+      path: ./workflows/comfyui_video_character_swap_nolipsync_API.json
+      outputExt: mp4
+      imageNodeId: "2"
+      videoNodeId: "5"
+      videoField: video
+      seedNodeId: "11"
+      seedField: seed
+      promptNodeId: ip
+      promptField: value
+      noLipSync:
+        nodeId: "68"
+        field: value
+      planResolution:
+        nodeId: "11"
+        field: resolution
 
     # Video upscale (SeedVR2, HD) for clips up to `shortSeconds` long.
     upscaleVideo:

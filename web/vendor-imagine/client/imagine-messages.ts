@@ -149,6 +149,7 @@ const FAILED_KEYS: Partial<Record<ImagineJob['action'], ComfyLocaleKey>> = {
   bg: 'imagine.failedBg',
   voice: 'imagine.failedVoice',
   objectSwap: 'imagine.failedObjectSwap',
+  swapPerson: 'imagine.failedSwapPerson',
   relight: 'imagine.failedRelight',
   speak: 'imagine.failedSpeak',
 }
@@ -177,6 +178,7 @@ const DONE_KEYS: Partial<Record<ImagineJob['action'], readonly [one: ComfyLocale
   bg: ['imagine.doneBgOne', 'imagine.doneBg'],
   music: ['imagine.doneMusicOne', 'imagine.doneMusic'],
   objectSwap: ['imagine.doneObjectSwapOne', 'imagine.doneObjectSwap'],
+  swapPerson: ['imagine.doneSwapPersonOne', 'imagine.doneSwapPerson'],
   relight: ['imagine.doneRelightOne', 'imagine.doneRelight'],
   scanFrame: ['imagine.doneScanFrameOne', 'imagine.doneScanFrame'],
   extend: ['imagine.doneExtendOne', 'imagine.doneVideo'],

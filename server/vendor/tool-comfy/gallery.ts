@@ -105,6 +105,8 @@ const TOOL_PREFIXES: readonly (readonly [string, GalleryTool])[] = [
   ['regenerate_detail-', 'regenerate_detail'],
   // «Object swap»: the object changed, removed or added in the clip (2026-11-06).
   ['object_swap-', 'object_swap'],
+  // «Character swap»: the main person of the clip played by the one in a photo.
+  ['swap_person-', 'swap_person'],
   // «Illumina la foto»: the photo re-lit with one of the light looks (2026-11-06).
   ['relight-', 'relight'],
 ]

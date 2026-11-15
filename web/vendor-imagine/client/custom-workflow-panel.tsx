@@ -455,6 +455,7 @@ export function CustomWorkflowPanel({ workflow, items, busy, onBack, onRun, onRu
       seconds={seconds}
       lyrics={''}
       keepAudio={false}
+      lipSync
       busy={busy}
       note={error}
       onBack={onBack}
@@ -470,6 +471,7 @@ export function CustomWorkflowPanel({ workflow, items, busy, onBack, onRun, onRu
       onSeconds={setSeconds}
       onLyrics={() => undefined}
       onKeepAudio={() => undefined}
+      onLipSync={() => undefined}
       onModel={(_route: ModelRoute) => undefined}
       onRun={run}
       upscaleTo={undefined}

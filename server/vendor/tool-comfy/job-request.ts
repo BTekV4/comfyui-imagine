@@ -15,6 +15,7 @@ import { formatSize, H3_NATIVE_MEGAPIXELS } from './snap-size.ts'
 import { regenerateCanvas } from './regenerate.ts'
 import type { ImagineWorkflows, WorkflowGraphs } from './workflow-fields.ts'
 import { customKey } from './custom-workflows.ts'
+import { CHAIN_SCENE_SECONDS } from './video-prompt.ts'
 import { objectSwapUsesPhoto } from './object-swap-texts.ts'
 import { RELIGHT_LOOKS, relightLookOf, relightPromptOf, type RelightLook } from '../../../shared/relight-looks.ts'
 import { message } from '../../src/messages.ts'
@@ -196,6 +197,8 @@ export interface ImagineJobRequest {
   candidates?: number
   /** Recreate only: keep the reference clip's own soundtrack. */
   keepAudio?: boolean
+  /** Character swap only: false when the people do not sing or talk along (the default is lip-sync on). */
+  lipSync?: boolean
   /** Upscale only: the short side to arrive at (1080, 1440, 2160 for a still; 720, 1080 for a clip). */
   upscaleTo?: number
   /** Remix only: the zone the edit is confined to. */
@@ -316,6 +319,12 @@ export const ACTION_RUNS: Partial<Record<ImagineAction, {
    */
   objectSwap: { workflow: 'objectSwap', tool: 'object_swap', output: 'video' },
   /*
+   * «Character swap»: the main person of the clip becomes the one in the
+   * photo. Openjutsu's one-click graph does the windows, the prompt and the
+   * seams by itself, so the whole clip goes in one run.
+   */
+  swapPerson: { workflow: 'swapPerson', tool: 'swap_person', output: 'video' },
+  /*
    * «Illumina la foto»: the photo relit with one of the light looks. The
    * look's text IS the prompt (written by `readJobRequest`), so the file comes
    * from an image and not from a sentence of the user's.
@@ -401,6 +410,8 @@ const NEEDS: Partial<Record<ImagineAction, {
      * wants one (`change`) — travels beside it in `reference`.
      */
     objectSwap: plate,
+    // The clip whose main person changes; the photo travels in `reference`.
+    swapPerson: plate,
     relight: picture,
     /* Two photos: the person (source) and the reference, both already in the gallery. */
     compose: photo,
@@ -412,7 +423,7 @@ const NEEDS: Partial<Record<ImagineAction, {
  * voice change are named by their source, not by a prompt — there is nothing
  * for the user to describe.
  */
-const UNPROMPTED: Partial<Record<ImagineAction, string>> = { upscale: 'upscale', bg: 'bg', voice: 'voice' }
+const UNPROMPTED: Partial<Record<ImagineAction, string>> = { upscale: 'upscale', bg: 'bg', voice: 'voice', swapPerson: 'character swap' }
 
 /**
  * Longest clip one recreation renders.
@@ -648,7 +659,17 @@ export async function readJobRequest(
   const files = referencesOf(request)
   const canvas = await canvasOf(request, swapGraph, sourcePath, pixelsOf)
   const edit = editInputsOf(workflows, request)
-  const workflow = swapGraph === undefined
+  /*
+   * «Character swap» without lip-sync is its own graph (Openjutsu's export
+   * with the mute and face nodes); with it, the graph without them.
+   */
+  const noLipSyncGraph = action === 'swapPerson' && request.lipSync === false ? workflows.swapPersonNoLipSync : undefined
+  if (action === 'swapPerson' && request.lipSync === false && noLipSyncGraph === undefined) {
+    throw new Error(message('job.noLipSyncNotConfigured'))
+  }
+  const workflow = noLipSyncGraph !== undefined
+    ? noLipSyncGraph
+    : swapGraph === undefined
     ? await workflowOf(workflows, request, edit, sourceKind, sourcePath, pixelsOf)
     // «Object swap»: the mode decides the graph, and so does the «Alta»
     // recipe when the entry declares a second one like all the others.
@@ -880,7 +901,15 @@ function referencesOf(request: ImagineJobRequest): RequestFiles {
   if (action === 'remix' && request.reference !== undefined && (remixReference === undefined || kindOf(remixReference) !== 'image')) {
     throw new Error(message('job.referenceNotGallery'))
   }
-  const reference = composeReference ?? objectReference ?? remixReference
+  /*
+   * «Character swap» is nothing without the new character: the photo is
+   * required, and it is the graph's picture of who plays the part.
+   */
+  const swapReference = action === 'swapPerson' && request.reference !== undefined ? safeBasename(request.reference) : undefined
+  if (action === 'swapPerson' && (swapReference === undefined || kindOf(swapReference) !== 'image')) {
+    throw new Error(message('job.characterPhotoRequired'))
+  }
+  const reference = composeReference ?? objectReference ?? remixReference ?? swapReference
   return {
     ...reference === undefined ? {} : { reference },
     ...objectReference === undefined ? {} : { objectReference },
@@ -1036,6 +1065,19 @@ async function workflowOf(
        * entries with two recipes.
        */
       : runs === undefined ? undefined
+      /*
+       * A clip past six seconds, with no last frame to land on, is a chain of
+       * scenes of at most six seconds (Openjutsu's way), when the deployment
+       * has the chain graph; up to six it stays one render.
+       */
+      : action === 'video' && (request.seconds ?? 5) > CHAIN_SCENE_SECONDS && request.lastSource === undefined
+        && workflows.videoChain !== undefined
+        ? workflows.videoChain
+      // The same for a continuation: past six seconds, a chain of scenes.
+      : action === 'extend' && (request.seconds ?? 5) > CHAIN_SCENE_SECONDS && workflows.extendChain !== undefined
+        ? workflows.extendChain
+      : action === 'loop' && (request.seconds ?? 5) > CHAIN_SCENE_SECONDS && workflows.loopChain !== undefined
+        ? workflows.loopChain
       : (request.quality === 'high' || request.speed === 'slow')
         && workflows.high?.[runs.workflow] !== undefined
         ? workflows.high[runs.workflow]

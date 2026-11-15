@@ -75,6 +75,8 @@ const OBJECT_SWAP_FIELDS = {
    * (2026-11-06).
    */
   placementText: PIN,
+  /** A graph that plans its own clips (Openjutsu's): its resolution label. */
+  planResolution: PIN,
   canvasMegapixels: { kind: 'number', min: 0.1, max: 2 },
 } as const satisfies Readonly<Record<string, FieldSpec>>
 
@@ -124,6 +126,16 @@ export const WORKFLOW_ROWS = [
   /** Image-to-video: the "video" action. */
   { config: 'createVideo', run: 'video', key: 'video', label: 'immagine → video', fields: CLIP_FIELDS },
   /**
+   * The same action past six seconds (2026-11-15): the Context Loop's I2V
+   * chain, one scene of at most 6 s after the other, each carrying the last
+   * frames of the one before, with a checkpoint per scene. The studio writes
+   * the plan (`planJson`) and the run name its checkpoints go under.
+   */
+  {
+    config: 'createVideoChain', run: 'videoChain', key: 'video-chain', label: 'immagine → video (lungo)',
+    fields: { ...CLIP_FIELDS, planJson: PIN, runName: PIN },
+  },
+  /**
    * The clip graph a `recreate` renders from its redrawn opening frame.
    *
    * The same image-to-video shape as `createVideo`; a deployment that leaves
@@ -144,8 +156,26 @@ export const WORKFLOW_ROWS = [
    * is reached by chaining such segments.
    */
   { config: 'loopVideo', run: 'loopVideo', key: 'loop', label: 'sfondo animato', fields: CLIP_FIELDS },
+  /**
+   * A background past six seconds: the Context Loop's chain, whose last scene
+   * takes the still as its last frame (a core switch on «last scene»), then
+   * closed into a loop by the studio like the segment chain.
+   */
+  {
+    config: 'loopVideoChain', run: 'loopChain', key: 'loop-chain', label: 'sfondo animato (lungo)',
+    fields: { ...CLIP_FIELDS, planJson: PIN, runName: PIN },
+  },
   /** The "extend" action: continues an existing clip. */
   { config: 'extendVideo', run: 'extendVideo', key: 'extend', label: 'continuazione video', fields: CLIP_FIELDS },
+  /**
+   * The continuation past six seconds: the Context Loop's external-video
+   * chain. The whole clip is the first scene's context and comes back in
+   * front of the new scenes, so the studio joins nothing.
+   */
+  {
+    config: 'extendVideoChain', run: 'extendChain', key: 'extend-chain', label: 'continuazione video (lunga)',
+    fields: { ...CLIP_FIELDS, planJson: PIN, runName: PIN },
+  },
   /**
    * «Modifica oggetto»: the object tracked in the clip is changed, removed,
    * or its background replaced (2026-11-06).
@@ -177,6 +207,21 @@ export const WORKFLOW_ROWS = [
   {
     config: 'objectSwapAddPhoto', run: 'objectSwapAddPhoto', key: 'object-swap-add-photo',
     label: 'modifica oggetto (aggiungi da foto)', fields: OBJECT_SWAP_FIELDS,
+  },
+  /**
+   * «Cambio personaggio»: Openjutsu's one-click graph, sent once with the
+   * whole clip (it cuts its own windows). The photo goes on `imageNodeId`.
+   */
+  { config: 'swapPerson', run: 'swapPerson', key: 'swap-person', label: 'cambio personaggio', fields: { noLipSync: PIN, planResolution: PIN } },
+  /**
+   * The same swap without lip-sync, a graph of its own as in Openjutsu: H3
+   * hears silence, the mannequins show the faces and the plan says nobody
+   * sings. The lip-sync graph has none of those nodes, so a switch alone
+   * could not turn them on or off.
+   */
+  {
+    config: 'swapPersonNoLipSync', run: 'swapPersonNoLipSync', key: 'swap-person-no-lip-sync',
+    label: 'cambio personaggio (senza lip-sync)', fields: { noLipSync: PIN, planResolution: PIN },
   },
   /**
    * The clip workflow that sings a track it is given.
@@ -349,4 +394,10 @@ export const OPTION_PINS = [
    */
   { option: 'placementText', pin: 'placementText' },
   { option: 'windowStart', pin: 'windowStart' },
+  // A character swap's lip-sync switch, written both ways so the graph's own default never decides.
+  { option: 'noLipSync', pin: 'noLipSync' },
+  // The resolution an Openjutsu plan renders at: «480p» on the composer's lower step.
+  { option: 'planResolution', pin: 'planResolution' },
+  { option: 'planJson', pin: 'planJson' },
+  { option: 'runName', pin: 'runName' },
 ] as const satisfies readonly { readonly option: keyof RunOpts; readonly pin: keyof WorkflowExtras }[]

@@ -583,6 +583,8 @@ async function jobRoute(
      * video, which is what a recreation of a filmed clip usually wants.
      */
     keepAudio?: boolean
+    /** Character swap only: false turns lip-sync off (the people do not sing or talk along). */
+    lipSync?: boolean
     /**
      * The board project this generation belongs to. The jobs are adopted
      * into it at once, so the canvas shows them while they run.
@@ -631,6 +633,7 @@ async function jobRoute(
         : {},
       ...body.hardCuts === true ? { hardCuts: true } : {},
       ...body.keepAudio === true ? { keepAudio: true } : {},
+      ...body.lipSync === false ? { lipSync: false } : {},
       // Already checked against the shared lists by `invalidChoiceReason`.
       ...body.speed === undefined ? {} : { speed: body.speed as ImagineSpeed },
       ...body.quality === undefined ? {} : { quality: body.quality as ImagineQuality },

@@ -37,6 +37,8 @@ export interface ComposerState {
    * like, and the switch is one click away when it does not.
    */
   readonly keepAudio: boolean
+  /* "Character swap": on by default, the new person follows the clip's vocals. */
+  readonly lipSync: boolean
   /*
    * "Speed", for the clips: `fast` is the graph as it ships (the 4-step Pika
    * recipe since 2026-11-05), `slow` the second graph the workflow declares as
@@ -104,6 +106,7 @@ const INITIAL: ComposerState = {
   seconds: 10,
   lyrics: '',
   keepAudio: true,
+  lipSync: true,
   speed: 'fast',
   quality: 'standard',
   frameCandidates: 4,

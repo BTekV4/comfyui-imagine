@@ -14,6 +14,22 @@ import { VIDEO_ASPECT_LABELS, aspectFor, type ImagineAspect, type ImagineResolut
 /** Video ladder — MiniMax I2V in this deployment tops out at 720p. */
 export const VIDEO_RESOLUTIONS = ['480p', '720p'] as const
 
+/**
+ * The swaps (character and object) run Openjutsu's plan, which renders 6 s
+ * clips at 480p, 736p or 1080p and chains them: they get the third step.
+ */
+export const SWAP_RESOLUTIONS = ['480p', '720p', '1080p'] as const
+
+/**
+ * The area a swap sends for its step: the server reads it back as the plan's
+ * resolution label (480p below 0.6 MP, 1080p above 1.5, else the graph's 736p).
+ * @param resolution - the composer's step.
+ * @returns megapixels.
+ */
+export function swapMegapixelsFor(resolution: ImagineResolution): number {
+  return resolution === '480p' ? 0.4 : resolution === '1080p' || resolution === '1440p' ? 2.07 : 0.98
+}
+
 /** Video lengths the PrimitiveFloat node accepts (workflow converts to frames). */
 const VIDEO_SECONDS = [5, 10] as const
 

@@ -185,6 +185,11 @@ export const MESSAGES = {
   'job.actionNotConfigured': { it: 'azione {action} non configurata', en: 'action {action} is not configured' },
   'job.startImageRequired': { it: "serve un'immagine di partenza", en: 'a starting image is needed' },
   'job.videoNeedsExtend': { it: 'per continuare un video serve «estendi», non una foto di partenza', en: 'to continue a video use “extend”, not a starting photo' },
+  'job.noLipSyncNotConfigured': {
+    it: 'il cambio personaggio senza lip-sync non è configurato (manca workflows.swapPersonNoLipSync)',
+    en: 'the character swap without lip-sync is not configured (workflows.swapPersonNoLipSync is missing)',
+  },
+  'job.characterPhotoRequired': { it: 'serve la foto del nuovo personaggio', en: 'the photo of the new character is needed' },
   'job.plateRequired': { it: 'serve il video da modificare', en: 'the video to modify is needed' },
   'job.recreateVideoRequired': { it: 'serve il video da ricreare', en: 'the video to recreate is needed' },
   'job.regenerateVideoRequired': { it: 'serve il video da rigenerare', en: 'the video to regenerate is needed' },

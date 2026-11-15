@@ -544,6 +544,7 @@ function buildServer(): McpServer {
       'upscale: source photo/video (extras.upscaleTo: short side). bg: remove background from a photo. loop: photo → seamless looping clip (extras.seconds up to 60, aspectRatio). extend: continue a video.',
       'music: prompt = style (extras.lyrics, extras.seconds). speak: prompt = text to read. voice: source audio re-sung by the RVC voice. relight: source photo, extras.light = look id.',
       `objectSwap: source video, prompt required, extras.objectMode one of ${IMAGINE_OBJECT_MODES.join('/')} (change needs reference photo).`,
+      'swapPerson: source video + reference photo of the new character; the main person of the clip is replaced, prompt optional (extras.lipSync: false when nobody sings or talks along).',
       'compose: source person photo + reference costume/setting photo (Qwen). recreate: source video redrawn and shot again (extras.keepAudio). regenerate: source video rebuilt at 1.5x.',
       'scanFrame: source video → candidate opening frames for a recreate (extras.candidates). custom: extras.customWorkflowId from imagine_custom_workflows, extras.customFields/customFiles.',
     ].join(' '),

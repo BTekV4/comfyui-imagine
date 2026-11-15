@@ -23,7 +23,7 @@ import { SEED_MESSAGE_PREFIX, appendMessage, createProject, isSeedMessage, remem
 import { HISTORY_PROJECT_ID } from '../../../shared/imagine-projects.ts'
 import {
   STORY_MIN_SECONDS, clampResolution, clampStorySeconds, isStoryLength, megapixelsFor, sizeFor,
-  canvasMegapixelsFor, videoAspectLabel, clampSeconds,
+  canvasMegapixelsFor, swapMegapixelsFor, videoAspectLabel, clampSeconds,
 } from './imagine-settings.ts'
 import { STORY_MINUTES_PER_CLIP, nextThoughtId, noteFromError, thoughtOf } from './imagine-messages.ts'
 import { slotsOf } from './job-cards.ts'
@@ -70,6 +70,8 @@ export interface RunOverride {
   megapixels?: number
   /** A recreation only: keep the reference clip's own soundtrack. */
   keepAudio?: boolean
+  /** A character swap only: false turns lip-sync off. */
+  lipSync?: boolean
   /** `objectSwap` only: which of the four recipes runs. */
   objectMode?: ImagineObjectMode
   /** `objectSwap` → `add`: the box the new object goes into. */
@@ -152,7 +154,7 @@ const EMPTY_LINE: Partial<Record<ImagineAction, string>> = { upscale: 'upscale',
 
 /** Actions whose one input is a clip, found by kind wherever it came from. */
 const CLIP_INPUT: ReadonlySet<ImagineAction> = new Set([
-  'scanFrame', 'recreate', 'regenerate', 'objectSwap',
+  'scanFrame', 'recreate', 'regenerate', 'objectSwap', 'swapPerson',
 ])
 
 /** The kind of file each action's input must be, and the note when it is not. */
@@ -168,12 +170,13 @@ const NEEDS: Partial<Record<ImagineAction, 'image' | 'video'>> = {
   recreate: 'video',
   regenerate: 'video',
   objectSwap: 'video',
+  swapPerson: 'video',
   relight: 'image',
 }
 
 /** Actions rendered on the video ladder (480p/720p). */
 const VIDEO_LADDER: ReadonlySet<ImagineAction> = new Set([
-  'video', 'loop', 'extend', 'story', 'redo', 'resume', 'recreate', 'scanFrame', 'regenerate', 'objectSwap',
+  'video', 'loop', 'extend', 'story', 'redo', 'resume', 'recreate', 'scanFrame', 'regenerate', 'objectSwap', 'swapPerson',
 ])
 
 /** What the runner reads of the page, current on every render. */
@@ -336,7 +339,7 @@ export function useRunner(ctx: RunnerContext) {
      * found by kind however it was staged. Named by the caller first, staged
      * otherwise.
      */
-    const reference = action === 'compose' || action === 'objectSwap'
+    const reference = action === 'compose' || action === 'objectSwap' || action === 'swapPerson'
       ? over?.reference ?? sources.find(item => item.kind === 'image' && item.name !== from?.name)
       // An edit's reference photo (Grok's «+»): only when the caller names one.
       : action === 'remix' ? over?.reference : undefined
@@ -429,7 +432,7 @@ export function useRunner(ctx: RunnerContext) {
          */
         case 'objectSwap':
           return {
-            megapixels: canvasMegapixelsFor(liveResolution),
+            megapixels: swapMegapixelsFor(over?.resolution ?? state.resolution),
             objectMode: over?.objectMode ?? state.objectMode,
             ...(over?.objectMode ?? state.objectMode) !== 'add'
               ? {}
@@ -451,6 +454,14 @@ export function useRunner(ctx: RunnerContext) {
          */
         case 'regenerate':
           return {}
+        // «Character swap»: the graph sizes, cuts and describes by itself; only the photo travels.
+        case 'swapPerson':
+          return {
+            // The swaps' own ladder reaches 1080p, past the clips' 720p.
+            megapixels: swapMegapixelsFor(over?.resolution ?? state.resolution),
+            ...reference === undefined ? {} : { reference: reference.name },
+            ...(over?.lipSync ?? state.lipSync) ? {} : { lipSync: false },
+          }
         // A recreation takes its canvas and its length from the clip; the one
         // thing the composer decides is where the soundtrack comes from.
         case 'recreate':
@@ -496,7 +507,7 @@ export function useRunner(ctx: RunnerContext) {
         const sourceForTitle = action === 'music'
           ? (liveLyrics.trim() || text)
           : action === 'bg' || action === 'upscale'
-            || action === 'recreate' || action === 'regenerate' || action === 'objectSwap' || action === 'relight'
+            || action === 'recreate' || action === 'regenerate' || action === 'objectSwap' || action === 'swapPerson' || action === 'relight'
             ? (input?.name ?? text)
             : text
         naming.titleIfNeeded(project, sourceForTitle)
@@ -695,8 +706,16 @@ export function useRunner(ctx: RunnerContext) {
      * own opening frame and then animates that.
      */
     const startsFrom = source ?? composer.get().sources.find(item => item.kind === 'image' || item.kind === 'video')
+    /*
+     * Since 2026-11-15 one long take from one picture stays `video`: the
+     * studio renders it as a chain of scenes of at most six seconds
+     * (createVideoChain). The story is for a video cut on a song, from
+     * several pictures, or from nothing.
+     */
+    const cutOrSung = intent.song !== undefined || (intent.sources?.length ?? 0) > 1
+      || composer.get().sources.some(item => item.kind === 'audio')
     const chained = intent.action === 'video'
-      && ((asked !== undefined && asked >= STORY_MIN_SECONDS) || startsFrom === undefined)
+      && ((asked !== undefined && asked >= STORY_MIN_SECONDS && cutOrSung) || startsFrom === undefined)
     const over: RunOverride = {
       prompt: intent.prompt,
       quiet: true,
@@ -716,6 +735,7 @@ export function useRunner(ctx: RunnerContext) {
       ...song === undefined ? {} : { song },
       ...reference === undefined ? {} : { reference },
       ...intent.keepAudio === undefined ? {} : { keepAudio: intent.keepAudio },
+      ...intent.lipSync === undefined ? {} : { lipSync: intent.lipSync },
       // "Object swap": the recipe read from the sentence, which the panel does
       // not see (the line is written in the column; the composer is not involved).
       ...intent.objectMode === undefined ? {} : { objectMode: intent.objectMode },
@@ -931,8 +951,11 @@ export function useRunner(ctx: RunnerContext) {
        * song staged, which the video is cut to — the run is a chain of clips
        * rather than one, and that is the `story` action.
        */
-      const long = isStoryLength(clampResolution('video', resolution), seconds)
-        || sources.some(item => item.kind === 'audio')
+      // A long take from one picture is a chain of scenes (`video`); a song
+      // staged, or several pictures, make it a cut music video (`story`).
+      const sung = sources.some(item => item.kind === 'audio')
+      const pictures = sources.filter(item => item.kind === 'image').length
+      const long = sung || (isStoryLength(clampResolution('video', resolution), seconds) && pictures > 1)
       void run(long ? 'story' : source?.kind === 'video' ? 'extend' : 'video')
     }
     // One action whatever the length: the studio chains a background's
@@ -977,6 +1000,10 @@ export function useRunner(ctx: RunnerContext) {
         ...line, reference: staged.reference, objectMode,
         ...objectMode === 'add' ? { placement } : {},
       })
+    }
+    // "Character swap": the clip and the photo of who plays the part.
+    else if (spec.id === 'swapPerson' && staged.clip !== undefined) {
+      void run('swapPerson', staged.clip, { prompt: prompt.trim() || translate(spec.titleKey), reference: staged.reference })
     }
     /*
      * "Light the photo": the photo and the light look chosen in the panel.

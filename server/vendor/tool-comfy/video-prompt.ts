@@ -557,6 +557,103 @@ export async function writeH3Prompt(
   return visionPass(ctx, imagePath, instruction, alignment, options.chosen, !wantsVoice(intent))
 }
 
+/** The longest scene a chained clip renders in one go, as Openjutsu's plans do. */
+export const CHAIN_SCENE_SECONDS = 6
+
+/**
+ * The scenes a chained clip is cut into: as few as fit in six seconds each,
+ * of equal length.
+ * @param seconds - the whole clip.
+ * @returns each scene's length in seconds.
+ */
+export function chainSceneSeconds(seconds: number): number[] {
+  const count = Math.max(1, Math.ceil(seconds / CHAIN_SCENE_SECONDS - 1e-9))
+  const each = Math.round((seconds / count) * 100) / 100
+  return Array.from({ length: count }, () => each)
+}
+
+/** How a continuation scene opens: the graph carries the overlap, the prompt must not restage it. */
+const CHAIN_CONTINUE = 'Continue directly from the incoming H3 Motion Context: same place, same people, same clothes, same light, one continuous take with no cut; begin the new action only after the carried overlap.'
+
+function chainPromptInstruction(intent: string, scenes: readonly number[], carried?: Soundtrack, loop = false): string {
+  const total = Math.round(scenes.reduce((a, b) => a + b, 0) * 100) / 100
+  const blocks = scenes.map((length, index) => index === 0 && carried === undefined
+    ? `=== SCENE 1 === (${String(length)} seconds, starts from this image)`
+    : `=== SCENE ${String(index + 1)} === (${String(length)} seconds, continues ${index === 0 ? 'the clip this image ends' : `scene ${String(index)}`})`).join('\n')
+  const opening = carried === undefined
+    ? `Look at this image: it is the first frame of a ${String(total)}-second video. The video is ONE continuous take rendered as ${String(scenes.length)} consecutive scenes; each scene after the first continues exactly where the previous one ends.`
+    : `Look at this image: it is the LAST frame of a video that has already started. Write the ${String(total)} seconds that continue it, as ONE continuous take rendered as ${String(scenes.length)} consecutive scenes, every one of them a continuation — scene 1 continues the clip, each next scene continues the one before. ${carried.soundscape === undefined && carried.music === undefined ? 'The soundscape and the music are already running: describe how they continue, without introducing new ones.' : `The soundtrack is already decided: copy these lines word for word in every scene.${carried.soundscape === undefined ? '' : `\noverall_soundscape: ${carried.soundscape}`}${carried.music === undefined ? '' : `\nnon_diegetic_music: ${carried.music}`}`}`
+  return `${opening}
+
+The user asked for: "${intent}"
+
+${loop ? `It is a SEAMLESS LOOP: the last scene ends exactly on this opening frame — the same pose, position, expression and framing — so the video can repeat with no jump. Plan a gentle motion that leaves and comes back; the last scene's description says it settles back into the opening pose and reaches it on its final frame.
+
+` : ''}Split the user's request across the scenes in time order: every scene carries its own part of the action and of anything said, and nothing — no action, no spoken line — is repeated in two scenes. The user's request is binding: do not replace it and do not reinterpret it.
+
+${voiceRule(intent)}Reply with exactly these ${String(scenes.length)} blocks, each opened by its header line written as shown, and nothing else:
+${blocks}
+
+The first line of the reply, before SCENE 1, is the realism verdict on the IMAGE (realism: yes for a photograph or a real shot, realism: no for anything drawn or synthetic).
+
+Each block is one MiniMax H3 prompt in this format:
+${h3ReplyFormat(scenes[0] ?? CHAIN_SCENE_SECONDS, intent).replace(/^[\s\S]*?\n\n(?=integrated_multimodal_description)/, '')}
+
+For ${carried === undefined ? 'scenes 2 and after' : 'every scene'}, the description opens with this sentence, word for word, before the anchor: "${CHAIN_CONTINUE}" — they have no Picture 1 line, and their soundscape and music continue the ones of scene 1 without introducing new ones. Each scene's description covers exactly its own length.`
+}
+
+/**
+ * Write the scene prompts of a chained clip (the Context Loop plan) from a
+ * still and the user's intent, in one vision call.
+ *
+ * Never throws and never leaves the run without prompts: a reply that does not
+ * carry every scene falls back to the single clip prompt for the first scene
+ * and a plain continuation for the others, so the clip still renders.
+ * @param ctx - the host context.
+ * @param imagePath - absolute path of the opening still.
+ * @param intent - the composer text the user typed.
+ * @param scenes - each scene's length (`chainSceneSeconds`).
+ * @param chosen - the model the chip showed when the job started.
+ * @returns one prompt per scene with the still's realism verdict, or undefined
+ *   when no model could read the still at all.
+ */
+export async function writeH3ChainPrompts(
+  ctx: ImagineHost,
+  imagePath: string,
+  intent: string,
+  scenes: readonly number[],
+  chosen?: ModelRoute,
+  carried?: Soundtrack,
+  loop = false,
+): Promise<{ prompts: string[]; realistic: boolean } | undefined> {
+  const eyes = eyesOf(ctx, chosen)
+  if (eyes === undefined) return undefined
+  const silent = !wantsVoice(intent)
+  // A continuation is a chain even in one scene: every scene opens on the carried overlap.
+  const result = scenes.length > 1 || carried !== undefined ? await lookWith(eyes.vision, imagePath, chainPromptInstruction(intent, scenes, carried, loop), eyes.route) : undefined
+  if (result !== undefined) {
+    const parts = stripFences(result.text).split(/^\s*=+\s*SCENE\s*\d+\s*=+.*$/im).slice(1)
+    const prompts = parts.map((part, index) => {
+      const cleaned = index === 0 && carried === undefined
+        ? cleanVideoPrompt(part, ALIGNMENT.firstFrame)
+        : cleanVideoPrompt(part.split('\n').filter(line => !/^\s*Picture 1 is /i.test(line)).join('\n'), '')?.trim()
+      return cleaned === undefined ? undefined : sanitizeH3Prompt(cleaned, { silent }).prompt
+    })
+    if (prompts.length === scenes.length && prompts.every(prompt => prompt !== undefined)) {
+      return { prompts: prompts as string[], realistic: readRealism(result.text) }
+    }
+    console.warn(`[imagine] chain prompt: ${String(prompts.filter(Boolean).length)} of ${String(scenes.length)} scenes readable, falling back to one clip prompt and plain continuations`)
+  }
+  const first = await writeH3Prompt(ctx, imagePath, intent, scenes[0] ?? CHAIN_SCENE_SECONDS, carried !== undefined ? 'extend' : loop ? 'loop' : 'video', {
+    ...chosen === undefined ? {} : { chosen },
+    ...carried === undefined ? {} : { carried },
+  })
+  if (first === undefined) return undefined
+  const sound = soundtrackOf(first.prompt)
+  const next = `integrated_multimodal_description: [Shot 1] ${CHAIN_CONTINUE} The action of the previous scene carries on naturally and the camera keeps its movement.\n\noverall_soundscape: ${sound.soundscape ?? 'The same ambience continues.'}\n\nnon_diegetic_music: ${sound.music ?? 'N/A'}`
+  return { prompts: [first.prompt, ...scenes.slice(1).map(() => next)], realistic: first.realistic }
+}
+
 /**
  * Run the vision model on one still and read an H3 prompt out of the reply.
  * @param ctx - the host context, which may carry the auxiliary service.

@@ -82,6 +82,12 @@ export async function startImagineJob(
       ...plan.frame === undefined ? {} : { frame: plan.frame },
       ...action === 'scanFrame' && request.candidates !== undefined ? { candidates: request.candidates } : {},
       ...recreate && request.keepAudio === true ? { keepAudio: true } : {},
+      ...action === 'swapPerson' && request.lipSync === false ? { lipSync: false } : {},
+      // The swaps' step on a graph that plans its own clips: 480p (0.4 MP) or 1080p (2.07 MP); 720p keeps the graph's 736p.
+      ...(action === 'swapPerson' || action === 'objectSwap') && request.megapixels !== undefined
+        && (request.megapixels < 0.6 || request.megapixels > 1.5)
+        ? { planResolution: request.megapixels < 0.6 ? '480p' : '1080p' }
+        : {},
       ...plan.recreateSeconds === undefined ? {} : { seconds: plan.recreateSeconds },
       ...action === 'objectSwap' ? { seconds: windowSecondsOf(request) } : {},
       // The composer's size for the actions that have one, the clip's own

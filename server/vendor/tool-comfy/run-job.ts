@@ -19,7 +19,7 @@ import { FPS, ffmpegTo, frameAt, probeMedia, type MediaProbe } from './media-too
 import { resolveInputImage, resolveInputVideo, type ResolvedInputVideo } from './input-image.ts'
 import { kindOf, probePixels, safeBasename, upscaleLongFor, upscaleTargetFor } from './gallery.ts'
 import { writeEditPrompt } from './edit-prompt.ts'
-import { applyRealismToken, soundtrackOf, writeH3Prompt } from './video-prompt.ts'
+import { applyRealismToken, chainSceneSeconds, soundtrackOf, writeH3ChainPrompts, writeH3Prompt } from './video-prompt.ts'
 import { GUIDE_SECONDS, h3Canvas, videoTail } from './extend-video.ts'
 import { formatSize } from './snap-size.ts'
 import { closestLabel, gapOf, ratioOf, VISIBLE_RATIO_GAP } from './media-aspect.ts'
@@ -77,6 +77,14 @@ let queue: Promise<void> = Promise.resolve()
 const JOB_DEADLINE_MS = 3_000_000
 
 /**
+ * The ceiling of a job whose graph plans and chains its own clips (Openjutsu's
+ * character and object swaps): the whole clip is one run, and its own deadline
+ * grows with the clip (`timeoutMs` in `readInputs`). This stays a safety net
+ * above it, for a hang outside the run.
+ */
+const LONG_JOB_DEADLINE_MS = 12 * 3_600_000
+
+/**
  * Put one job at the back of the GPU queue, with its own deadline.
  *
  * The deadline is armed when the job's turn comes, not when it is queued: a
@@ -118,7 +126,9 @@ export function enqueueJob(
           void stopRun(ctx, job.id, current.promptId)
         }
         resolve()
-      }, JOB_DEADLINE_MS)
+      }, job.action === 'swapPerson' || loopsItsOwnWindows(workflow)
+        ? LONG_JOB_DEADLINE_MS
+        : JOB_DEADLINE_MS)
     })
     try {
       // A rejection is not swallowed here: it reaches the catch below, which
@@ -162,6 +172,8 @@ interface RunState {
   readonly scratch: string[]
   /** The prompt a pass wrote for the sampler, filed under the clip it produced. */
   writtenPrompt?: string
+  /** A chained clip's scene prompts, in order (the first is also `prompt`). */
+  chainPrompts?: string[]
   /** The prompt that reaches the sampler. */
   prompt: string
   /** Only the vision pass sets this; a clip whose prompt was not written keeps the LoRA off. */
@@ -196,6 +208,8 @@ interface RunInputs {
   readonly refImage?: { readonly bytes: Uint8Array; readonly name: string }
   /** The recreation's opening frame, which it animates. */
   readonly drawnFrame?: string
+  /** A deadline for the render longer than ComfyUI's own, for a graph that loops its own clips. */
+  readonly timeoutMs?: number
   /** The clip a continuation extends: its length and the canvas it renders on. */
   readonly extendSource?: { readonly duration: number; readonly size?: string }
   /** The continuation's source frame, for the vision pass. */
@@ -226,6 +240,26 @@ interface RunAudio {
 }
 
 /** The written prompt, with the realism token when the vision pass judged it and the graph has one. */
+/**
+ * The Context Loop plan of a chained clip: one scene per prompt, each with its
+ * length. A plan with fewer prompts than scenes (no vision pass) repeats the
+ * last one as a plain continuation.
+ * @param prompts - the scene prompts, in order.
+ * @param scenes - each scene's length in seconds.
+ * @returns the plan as JSON.
+ */
+function chainPlanJson(prompts: readonly string[], scenes: readonly number[], carried = 0): string {
+  return JSON.stringify({
+    shots: scenes.map((seconds, index) => ({
+      id: `scene_${String(index + 1)}`,
+      prompt: prompts[index] ?? prompts.at(-1) ?? '',
+      // A scene that continues another gives back the frames it carries over:
+      // asked for that much more, it delivers its own length.
+      duration_seconds: Math.round((seconds + carried) * 100) / 100,
+    })),
+  }, null, 2)
+}
+
 function withRealism(prompt: string, realistic: boolean, workflow: LoadedWorkflow): string {
   return realistic && workflow.realism !== undefined ? applyRealismToken(prompt, workflow.realism.token) : prompt
 }
@@ -597,7 +631,7 @@ async function readInputs(
    * recreated and where its soundtrack comes from.
    */
   const drawnFrame = job.action === 'recreate' && job.frame !== undefined ? join(outputDir, job.frame) : undefined
-  const imagePath = job.action === 'objectSwap'
+  const imagePath = job.action === 'objectSwap' || job.action === 'swapPerson'
     ? job.reference === undefined ? undefined : join(outputDir, job.reference)
     : drawnFrame !== undefined
       ? drawnFrame
@@ -666,7 +700,9 @@ async function readInputs(
     }
     const extendTail = await videoTail(videoPath, probe)
     state.scratch.push(extendTail)
-    inputVideo = await resolveInputVideo({ path: extendTail }, outputDir)
+    // A chained continuation reads the whole clip (the Context Loop takes its
+    // context from it and lays it in front of the new scenes); a single one, the tail.
+    inputVideo = await resolveInputVideo({ path: workflow.planJson === undefined ? extendTail : videoPath }, outputDir)
     extendFrame = await extractLastFrame(extendTail)
     state.scratch.push(extendFrame)
   }
@@ -686,6 +722,21 @@ async function readInputs(
         : upscaleLongFor(pixels.width, pixels.height, job.upscaleTo, sourceKind)
     }
   }
+  /*
+   * «Character swap»: Openjutsu's graph renders the whole clip in one prompt,
+   * a 6 s clip at a time with 39 frames of overlap — about one clip per 4.4 s
+   * of video. Each gets half an hour, far more than a slow card needs at the
+   * graph's 736p, so a long clip is never cut off by ComfyUI's single-run
+   * deadline while a stuck run still ends.
+   */
+  const chained = job.action === 'swapPerson' || loopsItsOwnWindows(workflow)
+  const chainedSeconds = !chained ? undefined
+    : (job.action === 'swapPerson' || job.action === 'objectSwap') && sourceVideo !== undefined
+      ? (await probeMedia(sourceVideo)).duration
+      : job.seconds
+  const timeoutMs = chainedSeconds === undefined
+    ? undefined
+    : Math.ceil(Math.max(1, chainedSeconds) / 4.4) * 30 * 60_000
   return {
     sourceKind,
     sourceVideo,
@@ -698,6 +749,7 @@ async function readInputs(
     ...extendSource === undefined ? {} : { extendSource },
     ...extendFrame === undefined ? {} : { extendFrame },
     ...resolutionMax === undefined ? {} : { resolutionMax },
+    ...timeoutMs === undefined ? {} : { timeoutMs },
     ...windowed ? { plate } : {},
     selfLooping,
   }
@@ -836,6 +888,22 @@ async function writeClipPrompt(pass: PromptPass): Promise<void> {
     ? jobThatProduced(job.source)?.writtenPrompt ?? await recallWrittenPrompt(job.source)
     : undefined
   const kind = job.action === 'extend' || job.action === 'loop' ? job.action : 'video'
+  /*
+   * A chained clip (the Context Loop plan): one prompt per scene of at most
+   * six seconds, written in one look at the opening frame.
+   */
+  if (workflow.planJson !== undefined) {
+    const scenes = chainSceneSeconds(job.seconds ?? 5)
+    const chain = await writeH3ChainPrompts(ctx, sourcePath, job.prompt, scenes, job.model, kind === 'extend' ? soundtrackOf(parentPrompt) : undefined, kind === 'loop')
+    if (chain !== undefined) {
+      state.realistic = chain.realistic
+      state.chainPrompts = chain.prompts.map(prompt => withRealism(prompt, chain.realistic, workflow))
+      state.prompt = state.chainPrompts[0] ?? state.prompt
+      state.writtenPrompt = state.chainPrompts.map((prompt, index) => `— scene ${String(index + 1)} —\n${prompt}`).join('\n\n')
+    }
+    fileWrittenPrompt(state)
+    return
+  }
   // A loop's is one segment's length, not the whole chain's: the description
   // has to cover the clip the sampler renders, and the loop's own instruction
   // says the motion comes back to where it started.
@@ -1290,6 +1358,13 @@ function rendererFor(setup: RenderSetup): Render {
         ...state.referenceText === undefined ? {} : { referenceText: state.referenceText },
         ...state.sceneText === undefined ? {} : { sceneText: state.sceneText },
         ...state.placementText === undefined ? {} : { placementText: state.placementText },
+        ...job.action === 'swapPerson' ? { noLipSync: job.lipSync === false } : {},
+        ...job.planResolution === undefined ? {} : { planResolution: job.planResolution },
+        // A chained clip: the plan of its scenes and the run its checkpoints go under.
+        ...workflow.planJson === undefined ? {} : {
+          planJson: chainPlanJson(state.chainPrompts ?? [effectivePrompt], chainSceneSeconds(job.seconds ?? 5), job.action === 'extend' ? GUIDE_SECONDS : 0),
+          runName: `imagine_${job.id}`,
+        },
         ...over?.windowStart === undefined ? {} : { windowStart: over.windowStart },
 
         realistic: state.realistic,
@@ -1302,6 +1377,7 @@ function rendererFor(setup: RenderSetup): Render {
         inputAudio: audio.bytes === undefined ? undefined : { bytes: audio.bytes, name: audio.name ?? job.source ?? '' },
         lastImage: lastImage === undefined ? undefined : { bytes: lastImage.bytes, name: lastImage.name },
         refImage: refImage === undefined ? undefined : { bytes: refImage.bytes, name: refImage.name },
+        ...inputs.timeoutMs === undefined ? {} : { timeoutMs: inputs.timeoutMs },
         onPrompt: (promptId) => { setJobPromptId(ctx, job.id, promptId) },
         onRestart: () => { setJobNotice(job.id, 'comfy-restart') },
         // ComfyUI missing nodes or models: the chat asks, then shows the install.
@@ -1389,7 +1465,13 @@ async function renderLoop(run: RenderRun): Promise<readonly ComfyProducedFile[]>
   // not want the tail crossfaded over the head: it would redo the joint the
   // sampler has just denoised.
   const closed = closesItsOwnLoop(workflow)
-  const seconds = loopSegments(job.seconds ?? MAX_SHOT_SECONDS)
+  /*
+   * A chained background (past six seconds, the Context Loop graph) is ONE
+   * run: the graph renders its scenes, the last one landing back on the
+   * still, and the file is then closed like any other.
+   */
+  const chained = workflow.planJson !== undefined
+  const seconds = chained ? [job.seconds ?? MAX_SHOT_SECONDS] : loopSegments(job.seconds ?? MAX_SHOT_SECONDS)
   /*
    * Dissolved, not butted: a segment ends wherever the model took it —
    * measured 12.1 from the still on a 20-second background whose normal
@@ -1414,6 +1496,7 @@ async function renderLoop(run: RenderRun): Promise<readonly ComfyProducedFile[]>
     // for (a ten-second shot is 10.125 s).
     length: (index) => {
       const asked = seconds[index] ?? MAX_SHOT_SECONDS
+      if (chained) return asked
       return closed ? renderedSeconds(asked) - LOOP_CLOSED_TAIL_FRAMES / FPS : renderedSeconds(asked)
     },
     missing: message('job.backgroundSegmentEmpty'),
@@ -1596,6 +1679,8 @@ async function renderAndFinish(
     tool: out.tool,
     args,
     extendDuration: inputs.extendSource?.duration,
+    // A chained continuation comes back with the clip already in front of it.
+    wholeClip: job.action === 'extend' && workflow.planJson !== undefined,
     shot,
     writtenPrompt: state.writtenPrompt,
     lipsync: sung.lipsync,

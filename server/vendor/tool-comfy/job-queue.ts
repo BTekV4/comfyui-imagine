@@ -78,6 +78,10 @@ export interface ImagineJob extends ImagineJobFields {
    * absent, it carries the audio the video model wrote under the new picture.
    */
   readonly keepAudio?: boolean
+  /** A character swap without lip-sync: the new people do not mouth the clip's vocals. */
+  readonly lipSync?: boolean
+  /** The resolution label an Openjutsu plan renders at, when not the graph's own (480p on the lower step). */
+  readonly planResolution?: string
   /** The short side an upscale was asked to arrive at. */
   readonly upscaleTo?: number
   /** `custom` only: the card's file slots, keyed by node id (gallery basenames). */

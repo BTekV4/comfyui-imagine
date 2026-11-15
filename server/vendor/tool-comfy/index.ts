@@ -203,6 +203,14 @@ export interface WorkflowExtras {
   placementText?: ComfyExtraInput
   /** Where in the clip one object swap window starts. */
   windowStart?: ComfyExtraInput
+  /** A character swap's «no lip-sync» switch: true when the people do not sing or talk along. */
+  noLipSync?: ComfyExtraInput
+  /** The resolution label of a graph that plans its own clips (Openjutsu's Swap Plan: 480p, 736p…). */
+  planResolution?: ComfyExtraInput
+  /** A chained clip's production plan (the Context Loop's `plan_json`). */
+  planJson?: ComfyExtraInput
+  /** A chained clip's run name: its checkpoints are saved, and resumed, under it. */
+  runName?: ComfyExtraInput
   /**
    * Canvas area of an object swap window, in units of 1024x1024 pixels;
    * absent, the model's native 0.98. A graph distilled at another size asks
@@ -457,6 +465,8 @@ export interface RunInputs {
   readonly onRestart?: (() => void) | undefined
   /** Caller cancellation, which ends the history wait. */
   readonly signal?: AbortSignal | undefined
+  /** A longer deadline for this run than ComfyUI's own (`comfy.timeoutMs`), never a shorter one. */
+  readonly timeoutMs?: number | undefined
   /**
    * How the job asks the user and shows progress when ComfyUI first has to
    * install what the graph needs (`comfy-setup.ts`). Absent, a missing piece
@@ -570,6 +580,14 @@ export interface RunOpts {
   placementText?: string | undefined
   /** Where in the clip this render window starts, in seconds. */
   windowStart?: number | undefined
+  /** A character swap without lip-sync: H3 hears silence and is told nobody sings. */
+  noLipSync?: boolean | undefined
+  /** The plan's resolution label, from the composer's step (480p, else the graph's 736p). */
+  planResolution?: string | undefined
+  /** A chained clip's production plan, as JSON. */
+  planJson?: string | undefined
+  /** A chained clip's run name. */
+  runName?: string | undefined
   resolutionMax?: number | undefined
   realistic?: boolean | undefined
   songStart?: number | undefined
@@ -1031,7 +1049,7 @@ export async function runWorkflow(
   inputs: RunInputs = {},
 ): Promise<ComfyRunReport> {
   const graph = await parameterize(ctx, workflow, opts, inputs)
-  const { declared, onPrompt, onRestart, signal } = inputs
+  const { declared, onPrompt, onRestart, signal, timeoutMs } = inputs
   // ComfyUI gets what this graph needs first (comfyui-imagine's setup), or is left as it is.
   await ensureComfyReady(ctx, graph, { ...inputs.setup, ...signal === undefined ? {} : { signal } })
   /*
@@ -1042,7 +1060,7 @@ export async function runWorkflow(
    */
   // A VHS meta-batch chain (the id `parameterize` wrote into its batch
   // manager) is followed through the queue by the client itself.
-  const run = await ctx.comfy.run(graph, { signal, onPrompt, onRestart })
+  const run = await ctx.comfy.run(graph, { signal, onPrompt, onRestart, timeoutMs })
   await mkdir(outputDir, { recursive: true })
   const files: ComfyProducedFile[] = []
   let index = 0

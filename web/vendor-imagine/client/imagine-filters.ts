@@ -135,6 +135,7 @@ const GALLERY_TOOLS: Readonly<Record<GalleryTool, { readonly origin: HistoryOrig
   // An object changed, removed or added: for the History it is an edited
   // video, not an upscale.
   object_swap: { origin: 'video', labelKey: 'imagine.label.oggetto-cambiato' },
+  swap_person: { origin: 'video', labelKey: 'imagine.label.personaggio-cambiato' },
   // A photo relit by a light look: for the History it is an edited photo.
   relight: { origin: 'edited', labelKey: 'imagine.label.illuminata' },
   animated_background: { origin: 'loop', labelKey: 'imagine.label.sfondo-animato' },
@@ -180,6 +181,7 @@ const ACTION_LABEL_KEYS: Readonly<Record<ImagineAction | HostEdit, ComfyLocaleKe
   regenerate: 'imagine.label.dettaglio-rigenerato',
   compose: 'imagine.label.composta',
   objectSwap: 'imagine.label.oggetto-cambiato',
+  swapPerson: 'imagine.label.personaggio-cambiato',
   relight: 'imagine.label.illuminata',
   custom: 'imagine.label.workflow-personale',
   crop: 'imagine.label.ritaglio',

@@ -21,8 +21,8 @@
 </p>
 
 A chat that turns a sentence into the right graph, a queue that runs it, a
-canvas and a gallery, and a set of ready-made recipes — image to video, object
-swap, relighting, animated loops, music, voice, upscaling.
+canvas and a gallery, and a set of ready-made recipes — image to video, character
+and object swap, relighting, animated loops, music, voice, upscaling.
 
 It is a single Node process plus a React interface. It talks to ComfyUI over its
 HTTP API and to any OpenAI-compatible chat-completions endpoint for the text and
@@ -39,8 +39,17 @@ the repository ships Italian (see [Languages](#languages)).
   the prompt for that specific graph.
 - **Recipes, not single nodes.** "Recreate" reads a video with the vision
   model, redraws its opening frame and renders the clip again from it. "Edit
-  object" tracks an object in a clip and changes, removes or adds it, window by
-  window.
+  object" tracks an object in a clip and changes, removes or adds it;
+  "Character swap" puts the person of a photo in place of the clip's main one.
+- **Long videos as one take, the way [Openjutsu](#acknowledgements) does it.**
+  Past six seconds a clip is a chain of scenes of at most six seconds, rendered
+  inside ComfyUI with the
+  [MiniMax H3 Context Loop](https://github.com/ethanfel/ComfyUI-MiniMaxH3-Context-Loop)
+  nodes: each scene starts from the last frames of the one before, every scene
+  is saved as a checkpoint so a stopped run resumes where it was, and the vision
+  model writes one prompt per scene. Make video, extend (up to 60 s), animated
+  loops (the last scene lands back on the first frame) and both swaps work this
+  way; the swaps render at 480p, 720p or 1080p.
 - **A job queue that survives.** Long renders report progress, can be cancelled,
   and a music video left half-made is picked up again after a restart.
 - **A photo viewer with tools.** Every picture opens with **Segments** (each
@@ -78,8 +87,8 @@ point at another graph — see [The workflows](#the-workflows).
 | Edit photo, precise edit (brush), reference image | **Krea 2 Turbo** + identity-edit LoRA | the three above + `krea2_identity_edit_v1_2` (LoRA) |
 | Compose a person with a reference (costume, setting) | **Qwen-Image 2.1** | `qwen_image_2.1_int8_convrot`, `qwen3vl_8b_int8_convrot`, `qwen_image_2.1_vae_bf16` |
 | Relight a photo | **FLUX.3 Klein** | `flux3-image-klein-int8-convrot` ([black-forest-labs](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy), gated), `qwen3vl_4b_int8_convrot` (the Krea 2 text encoder), `flux2-vae` |
-| Make video, loop, extend, video on a song, recreate video | **MiniMax H3** (fast and quality graphs) | `minimax_h3_fl2va` / `minimax_h3_ref2va` (int8), text encoder `qwen3vl_32b_minimax_h3_nvfp4_awq`, video and audio VAEs, Pika H3 Flex turbo LoRAs |
-| Edit object in a video: change, remove, background, add | **MiniMax H3** + **SAM 3.1** | `minimax_h3_ref2va` + the DMAD 4-step LoRA ([Kijai/MiniMax-H3-experimental](https://huggingface.co/Kijai/MiniMax-H3-experimental)) at 6 steps, `sam3.1_multiplex_fp16` — the masked-edit recipe Openjutsu uses |
+| Make video, loop, extend, video on a song, recreate video (chained scenes past 6 s) | **MiniMax H3** (fast and quality graphs) | `minimax_h3_fl2va` / `minimax_h3_ref2va` (int8), text encoder `qwen3vl_32b_minimax_h3_nvfp4_awq`, video and audio VAEs, Pika H3 Flex turbo LoRAs |
+| Edit object in a video: change, remove, background, add; character swap (lip-sync on or off) | **MiniMax H3** + **SAM 3.1** + Qwen3-VL 8B (describer) | `minimax_h3_ref2va` + the DMAD 4-step LoRA ([Kijai/MiniMax-H3-experimental](https://huggingface.co/Kijai/MiniMax-H3-experimental)) at 6 steps, `sam3.1_multiplex_fp16` — the masked-edit recipe Openjutsu uses |
 | Regenerate detail (video at 1.5×) | **MiniMax H3** | latent upscaler 3D + `minimax_h3_open_regenerate_2k` LoRA |
 | Segments (objects in a photo) | **SAM 3.1** + the vision model | `sam3.1_multiplex_fp16`, node in [comfyui-nodes/comfyui-imagine](comfyui-nodes/comfyui-imagine) |
 | Upscale photo / video | **SeedVR2** | `seedvr2_7b_sharp_int8_convrot` (photo), `seedvr2_3b_int8_convrot` (video), `ema_vae_fp16` — ComfyUI's native SeedVR2 nodes, NVFP4 builds on an RTX 50 ([Comfy-Org/SeedVR2](https://huggingface.co/Comfy-Org/SeedVR2)) |
@@ -339,6 +348,11 @@ Imagine was built with a lot of help, and it shows in the code and in the studio
   Harness (see `NOTICE`), and DeepSeek models drive its chat.
 - **[Qwen](https://qwen.ai)** (Alibaba) — Qwen-Image and the Qwen3-VL text and
   vision encoders behind Krea 2, MiniMax H3 and FLUX.3 Klein in these graphs.
+
+- **Openjutsu**, **[D3voz's one-click swap nodes](https://github.com/D3voz/comfyui-h3-oneclick-swap)**
+  and **[ethanfel's MiniMax H3 Context Loop](https://github.com/ethanfel/ComfyUI-MiniMaxH3-Context-Loop)**
+  — the character and object swaps follow Openjutsu's graphs, and every long
+  video is chained the way their plans do it.
 
 And to everyone behind ComfyUI and the open models the graphs run on.
 

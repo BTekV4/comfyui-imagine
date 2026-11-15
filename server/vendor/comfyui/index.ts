@@ -580,10 +580,12 @@ export class ComfyUi {
       readonly signal?: AbortSignal | undefined
       readonly onPrompt?: ((promptId: string) => void) | undefined
       readonly onRestart?: (() => void) | undefined
+      /** This run's deadline instead of the connection's: a graph that loops its own clips runs long. */
+      readonly timeoutMs?: number | undefined
     } = {},
   ): Promise<ComfyRunResult> {
     const { signal, onPrompt, onRestart } = hooks
-    const runSignal = withDeadline(signal, this.timeoutMs)
+    const runSignal = withDeadline(signal, Math.max(hooks.timeoutMs ?? 0, this.timeoutMs))
     /*
      * The last prompt this call put on the server, so that giving up on it
      * also takes it off. See {@link abandon}.

@@ -109,6 +109,8 @@ export interface ImagineChatIntent {
    * the composer, and a line written in a project never sees it.
    */
   readonly keepAudio?: boolean
+  /** Character swap only: false when the people in the clip do not sing or talk along. */
+  readonly lipSync?: boolean
 }
 
 /** One run of the project still going, as the page's job list shows it. */

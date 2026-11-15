@@ -122,6 +122,7 @@ function WorkflowPanelBox({ store, spec, cover, motion, items, busy, actions }: 
   const onSeconds = useEvent((value: number) => { set({ seconds: value }) })
   const onLyrics = useEvent((value: string) => { set({ lyrics: value }) })
   const onKeepAudio = useEvent((value: boolean) => { set({ keepAudio: value }) })
+  const onLipSync = useEvent((value: boolean) => { set({ lipSync: value }) })
   // Stable: the model select reloads its list whenever this changes.
   const onModel = useEvent((route: ModelRoute) => { set({ chatModel: route }) })
   const onUpscaleTo = useEvent((short: number | undefined) => { set({ panelUpscaleTo: short }) })
@@ -143,6 +144,7 @@ function WorkflowPanelBox({ store, spec, cover, motion, items, busy, actions }: 
       seconds={state.seconds}
       lyrics={state.lyrics}
       keepAudio={state.keepAudio}
+      lipSync={state.lipSync}
       busy={busy}
       note={state.note}
       onBack={actions.onBack}
@@ -157,6 +159,7 @@ function WorkflowPanelBox({ store, spec, cover, motion, items, busy, actions }: 
       onSeconds={onSeconds}
       onLyrics={onLyrics}
       onKeepAudio={onKeepAudio}
+      onLipSync={onLipSync}
       onModel={onModel}
       onRun={() => { actions.onRun(spec) }}
       upscaleTo={state.panelUpscaleTo}

@@ -31,6 +31,8 @@ export interface WorkflowSlot {
 export type WorkflowOption = 'aspect' | 'resolution' | 'seconds' | 'loopSeconds' | 'style' | 'lyrics' | 'model'
   /** "Recreate video": keep the reference clip's own soundtrack. */
   | 'keepAudio'
+  /** "Character swap": the new person mouths the clip's vocals, or not. */
+  | 'lipSync'
   /**
    * "Recreate video": how many candidate opening frames the scan draws.
    *
@@ -92,6 +94,8 @@ export interface WorkflowSpec {
    * renders a clip and must not offer 1080p/1440p.
    */
   readonly videoCanvas?: boolean
+  /** The swaps' own ladder, up to 1080p (Openjutsu's plan). */
+  readonly swapCanvas?: boolean
   /** Text on the run button, as a locale key. */
   readonly actionKey: ComfyLocaleKey
   /** The button text already written (uploaded cards): it wins over the key. */
@@ -185,7 +189,22 @@ const SPECS = {
     },
     options: ['objectMode', 'resolution', 'model'],
     videoCanvas: true,
+    swapCanvas: true,
     actionKey: 'imagine.specAct.objectSwap',
+  },
+  swapPerson: {
+    id: 'swapPerson',
+    titleKey: 'imagine.swapPerson',
+    summaryKey: 'imagine.actionSwapPersonHint',
+    canKeys: ['imagine.spec.swapPerson.can1', 'imagine.spec.swapPerson.can2'],
+    notesKeys: ['imagine.spec.swapPerson.notes1'],
+    slots: [
+      { key: 'clip', labelKey: 'imagine.slot.swapPerson.clip', hintKey: 'imagine.slot.swapPerson.clipHint', kinds: ['video'], required: true },
+      { key: 'reference', labelKey: 'imagine.slot.swapPerson.photo', hintKey: 'imagine.slot.swapPerson.photoHint', kinds: ['image'], required: true },
+    ],
+    options: ['resolution', 'lipSync'],
+    swapCanvas: true,
+    actionKey: 'imagine.specAct.swapPerson',
   },
   relight: {
     id: 'relight',

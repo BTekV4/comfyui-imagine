@@ -53,7 +53,7 @@ export type GalleryTool =
   | 'generate_image' | 'edit_image' | 'create_video' | 'upscale_image' | 'upscale_video'
   | 'remove_background' | 'generate_music' | 'generate_lookbook'
   | 'animated_background' | 'extend_video' | 'change_voice' | 'speak_text' | 'videoclip'
-  | 'recreate_video' | 'regenerate_detail' | 'object_swap' | 'relight'
+  | 'recreate_video' | 'regenerate_detail' | 'object_swap' | 'swap_person' | 'relight'
 
 /** One produced media file the Imagine page can render (GET /comfy-media). */
 export interface GalleryItem {
@@ -84,7 +84,7 @@ export type ImagineSettingOp =
 export const IMAGINE_ACTIONS = [
   'generate', 'remix', 'video', 'loop', 'extend', 'upscale', 'bg', 'music', 'story', 'voice',
   'speak', 'redo', 'resume', 'scanFrame', 'recreate',
-  'regenerate', 'compose', 'objectSwap', 'relight', 'custom',
+  'regenerate', 'compose', 'objectSwap', 'swapPerson', 'relight', 'custom',
 ] as const
 
 /** One Imagine studio action. */

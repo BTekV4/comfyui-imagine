@@ -400,6 +400,8 @@ export async function startImagineJob(
     mask?: string
     /** Recreate only: whether the reference clip's soundtrack is kept. */
     keepAudio?: boolean
+    /** Character swap only: false turns lip-sync off. */
+    lipSync?: boolean
     /** `objectSwap` only: which of the four recipes runs. */
     objectMode?: ImagineObjectMode
     /** `objectSwap` → `add`: the box the new object goes into. */
