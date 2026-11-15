@@ -47,13 +47,23 @@ header.
 | `imagine_upload` | Upload a file (from a URL or base64), optionally into a project |
 | `imagine_view` | Return the picture (or a video frame) so the model can look at it |
 | `imagine_generate_image` | Text to image: prompt, aspect, resolution, quality |
-| `imagine_edit_image` | Edit a picture with an instruction |
+| `imagine_edit_image` | Edit a picture with an instruction; with `segments` or `region` only that zone changes (Precise edit), with `reference` a second picture to take something from |
+| `imagine_segments` | Find the objects in a photo (Segments: vision model + SAM 3): index, label, box, share of the photo, cut-out and mask links |
+| `imagine_remove_object` | Erase segments or a rectangle and fill from around them (LaMa, via the IOPaint plugin) |
+| `imagine_crop` | Keep a rectangle of a photo as a new file |
 | `imagine_make_video` | Picture to video (length, aspect, speed, last frame) |
 | `imagine_run_action` | Any other studio action (upscale, background, music, voice, loop, …) |
 | `imagine_custom_workflows` | The user's uploaded workflows, run with `imagine_run_action` `custom` |
 | `imagine_job` | A job's state, waiting up to 50 s per call; finished jobs return their files |
 | `imagine_list_jobs` | Queued and running jobs |
 | `imagine_cancel_job` | Stop a job |
+
+Zones go from the model to the studio in two ways: as **segments** (call
+`imagine_segments` on the photo, then pass the indexes — "the jacket", "the
+person in the back") or as a **region**, a rectangle in fractions of the photo
+(`{"x":0.1,"y":0.2,"w":0.3,"h":0.4}`). The masks are joined in the MCP process
+itself (`mcp/masks.ts`); Remove object grows them by 2% of the short side, so
+LaMa fills from the background around the object instead of redrawing its edge.
 
 **Projects.** Every job can name a `project` (id or title). A title that does
 not exist creates that project *with the job already in it* — an empty project

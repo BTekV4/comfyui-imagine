@@ -26,6 +26,8 @@ import { IMAGINE_ASPECTS, IMAGE_RESOLUTIONS, type ImagineAspect, type ImagineRes
 import {
   VIDEO_RESOLUTIONS, clampSeconds, megapixelsFor, sizeFor, videoAspectLabel,
 } from '../shared/imagine-sizing.ts'
+import type { ImagineSegmentsIndex, ImagineSegmentsStatus } from '../shared/imagine-segments.ts'
+import { checkedZone, growMask, joinMasks, maskDataUrl, readMask, rectangleMask, type Fractions } from './masks.ts'
 
 const IMAGINE = (process.env.IMAGINE_URL ?? 'http://127.0.0.1:3090').replace(/\/+$/, '')
 /** Where the links handed to the model point: set it to an address the model's client can reach (defaults to IMAGINE_URL). */
@@ -181,6 +183,85 @@ async function guarded(run: () => Promise<unknown>) {
   }
 }
 
+// ---------------------------------------------------------------- segments and zones
+
+/** A segment's mask or cut-out, as the studio serves it. */
+const segmentFileUrl = (photo: string, file: string): string =>
+  `/api/segments/file/${encodeURIComponent(photo)}/${encodeURIComponent(file)}`
+
+/** Where a photo's Segments analysis stands. */
+const segmentsOf = async (photo: string): Promise<ImagineSegmentsStatus> =>
+  await api<ImagineSegmentsStatus>(`/api/segments?name=${encodeURIComponent(photo)}`)
+
+/**
+ * A photo's segments as the model reads them: index (what the other tools
+ * take), label, kind, box in fractions of the photo, share of the photo, and
+ * links to the cut-out and the mask.
+ */
+function describeSegments(index: ImagineSegmentsIndex): Record<string, unknown> {
+  const round = (value: number): number => Math.round(value * 1000) / 1000
+  return {
+    photo: index.photo,
+    width: index.width,
+    height: index.height,
+    segments: index.segments.map(segment => ({
+      index: segment.index,
+      label: segment.label,
+      kind: segment.kind,
+      score: Math.round(segment.score * 100) / 100,
+      box: { x: round(segment.bbox.x / index.width), y: round(segment.bbox.y / index.height), w: round(segment.bbox.w / index.width), h: round(segment.bbox.h / index.height) },
+      // The index stores the area as a fraction of the photo already.
+      areaPercent: Math.round(segment.area * 1000) / 10,
+      cut: `${PUBLIC}${segmentFileUrl(index.photo, segment.cut)}`,
+      mask: `${PUBLIC}${segmentFileUrl(index.photo, segment.mask)}`,
+    })),
+  }
+}
+
+/**
+ * The mask of some of a photo's segments, joined, as a data URL: what Precise
+ * edit and Remove object take. The analysis must be ready (imagine_segments).
+ */
+async function segmentsMask(photo: string, wanted: readonly number[], grow = 0): Promise<string> {
+  const status = await segmentsOf(photo)
+  if (status.state !== 'ready') {
+    throw new Error(`the segments of "${photo}" are ${status.state === 'running' ? 'still being found' : 'not there'}: call imagine_segments first`)
+  }
+  const chosen = wanted.map((number) => {
+    const segment = status.index.segments.find(entry => entry.index === number)
+    if (segment === undefined) throw new Error(`segment ${String(number)} is not one of "${photo}" (see imagine_segments)`)
+    return segment
+  })
+  const masks = await Promise.all(chosen.map(async (segment) => {
+    const response = await fetch(`${IMAGINE}${segmentFileUrl(photo, segment.mask)}`, { signal: AbortSignal.timeout(60_000) })
+    if (!response.ok) throw new Error(`mask of segment ${String(segment.index)}: ${String(response.status)}`)
+    return readMask(new Uint8Array(await response.arrayBuffer()))
+  }))
+  const joined = joinMasks(masks)
+  return maskDataUrl(grow > 0 ? growMask(joined, Math.min(joined.width, joined.height) * grow) : joined)
+}
+
+/** How much Remove object grows a segment's mask: 2% of the photo's short side (about 20 px at 1080). */
+const ERASE_MARGIN = 0.02
+
+/** A photo of the library, with its size: a region becomes pixels on it. */
+async function photoItem(name: string): Promise<GalleryItem> {
+  const item = (await gallery()).find(entry => entry.name === name)
+  if (item === undefined) throw new Error(`file not in the library: ${name} (see imagine_recent_media or imagine_project_files)`)
+  if (item.kind !== 'image') throw new Error(`"${name}" is a ${item.kind}, not a photo`)
+  return item
+}
+
+/** Put a file the studio just made into a project, when one was named. */
+async function fileIntoProject(item: GalleryItem, project: string | undefined): Promise<Record<string, unknown>> {
+  const target = await projectTarget(project)
+  if (target !== undefined) {
+    if (target.isNew) await createProject(target.id, target.title, { itemNames: [item.name] })
+    else await addFilesToProject(target.id, [item.name])
+  }
+  return { file: describeFile(item), ...target === undefined ? {} : { project: { id: target.id, title: target.title, created: target.isNew } } }
+}
+
 /** Check that the named files exist, so a typo fails here and not minutes into a run. */
 async function requireFiles(names: (string | undefined)[]): Promise<void> {
   const wanted = names.filter((name): name is string => name !== undefined && name !== '')
@@ -195,6 +276,10 @@ async function requireFiles(names: (string | undefined)[]): Promise<void> {
 const aspect = z.enum(IMAGINE_ASPECTS).default('9:16').describe('Frame shape.')
 const projectArg = z.string().optional().describe('Project id or title to put the result in. A title that does not exist creates that project. Omit to leave the file only in the library.')
 const fileName = (what: string) => z.string().describe(`${what}: a gallery file name (from imagine_recent_media, imagine_project_files or imagine_upload).`)
+const zoneArg = z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() })
+  .describe('A rectangle in fractions of the photo: x, y from the top-left corner, w and h its size, all between 0 and 1.')
+const segmentsArg = z.array(z.number().int().min(0)).min(1)
+  .describe('Segment indexes from imagine_segments: their masks are joined into the zone.')
 
 function buildServer(): McpServer {
   const server = new McpServer({ name: 'imagine', version: '1.0.0' }, {
@@ -343,16 +428,88 @@ function buildServer(): McpServer {
 
   server.registerTool('imagine_edit_image', {
     title: 'Edit a picture',
-    description: 'Change a picture with an instruction (Krea 2 edit graph): «make the dress red», «put her on a beach». The result is a new file beside the original.',
+    description: [
+      'Change a picture with an instruction (Krea 2 edit graph): «make the dress red», «put her on a beach». The result is a new file beside the original.',
+      'Precise edit: pass `segments` (indexes from imagine_segments) or `region` (a rectangle) and only that zone changes — «make this jacket leather», or "remove this layer" to take the segment away.',
+      '`reference`: a second picture to take something from (an object, a garment, a style), named in the prompt.',
+    ].join(' '),
     inputSchema: {
       source: fileName('The picture to edit'),
       prompt: z.string().min(1).describe('The change, in English.'),
+      segments: segmentsArg.optional(),
+      region: zoneArg.optional(),
+      reference: fileName('A reference picture').optional(),
       quality: z.enum(IMAGINE_QUALITIES).default('standard'),
       project: projectArg,
     },
-  }, async ({ source, prompt, quality, project }) => guarded(async () => {
-    await requireFiles([source])
-    return await startJob({ action: 'remix', prompt, source, quality, speed: quality === 'high' ? 'slow' : 'fast' }, project)
+  }, async ({ source, prompt, segments, region, reference, quality, project }) => guarded(async () => {
+    if (segments !== undefined && region !== undefined) throw new Error('give segments or region, not both')
+    await requireFiles([source, reference])
+    const zone = segments !== undefined
+      ? { mask: await segmentsMask(source, segments) }
+      : region !== undefined ? { region: checkedZone(region) } : {}
+    return await startJob({
+      action: 'remix', prompt, source, quality, speed: quality === 'high' ? 'slow' : 'fast',
+      ...zone, ...reference === undefined ? {} : { reference },
+    }, project)
+  }))
+
+  server.registerTool('imagine_segments', {
+    title: 'Find the objects in a photo',
+    description: [
+      'Segments: the vision model names what is in the photo and SAM 3 cuts out each object (and boxes the readable text).',
+      'Returns every segment with its index, label, box and share of the photo, and links to its transparent cut-out and its mask.',
+      'The indexes go to imagine_edit_image (segments) and imagine_remove_object. The first analysis of a photo takes one to three minutes: wait_seconds keeps asking; call again while it runs. Photos made by the studio are often analysed already.',
+    ].join(' '),
+    inputSchema: {
+      photo: fileName('The photo'),
+      again: z.boolean().default(false).describe('Analyse it again even if it was done.'),
+      wait_seconds: z.number().int().min(0).max(50).default(45).describe('Keep asking for up to this many seconds (max 50).'),
+    },
+  }, async ({ photo, again, wait_seconds }) => guarded(async () => {
+    await photoItem(photo)
+    let status = await api<ImagineSegmentsStatus>('/api/segments', { method: 'POST', body: JSON.stringify({ name: photo, again }) })
+    const until = Date.now() + wait_seconds * 1000
+    while (status.state === 'running' && Date.now() < until) {
+      await new Promise(resolve => setTimeout(resolve, Math.min(5000, Math.max(1000, until - Date.now()))))
+      status = await segmentsOf(photo)
+    }
+    if (status.state === 'ready') return { state: 'ready', ...describeSegments(status.index) }
+    if (status.state === 'failed') return { state: 'failed', error: status.error }
+    return { state: status.state, photo, next: 'Still analysing: call imagine_segments again with the same photo (again: false).' }
+  }))
+
+  server.registerTool('imagine_remove_object', {
+    title: 'Remove an object from a photo',
+    description: 'Erase a zone and fill it from what is around it (LaMa, through the IOPaint plugin — a few seconds, no ComfyUI). The zone is `segments` (indexes from imagine_segments) or `region` (a rectangle). The result is a new photo beside the original.',
+    inputSchema: {
+      photo: fileName('The photo'),
+      segments: segmentsArg.optional(),
+      region: zoneArg.optional(),
+      project: projectArg,
+    },
+  }, async ({ photo, segments, region, project }) => guarded(async () => {
+    if ((segments === undefined) === (region === undefined)) throw new Error('give segments or region (one of the two)')
+    const item = await photoItem(photo)
+    let mask: string
+    if (segments !== undefined) {
+      mask = await segmentsMask(photo, segments, ERASE_MARGIN)
+    } else {
+      if (item.width === undefined || item.height === undefined) throw new Error(`the size of "${photo}" is not known`)
+      mask = maskDataUrl(rectangleMask(item.width, item.height, region as Fractions))
+    }
+    const made = await api<GalleryItem>('/plugin/iopaint/erase', { method: 'POST', body: JSON.stringify({ name: photo, mask }), signal: AbortSignal.timeout(330_000) })
+    return await fileIntoProject(made, project)
+  }))
+
+  server.registerTool('imagine_crop', {
+    title: 'Crop a photo',
+    description: 'Keep a rectangle of a photo, as a new lossless file beside the original.',
+    inputSchema: { photo: fileName('The photo'), region: zoneArg, project: projectArg },
+  }, async ({ photo, region, project }) => guarded(async () => {
+    await photoItem(photo)
+    const made = await api<GalleryItem>('/api/crop-copy', { method: 'POST', body: JSON.stringify({ name: photo, region: checkedZone(region) }) })
+    return await fileIntoProject(made, project)
   }))
 
   server.registerTool('imagine_make_video', {
