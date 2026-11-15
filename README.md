@@ -14,6 +14,8 @@
   <img alt="Languages: English, Italian" src="https://img.shields.io/badge/languages-EN%20%7C%20IT-555">
 </p>
 
+<p align="center"><sub>An independent project for ComfyUI, not affiliated with or endorsed by Comfy Org.</sub></p>
+
 <p align="center">
   <img src="docs/screenshots/viewer-segments.jpg" alt="A generated photo open in the viewer, with the Segments panel listing the objects found in it" width="900">
 </p>
