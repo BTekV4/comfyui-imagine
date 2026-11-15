@@ -17,7 +17,7 @@
 <p align="center"><sub>An independent project for ComfyUI, not affiliated with or endorsed by Comfy Org.</sub></p>
 
 <p align="center">
-  <img src="docs/screenshots/viewer-segments.jpg" alt="A generated photo open in the viewer, with the Segments panel listing the objects found in it" width="900">
+  <img src="docs/screenshots/home.jpg" alt="New generation: the composer and the action cards" width="900">
 </p>
 
 A chat that turns a sentence into the right graph, a queue that runs it, a
@@ -58,8 +58,10 @@ the repository ships Italian (see [Languages](#languages)).
 
 | | |
 |---|---|
-| ![Home: the composer and the action cards](docs/screenshots/home.jpg) | ![A project: the chat on the left, its pictures and video on the canvas](docs/screenshots/project.jpg) |
-| **Home** — type a request, or pick an action | **Project** — the chat explains each choice; results land on the canvas |
+| ![A project: the chat on the left, its pictures and video on the canvas](docs/screenshots/project.jpg) | ![The canvas: a project's pictures and video side by side](docs/screenshots/canvas.jpg) |
+| **Project** — the chat explains each choice; results land on the canvas | **Canvas** — arrange, compare and reuse what the project made |
+| ![Media: every picture and video in one grid, with the composer at hand](docs/screenshots/media.jpg) | ![A generated photo open in the viewer, with the Segments panel listing the objects found in it](docs/screenshots/viewer-segments.jpg) |
+| **Media** — everything in one grid: search, filter, start from any of it | **Viewer** — Segments finds the objects in a photo to edit one by one |
 | ![Library: every file, filtered by kind and searchable](docs/screenshots/library.jpg) | ![Plugins: installed, available, and language packs](docs/screenshots/plugins.jpg) |
 | **Library** — everything you made, by project | **Plugins** — optional features and language packs, installed from the page |
 
@@ -77,7 +79,7 @@ point at another graph — see [The workflows](#the-workflows).
 | Compose a person with a reference (costume, setting) | **Qwen-Image 2.1** | `qwen_image_2.1_int8_convrot`, `qwen3vl_8b_int8_convrot`, `qwen_image_2.1_vae_bf16` |
 | Relight a photo | **FLUX.3 Klein** | `flux3-image-klein-int8-convrot`, `qwen3vl_4b_nvfp4`, `flux2-vae` |
 | Make video, loop, extend, video on a song, recreate video | **MiniMax H3** (fast and quality graphs) | `minimax_h3_fl2va` / `minimax_h3_ref2va` (int8), text encoder `qwen3vl_32b_minimax_h3_nvfp4_awq`, video and audio VAEs, Pika H3 Flex turbo LoRAs |
-| Edit object in a video: change, remove, background, add | **MiniMax H3** + **SAM 3.1** | the H3 weights + `minimax_h3_character_swap_v1.1` LoRA, `sam3.1_multiplex_fp16` |
+| Edit object in a video: change, remove, background, add | **MiniMax H3** + **SAM 3.1** | `minimax_h3_ref2va` + the DMAD 4-step LoRA ([Kijai/MiniMax-H3-experimental](https://huggingface.co/Kijai/MiniMax-H3-experimental)) at 6 steps, `sam3.1_multiplex_fp16` — the masked-edit recipe Openjutsu uses |
 | Regenerate detail (video at 1.5×) | **MiniMax H3** | latent upscaler 3D + `minimax_h3_open_regenerate_2k` LoRA |
 | Segments (objects in a photo) | **SAM 3.1** + the vision model | `sam3.1_multiplex_fp16`, node in [comfyui-nodes/comfyui-imagine](comfyui-nodes/comfyui-imagine) |
 | Upscale photo / video | **SeedVR2** | `seedvr2_ema_7b_sharp_fp16` (photo), `seedvr2_3b_int8_convrot` (video), `ema_vae_fp16` |
@@ -87,13 +89,25 @@ point at another graph — see [The workflows](#the-workflows).
 | Remove object (photo) | **LaMa** in IOPaint | through the IOPaint plugin, outside ComfyUI |
 
 **Installed for you:** the Krea 2 actions (generate, edit, precise edit),
-Segments and Remove background. With the [comfyui-imagine](#the-comfyui-pack)
-pack in ComfyUI, the first request that needs them downloads the weights above
-(about 22.6 GB in all, from the official Hugging Face repos) and the one node
-pack they use. On an RTX 50 (Blackwell) it takes the NVFP4 build of Krea 2
-instead: 7.7 GB rather than 13.5, and on an RTX 5070 Ti about 11% faster with
-3.5 GB less VRAM at the same quality. The other families still go in by hand
-for now.
+Segments, Remove background, every MiniMax H3 video action and Music. With the
+[comfyui-imagine](#the-comfyui-pack) pack in ComfyUI, the first request that
+needs them downloads the weights above from Hugging Face and the node packs
+they use:
+
+- Krea 2, Segments, Remove background: about 22.6 GB. On an RTX 50 (Blackwell)
+  it takes the NVFP4 build of Krea 2 instead: 7.7 GB rather than 13.5, and on
+  an RTX 5070 Ti about 11% faster with 3.5 GB less VRAM at the same quality.
+- MiniMax H3 video: about 76 GB with the NVFP4 text encoder on an RTX 50, or
+  about 88 GB with the INT8 one on other cards; each action downloads only the
+  files it uses.
+- Music: about 14.3 GB.
+
+Most of the H3 node packs are marked **Flagged** in the Comfy Registry, and a
+few come straight from GitHub because the registry does not carry them. Imagine
+installs them only at the exact version it was tested with, checked file by
+file, and always asks first, even with **Install automatically** on: the chat
+card says where each pack comes from. A version the registry has banned is
+never installed. Compose, Relight and Upscale still go in by hand for now.
 
 **Text and vision** go to any OpenAI-compatible chat-completions endpoint
 (Ollama, vLLM, LM Studio, llama.cpp, a hosted API): the model writes the

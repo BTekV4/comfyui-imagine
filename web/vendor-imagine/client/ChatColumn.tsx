@@ -11,7 +11,7 @@ import { memo, useEffect, useMemo, useRef, useSyncExternalStore, type PointerEve
 import { IconPanelLeftOutlineRegular, IconRefreshOutlineRegular, IconTrashOutlineRegular } from '../../shims/primitives/index.ts'
 import { Still } from './Still.tsx'
 import { THUMB_SMALL, THUMB_TILE, thumbUrlOf } from './gallery-api.ts'
-import type { ImagineJobView as ImagineJob, MediaFileRef } from '../../../shared/imagine-types.ts'
+import { setupPackUnverified, type ImagineJobView as ImagineJob, type MediaFileRef } from '../../../shared/imagine-types.ts'
 import type { WorkflowProposal } from '../../../shared/imagine-chat.ts'
 import type { ImagineMessage, ImagineProject } from '../../../shared/imagine-projects.ts'
 import { isSeedMessage } from './imagine-projects.ts'
@@ -225,7 +225,17 @@ const JobRow = memo(function JobRow({ job, onStop, onApproveSetup }: {
     return (
       <div className={css.chatWork} data-imagine-job={job.id}>
         <span className={css.chatWorkLabel}>{translate('imagine.setupNeededTitle')}</span>
-        <span className={css.chatWorkStage}>{translate('imagine.setupNeeded', { what, size: formatGigabytes(job.setup.bytes) })}</span>
+        <span className={css.setupText}>{translate('imagine.setupNeeded', { what, size: formatGigabytes(job.setup.bytes) })}</span>
+        {job.setup.packs.length > 0 && (
+          <ul className={css.setupPacks}>
+            {job.setup.packs.map(pack => (
+              <li key={pack.id}>
+                {pack.name} — {translate(pack.source === 'github' ? 'imagine.setupFromGithub' : pack.registryStatus === 'Active' ? 'imagine.setupFromRegistry' : 'imagine.setupFromRegistryFlagged')}
+              </li>
+            ))}
+          </ul>
+        )}
+        {job.setup.packs.some(setupPackUnverified) && <span className={css.setupWarning} role="note">{translate('imagine.setupUnverified')}</span>}
         <span className={css.chatWorkLabel}>
           <button type="button" className={css.approveSetup} onClick={() => { onApproveSetup(job.id) }}>{translate('imagine.setupInstall')}</button>
           <button type="button" className={css.stopJob} onClick={() => { onStop(job.id) }}>{translate('imagine.cancel')}</button>

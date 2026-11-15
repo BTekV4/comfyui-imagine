@@ -12,40 +12,15 @@
  "2": {
   "inputs": {
    "shift_video": 12,
-   "shift_audio": 3,
+   "shift_audio": 2,
    "model": [
-    "1",
+    "L",
     0
    ]
   },
   "class_type": "MiniMaxH3SigmaShift",
   "_meta": {
-   "title": "Sigma shift 12/3 (akatz)"
-  }
- },
- "4p": {
-  "class_type": "LoraLoaderModelOnly",
-  "inputs": {
-   "model": [
-    "2",
-    0
-   ],
-   "lora_name": "pika_h3_flex_turbo_4step_ref2va.safetensors",
-   "strength_model": 1.0
-  }
- },
- "4": {
-  "inputs": {
-   "lora_name": "minimax_h3_character_swap_v1.1_ref2va_fro.safetensors",
-   "strength_model": 1,
-   "model": [
-    "4p",
-    0
-   ]
-  },
-  "class_type": "LoraLoaderModelOnly",
-  "_meta": {
-   "title": "Character Swap v1.5"
+   "title": "Sigma shift 12/2"
   }
  },
  "6": {
@@ -94,7 +69,7 @@
   },
   "class_type": "CreateVideo",
   "_meta": {
-   "title": "Video con l audio della plate"
+   "title": "Video with the plate audio"
   }
  },
  "30": {
@@ -103,7 +78,7 @@
   },
   "class_type": "LoadVideo",
   "_meta": {
-   "title": "Plate (24 fps, coda clonata)"
+   "title": "Plate (24 fps, cloned tail)"
   }
  },
  "31": {
@@ -115,7 +90,7 @@
   },
   "class_type": "GetVideoComponents",
   "_meta": {
-   "title": "Fotogrammi e audio della finestra"
+   "title": "Frames and audio of the window"
   }
  },
  "32": {
@@ -124,7 +99,7 @@
   },
   "class_type": "PrimitiveFloat",
   "_meta": {
-   "title": "Secondi della finestra"
+   "title": "Window seconds"
   }
  },
  "33": {
@@ -137,7 +112,7 @@
   },
   "class_type": "ComfyMathExpression",
   "_meta": {
-   "title": "Fotogrammi sulla griglia 17k+5"
+   "title": "Frames on the 17k+5 grid"
   }
  },
  "34": {
@@ -150,7 +125,7 @@
   },
   "class_type": "ComfyMathExpression",
   "_meta": {
-   "title": "Durata del taglio (griglia + margine)"
+   "title": "Cut length (grid + margin)"
   }
  },
  "35": {
@@ -168,7 +143,7 @@
   },
   "class_type": "Video Slice",
   "_meta": {
-   "title": "Finestra della plate"
+   "title": "Plate window"
   }
  },
  "36": {
@@ -190,7 +165,7 @@
   },
   "class_type": "ImageScale",
   "_meta": {
-   "title": "Plate alla misura della tela (blocco di riferimento = tela)"
+   "title": "Plate at canvas size (reference block = canvas)"
   }
  },
  "900": {
@@ -202,7 +177,7 @@
   },
   "class_type": "EmptyImage",
   "_meta": {
-   "title": "Tela (scritta dal plugin)"
+   "title": "Canvas (written by the studio)"
   }
  },
  "901": {
@@ -214,7 +189,7 @@
   },
   "class_type": "GetImageSize",
   "_meta": {
-   "title": "Misura della tela"
+   "title": "Canvas size"
   }
  },
  "960": {
@@ -231,7 +206,7 @@
   },
   "class_type": "ImageFromBatch",
   "_meta": {
-   "title": "Ottieni immagine dal batch"
+   "title": "Get image from batch"
   }
  },
  "961": {
@@ -240,19 +215,19 @@
   },
   "class_type": "CheckpointLoaderSimple",
   "_meta": {
-   "title": "Carica Checkpoint"
+   "title": "Load Checkpoint"
   }
  },
  "42": {
   "inputs": {
    "seed": 777,
-   "steps": 4,
+   "steps": 6,
    "cfg": 1,
    "sampler_name": "euler",
    "scheduler": "simple",
    "denoise": 1,
    "model": [
-    "4",
+    "2",
     0
    ],
    "positive": [
@@ -264,13 +239,13 @@
     0
    ],
    "latent_image": [
-    "fv",
+    "mt",
     0
    ]
   },
   "class_type": "KSampler",
   "_meta": {
-   "title": "KSampler 8 passi er_sde"
+   "title": "KSampler 6 steps euler"
   }
  },
  "43": {
@@ -282,7 +257,7 @@
   },
   "class_type": "LTXVSeparateAVLatent",
   "_meta": {
-   "title": "Separa video/audio"
+   "title": "Split video/audio"
   }
  },
  "44": {
@@ -298,7 +273,7 @@
   },
   "class_type": "VAEDecode",
   "_meta": {
-   "title": "Decodifica video"
+   "title": "Decode video"
   }
  },
  "10": {
@@ -309,7 +284,7 @@
    "values.b": "[video editing + audio reuse] The target video is an edited version of the source footage in which the red bag is gone: the regenerated area shows only the grey stone dance floor that continues naturally around it, as if the bag had never been there. The source footage is a 4.458-second section at 24 fps: it supplies the exact camera framing, camera movement, the person, their performance timing, the setting and hard cuts. Everything else keeps its source look, timing and layout. The soundtrack is reused unchanged as the complete final audio.\n\nretention_analysis:\nThe regenerated area: fully_replaced - grey stone dance floor only.\nThe source footage: partially_preserved - only the regenerated area changes; the person, actions, camera movement, shot composition, cuts and timing are retained.\nThe soundtrack: fully_copy - the original soundtrack is the complete final audio."
   },
   "_meta": {
-   "title": "Prompt: identita (a) + ripresa (b), scritti dal plugin"
+   "title": "Prompt: identity (a) + shot (b), written by the studio"
   }
  },
  "p0": {
@@ -336,7 +311,7 @@
   },
   "class_type": "ImageFromBatch",
   "_meta": {
-   "title": "Ottieni immagine dal batch"
+   "title": "Get image from batch"
   }
  },
  "p2": {
@@ -359,7 +334,7 @@
   },
   "class_type": "SAM3_Detect",
   "_meta": {
-   "title": "SAM3 Rileva"
+   "title": "SAM3 Detect"
   }
  },
  "p3": {
@@ -386,7 +361,7 @@
   },
   "class_type": "SAM3_VideoTrack",
   "_meta": {
-   "title": "Esegui Tracciamento Video SAM3"
+   "title": "SAM3 video tracking"
   }
  },
  "p4": {
@@ -399,7 +374,7 @@
   },
   "class_type": "SAM3_TrackToMask",
   "_meta": {
-   "title": "SAM3 Traccia in Maschera"
+   "title": "SAM3 Track to Mask"
   }
  },
  "p5": {
@@ -429,7 +404,7 @@
    ]
   },
   "_meta": {
-   "title": "Salva"
+   "title": "Save"
   }
  },
  "40": {
@@ -450,9 +425,25 @@
     "fv",
     3
    ],
-   "ref_image_size": "max",
+   "ref_image_size": "match",
    "clip": [
     "6",
+    0
+   ],
+   "ref_videos.ref_video_0": [
+    "p6",
+    0
+   ],
+   "ref_video_audios.ref_video_audio_0": [
+    "31",
+    1
+   ],
+   "vae": [
+    "7",
+    0
+   ],
+   "audio_vae": [
+    "8",
     0
    ]
   },
@@ -489,7 +480,61 @@
    "megapixels": 0
   },
   "_meta": {
-   "title": "Edit latent: area rigenerata = maschera (bianco)"
+   "title": "Source video + audio latent (Fantastic)"
+  }
+ },
+ "L": {
+  "class_type": "LoraLoaderModelOnly",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "lora_name": "minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors",
+   "strength_model": 1.0
+  },
+  "_meta": {
+   "title": "DMAD 4-step speed LoRA (run at 6 steps)"
+  }
+ },
+ "p6": {
+  "class_type": "H3GreyMannequins",
+  "inputs": {
+   "images": [
+    "960",
+    0
+   ],
+   "mask": [
+    "p5",
+    0
+   ],
+   "size": [
+    "p5",
+    0
+   ],
+   "blur": 0.04
+  },
+  "_meta": {
+   "title": "Grey shapes: where the edit goes (reference video)"
+  }
+ },
+ "mt": {
+  "class_type": "MiniMaxH3ContexMaskedTarget",
+  "inputs": {
+   "target_latent": [
+    "fv",
+    0
+   ],
+   "mask": [
+    "p5",
+    0
+   ],
+   "mask_meaning": "white = generate",
+   "audio_mode": "preserve source audio",
+   "mask_conversion": "H3 exact (causal/token max)"
+  },
+  "_meta": {
+   "title": "Masked target: white = regenerate (Context Loop)"
   }
  }
 }

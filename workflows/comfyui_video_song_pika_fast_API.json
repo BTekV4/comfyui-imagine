@@ -282,7 +282,7 @@
   },
   "class_type": "LoadAudio",
   "_meta": {
-   "title": "Canzone del videoclip"
+   "title": "Music video song"
   }
  },
  "1682:401": {
@@ -296,7 +296,7 @@
   },
   "class_type": "TrimAudioDuration",
   "_meta": {
-   "title": "I secondi di questa clip"
+   "title": "Seconds of this clip"
   }
  },
  "1682:501": {
@@ -381,7 +381,7 @@
    "frame_idx": 0
   },
   "_meta": {
-   "title": "Add Guide for MiniMax H3 (canzone sulla linea del tempo)"
+   "title": "Add Guide for MiniMax H3 (song on the timeline)"
   }
  },
  "1682:210": {
@@ -429,7 +429,7 @@
    ]
   },
   "_meta": {
-   "title": "LatentLab Audio Encode (voce)"
+   "title": "LatentLab Audio Encode (voice)"
   }
  },
  "1682:601": {
@@ -449,7 +449,7 @@
    "audio_denoise": 0.0
   },
   "_meta": {
-   "title": "LatentLab LipSync Setup (audio protetto)"
+   "title": "LatentLab LipSync Setup (protected audio)"
   }
  },
  "1682:602": {
@@ -463,7 +463,7 @@
    "duration": 10.5
   },
   "_meta": {
-   "title": "Fetta con preroll (per il latente audio)"
+   "title": "Slice with preroll (for the audio latent)"
   }
  },
  "1682:212": {

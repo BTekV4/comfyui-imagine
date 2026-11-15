@@ -6,7 +6,7 @@
    "upload": "image"
   },
   "_meta": {
-   "title": "Carica immagine (primo = ultimo fotogramma)"
+   "title": "Load image (first = last frame)"
   }
  },
  "1682:115": {
@@ -17,7 +17,7 @@
    "multiple": 32
   },
   "_meta": {
-   "title": "Selettore risoluzione"
+   "title": "Resolution selector"
   }
  },
  "105:6": {
@@ -27,7 +27,7 @@
    "weight_dtype": "default"
   },
   "_meta": {
-   "title": "Carica modello di diffusione (FastH3 8 step)"
+   "title": "Load diffusion model (FastH3 8 steps)"
   }
  },
  "1682:200": {
@@ -66,7 +66,7 @@
    "device": "default"
   },
   "_meta": {
-   "title": "Carica CLIP"
+   "title": "Load CLIP"
   }
  },
  "105:11": {
@@ -75,7 +75,7 @@
    "vae_name": "minimax_h3_video_vae_int8_convrot.safetensors"
   },
   "_meta": {
-   "title": "Carica VAE video"
+   "title": "Load video VAE"
   }
  },
  "105:24": {
@@ -84,7 +84,7 @@
    "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
   },
   "_meta": {
-   "title": "Carica VAE audio"
+   "title": "Load audio VAE"
   }
  },
  "105:104": {
@@ -122,7 +122,7 @@
    ]
   },
   "_meta": {
-   "title": "Reference to Video (la foto come <Picture 1>)"
+   "title": "Reference to Video (the photo as <Picture 1>)"
   }
  },
  "105:111": {
@@ -144,7 +144,7 @@
    ]
   },
   "_meta": {
-   "title": "Espressione matematica (durata -> fotogrammi)"
+   "title": "Math expression (duration -> frames)"
   }
  },
  "105:15": {
@@ -178,7 +178,7 @@
    ]
   },
   "_meta": {
-   "title": "Guida base"
+   "title": "Basic guider"
   }
  },
  "105:14": {
@@ -226,7 +226,7 @@
    ]
   },
   "_meta": {
-   "title": "Crea video"
+   "title": "Create video"
   }
  },
  "92": {
@@ -242,7 +242,7 @@
    ]
   },
   "_meta": {
-   "title": "Salva video"
+   "title": "Save video"
   }
  },
  "300": {

@@ -17,6 +17,7 @@ Routes (all JSON):
 """
 
 import hashlib
+import io
 import json
 import logging
 import os
@@ -69,19 +70,27 @@ def _model_present(name, model):
     return folder_paths.get_full_path(model["folder"], name) is not None
 
 
+def _runs_here(entry):
+    """Whether this GPU can run a file: no requirement, or a compute capability that reaches it."""
+    need = entry.get("minComputeCapability")
+    return need is None or (CAPABILITY is not None and CAPABILITY >= need)
+
+
 def _choice(name, model):
-    """The file to use for a model the manifest knows: the one this ComfyUI has,
-    else the variant this GPU runs best, else the model the graph names."""
-    if _model_present(name, model):
-        return name
+    """The file to use for a model the manifest knows: the one this ComfyUI
+    has; else a variant made for this GPU (Krea 2's NVFP4 on an RTX 50); else
+    the model the graph names, when it runs here; else the first variant that
+    does (the H3 text encoder's NVFP4 build needs an RTX 50, INT8 elsewhere)."""
     variants = model.get("variants", [])
+    for candidate in [name] + [variant["name"] for variant in variants]:
+        if _model_present(candidate, FILES[candidate]):
+            return candidate
     for variant in variants:
-        if _model_present(variant["name"], FILES[variant["name"]]):
+        if "minComputeCapability" in variant and _runs_here(variant):
             return variant["name"]
-    for variant in variants:
-        if CAPABILITY is not None and CAPABILITY >= variant.get("minComputeCapability", 0):
-            return variant["name"]
-    return name
+    if _runs_here(model):
+        return name
+    return next((variant["name"] for variant in variants if _runs_here(variant)), name)
 
 
 def _options(class_name, input_name):
@@ -104,6 +113,20 @@ def _options(class_name, input_name):
         if entry[0] == "COMBO" and len(entry) > 1 and isinstance(entry[1], dict) and isinstance(entry[1].get("options"), list):
             return entry[1]["options"]
     return None
+
+
+def _pack_view(key):
+    """A missing pack as the chat shows it: where it comes from and what the registry says of it."""
+    pack = MANIFEST["packs"][key]
+    view = {"id": key, "name": pack["name"], "version": pack["version"], "source": pack.get("source", "registry"),
+            "installedNotLoaded": _pack_installed(pack)}
+    try:
+        status = _registry_status(pack, timeout=8)
+    except Exception:
+        status = None
+    if status is not None:
+        view["registryStatus"] = status
+    return view
 
 
 def _check(prompt):
@@ -137,7 +160,7 @@ def _check(prompt):
     size = sum(FILES[name]["size"] for name in missing_models)
     return {
         "ready": not (missing_packs or missing_models or unknown_classes or unknown_files),
-        "packs": [{"id": key, "name": MANIFEST["packs"][key]["name"], "installedNotLoaded": _pack_installed(MANIFEST["packs"][key])} for key in sorted(missing_packs)],
+        "packs": [_pack_view(key) for key in sorted(missing_packs)],
         "models": [{"name": name, "folder": FILES[name]["folder"], "size": FILES[name]["size"]} for name in sorted(missing_models)],
         "bytes": size,
         # What Imagine writes in the graph instead: a variant chosen for this GPU.
@@ -152,7 +175,7 @@ def _set(**fields):
         _task.update(fields)
 
 
-def _download(url, target, size, sha256, token, label):
+def _download(url, target, size, sha256, tokens, label):
     """Download url to target with resume and a SHA-256 check; progress goes in _task."""
     part = target + ".part"
     have = os.path.getsize(part) if os.path.exists(part) else 0
@@ -165,8 +188,8 @@ def _download(url, target, size, sha256, token, label):
         headers = {"User-Agent": "comfyui-imagine-setup"}
         if have:
             headers["Range"] = f"bytes={have}-"
-        if token and url.startswith("https://huggingface.co/"):
-            headers["Authorization"] = f"Bearer {token}"
+        if tokens.get("huggingface") and url.startswith("https://huggingface.co/"):
+            headers["Authorization"] = f"Bearer {tokens['huggingface']}"
         with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as response:
             if have and response.status != 206:
                 have, digest = 0, hashlib.sha256()
@@ -186,17 +209,55 @@ def _download(url, target, size, sha256, token, label):
     os.replace(part, target)
 
 
-def _install_pack(key, pack, token):
+def _registry_status(pack, timeout=30):
+    """The Comfy Registry's status of the pinned version (Active, Flagged, Banned...), or None when not asked."""
+    registry = pack.get("registry")
+    if registry is None:
+        return None
+    url = f"https://api.comfy.org/nodes/{registry['id']}/versions/{registry['version']}"
+    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "comfyui-imagine-setup"}), timeout=timeout) as r:
+        return str(json.loads(r.read()).get("status", "")).replace("NodeVersionStatus", "") or None
+
+
+def _tree_sha256(z):
+    """A zip's files hashed by content, top folder stripped: GitHub's archives
+    are generated on demand and their bytes can change, their files cannot."""
+    names = [n for n in z.namelist() if not n.endswith("/")]
+    root = names[0].split("/")[0] + "/"
+    strip = all(n.startswith(root) for n in names)
+    lines = "".join(f"{n[len(root):] if strip else n}\0{hashlib.sha256(z.read(n)).hexdigest()}\n" for n in sorted(names))
+    return hashlib.sha256(lines.encode()).hexdigest(), (root if strip else "")
+
+
+def _install_pack(key, pack, tokens):
     base = folder_paths.get_folder_paths("custom_nodes")[0]
     target = os.path.join(base, pack["folder"])
     if not os.path.isdir(target):
-        archive = os.path.join(base, f".{pack['folder']}.zip")
-        _download(pack["url"], archive, pack["size"], pack["sha256"], token, pack["name"])
+        if _registry_status(pack) == "Banned":
+            raise RuntimeError(f"{pack['name']} {pack['version']} has been banned from the Comfy Registry: not installed")
         staging = target + ".installing"
         shutil.rmtree(staging, ignore_errors=True)
-        with zipfile.ZipFile(archive) as z:
-            z.extractall(staging)
-        os.remove(archive)
+        if pack.get("source") == "github":
+            with urllib.request.urlopen(urllib.request.Request(pack["url"], headers={"User-Agent": "comfyui-imagine-setup"}), timeout=300) as r:
+                z = zipfile.ZipFile(io.BytesIO(r.read()))
+            tree, root = _tree_sha256(z)
+            if tree != pack["treeSha256"]:
+                raise RuntimeError(f"{pack['name']}: the files on GitHub are not the pinned ones, not installed")
+            for name in z.namelist():
+                if name.endswith("/") or not name.startswith(root):
+                    continue
+                path = os.path.realpath(os.path.join(staging, name[len(root):]))
+                if not path.startswith(os.path.realpath(staging) + os.sep):
+                    raise RuntimeError(f"{pack['name']}: unsafe path in the archive")
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "wb") as out:
+                    out.write(z.read(name))
+        else:
+            archive = os.path.join(base, f".{pack['folder']}.zip")
+            _download(pack["url"], archive, pack["size"], pack["sha256"], tokens, pack["name"])
+            with zipfile.ZipFile(archive) as z:
+                z.extractall(staging)
+            os.remove(archive)
         os.replace(staging, target)
     requirements = os.path.join(target, "requirements.txt")
     if os.path.exists(requirements) and open(requirements, encoding="utf-8").read().strip():
@@ -206,14 +267,14 @@ def _install_pack(key, pack, token):
             raise RuntimeError(f"{pack['name']}: pip install failed: {result.stderr.strip()[-600:]}")
 
 
-def _run(packs, models, token):
+def _run(packs, models, tokens):
     try:
         for key in packs:
             pack = MANIFEST["packs"][key]
-            _set(step=f"Installing {pack['name']} {pack['version']}", file=pack["name"], fileSize=pack["size"], fileDone=0)
-            _install_pack(key, pack, token)
+            _set(step=f"Installing {pack['name']} {pack['version']}", file=pack["name"], fileSize=pack.get("size", 0), fileDone=0)
+            _install_pack(key, pack, tokens)
             with _lock:
-                _task["doneBefore"] += pack["size"]
+                _task["doneBefore"] += pack.get("size", 0)
                 _task["done"] = _task["doneBefore"]
                 _task["restart"] = True
         for name in models:
@@ -224,7 +285,7 @@ def _run(packs, models, token):
             target = os.path.join(folder, name)
             os.makedirs(os.path.dirname(target), exist_ok=True)
             _set(step=f"Downloading {name}", file=name, fileSize=model["size"], fileDone=0)
-            _download(model["url"], target, model["size"], model["sha256"], token, name)
+            _download(model["url"], target, model["size"], model["sha256"], tokens, name)
             with _lock:
                 _task["doneBefore"] += model["size"]
                 _task["done"] = _task["doneBefore"]
@@ -280,11 +341,13 @@ async def setup_install(request):
     with _lock:
         if _task.get("state") == "running":
             return web.json_response({"error": "an install is already running", "task": dict(_task)}, status=409)
-        total = sum(MANIFEST["packs"][k]["size"] for k in packs) + sum(FILES[n]["size"] for n in models if not _model_present(n, FILES[n]))
+        total = sum(MANIFEST["packs"][k].get("size", 0) for k in packs) + sum(FILES[n]["size"] for n in models if not _model_present(n, FILES[n]))
         _task.clear()
         _task.update(state="running", started=time.time(), total=total, done=0, doneBefore=0, step="Starting", restart=False, packs=packs, models=models)
-    token = request.headers.get("X-HF-Token") or os.environ.get("HF_TOKEN")
-    threading.Thread(target=_run, args=(packs, models, token), daemon=True, name="imagine-setup").start()
+    tokens = {
+        "huggingface": request.headers.get("X-HF-Token") or os.environ.get("HF_TOKEN"),
+    }
+    threading.Thread(target=_run, args=(packs, models, tokens), daemon=True, name="imagine-setup").start()
     return web.json_response(_progress())
 
 

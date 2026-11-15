@@ -12,40 +12,15 @@
  "2": {
   "inputs": {
    "shift_video": 12,
-   "shift_audio": 3,
+   "shift_audio": 2,
    "model": [
-    "1",
+    "L",
     0
    ]
   },
   "class_type": "MiniMaxH3SigmaShift",
   "_meta": {
-   "title": "Sigma shift 12/3 (akatz)"
-  }
- },
- "4p": {
-  "class_type": "LoraLoaderModelOnly",
-  "inputs": {
-   "model": [
-    "2",
-    0
-   ],
-   "lora_name": "pika_h3_flex_turbo_4step_ref2va.safetensors",
-   "strength_model": 1.0
-  }
- },
- "4": {
-  "inputs": {
-   "lora_name": "minimax_h3_character_swap_v1.1_ref2va_fro.safetensors",
-   "strength_model": 1,
-   "model": [
-    "4p",
-    0
-   ]
-  },
-  "class_type": "LoraLoaderModelOnly",
-  "_meta": {
-   "title": "Character Swap v1.5"
+   "title": "Sigma shift 12/2"
   }
  },
  "6": {
@@ -94,7 +69,7 @@
   },
   "class_type": "CreateVideo",
   "_meta": {
-   "title": "Video con l audio della plate"
+   "title": "Video with the plate audio"
   }
  },
  "30": {
@@ -103,7 +78,7 @@
   },
   "class_type": "LoadVideo",
   "_meta": {
-   "title": "Plate (24 fps, coda clonata)"
+   "title": "Plate (24 fps, cloned tail)"
   }
  },
  "31": {
@@ -115,7 +90,7 @@
   },
   "class_type": "GetVideoComponents",
   "_meta": {
-   "title": "Fotogrammi e audio della finestra"
+   "title": "Frames and audio of the window"
   }
  },
  "32": {
@@ -124,7 +99,7 @@
   },
   "class_type": "PrimitiveFloat",
   "_meta": {
-   "title": "Secondi della finestra"
+   "title": "Window seconds"
   }
  },
  "33": {
@@ -137,7 +112,7 @@
   },
   "class_type": "ComfyMathExpression",
   "_meta": {
-   "title": "Fotogrammi sulla griglia 17k+5"
+   "title": "Frames on the 17k+5 grid"
   }
  },
  "34": {
@@ -150,7 +125,7 @@
   },
   "class_type": "ComfyMathExpression",
   "_meta": {
-   "title": "Durata del taglio (griglia + margine)"
+   "title": "Cut length (grid + margin)"
   }
  },
  "35": {
@@ -168,7 +143,7 @@
   },
   "class_type": "Video Slice",
   "_meta": {
-   "title": "Finestra della plate"
+   "title": "Plate window"
   }
  },
  "36": {
@@ -190,7 +165,7 @@
   },
   "class_type": "ImageScale",
   "_meta": {
-   "title": "Plate alla misura della tela (blocco di riferimento = tela)"
+   "title": "Plate at canvas size (reference block = canvas)"
   }
  },
  "900": {
@@ -202,7 +177,7 @@
   },
   "class_type": "EmptyImage",
   "_meta": {
-   "title": "Tela (scritta dal plugin)"
+   "title": "Canvas (written by the studio)"
   }
  },
  "901": {
@@ -214,7 +189,7 @@
   },
   "class_type": "GetImageSize",
   "_meta": {
-   "title": "Misura della tela"
+   "title": "Canvas size"
   }
  },
  "960": {
@@ -231,7 +206,7 @@
   },
   "class_type": "ImageFromBatch",
   "_meta": {
-   "title": "Ottieni immagine dal batch"
+   "title": "Get image from batch"
   }
  },
  "961": {
@@ -240,150 +215,37 @@
   },
   "class_type": "CheckpointLoaderSimple",
   "_meta": {
-   "title": "Carica Checkpoint"
-  }
- },
- "968": {
-  "inputs": {
-   "pixels": [
-    "960",
-    0
-   ],
-   "vae": [
-    "7",
-    0
-   ]
-  },
-  "class_type": "VAEEncode",
-  "_meta": {
-   "title": "Codifica VAE"
-  }
- },
- "969": {
-  "inputs": {
-   "samples": [
-    "968",
-    0
-   ],
-   "mask": [
-    "p5",
-    0
-   ]
-  },
-  "class_type": "SetLatentNoiseMask",
-  "_meta": {
-   "title": "Imposta Maschera di Rumore Latente"
-  }
- },
- "970": {
-  "inputs": {
-   "av_latent": [
-    "982",
-    0
-   ]
-  },
-  "class_type": "LTXVSeparateAVLatent",
-  "_meta": {
-   "title": "Separa AV Latente"
-  }
- },
- "971": {
-  "inputs": {
-   "video_latent": [
-    "969",
-    0
-   ],
-   "audio_latent": [
-    "970",
-    1
-   ]
-  },
-  "class_type": "LTXVConcatAVLatent",
-  "_meta": {
-   "title": "Concatena AV Latent"
-  }
- },
- "982": {
-  "inputs": {
-   "width": [
-    "901",
-    0
-   ],
-   "height": [
-    "901",
-    1
-   ],
-   "length": [
-    "33",
-    1
-   ]
-  },
-  "class_type": "EmptyMiniMaxH3LatentAV",
-  "_meta": {
-   "title": "MiniMax H3 AV Latent Vuoto"
-  }
- },
- "983": {
-  "inputs": {
-   "frame_idx": 0,
-   "positive": [
-    "40",
-    0
-   ],
-   "latent": [
-    "982",
-    0
-   ],
-   "vae": [
-    "7",
-    0
-   ],
-   "audio_vae": [
-    "8",
-    0
-   ],
-   "image": [
-    "p6",
-    0
-   ],
-   "audio": [
-    "31",
-    1
-   ]
-  },
-  "class_type": "MiniMaxH3AddGuide",
-  "_meta": {
-   "title": "Aggiungi guida per MiniMax H3"
+   "title": "Load Checkpoint"
   }
  },
  "42": {
   "inputs": {
    "seed": 777,
-   "steps": 4,
+   "steps": 6,
    "cfg": 1,
    "sampler_name": "euler",
    "scheduler": "simple",
    "denoise": 1,
    "model": [
-    "4",
+    "2",
     0
    ],
    "positive": [
-    "983",
+    "40",
     0
    ],
    "negative": [
-    "983",
+    "40",
     0
    ],
    "latent_image": [
-    "971",
+    "mt",
     0
    ]
   },
   "class_type": "KSampler",
   "_meta": {
-   "title": "KSampler 8 passi er_sde"
+   "title": "KSampler 6 steps euler"
   }
  },
  "43": {
@@ -395,7 +257,7 @@
   },
   "class_type": "LTXVSeparateAVLatent",
   "_meta": {
-   "title": "Separa video/audio"
+   "title": "Split video/audio"
   }
  },
  "44": {
@@ -411,7 +273,7 @@
   },
   "class_type": "VAEDecode",
   "_meta": {
-   "title": "Decodifica video"
+   "title": "Decode video"
   }
  },
  "10": {
@@ -422,7 +284,7 @@
    "values.b": "[video editing + reference generation + audio reuse] The target video is an edited version of the source footage in which the dress is replaced by <Subject 1>, with its own shape, cut, colours and materials. <Subject 1> is the new look of the dress from <Picture 1>. The source footage is a 5.875-second section at 24 fps: it supplies the exact camera framing, camera movement, the person, performance timing, the setting and hard cuts, while the grey shape over the dress supplies only its position, size and movement. Everything else keeps its source look, timing and layout. The soundtrack is reused unchanged as the complete final soundtrack.\n\nretention_analysis:\n<Subject 1> (all shots): fully_preserved - its shape, colours, materials and details stay consistent while it follows the movement of the dress in the source footage.\nThe source footage: partially_preserved - only the dress changes; the person, actions, camera movement, shot composition, setting, cuts and timing are retained.\nThe soundtrack: fully_copy - the original synchronized soundtrack is the complete final audio."
   },
   "_meta": {
-   "title": "Prompt: identita (a) + ripresa (b), scritti dal plugin"
+   "title": "Prompt: identity (a) + shot (b), written by the studio"
   }
  },
  "p0": {
@@ -449,7 +311,7 @@
   },
   "class_type": "ImageFromBatch",
   "_meta": {
-   "title": "Ottieni immagine dal batch"
+   "title": "Get image from batch"
   }
  },
  "p2": {
@@ -472,7 +334,7 @@
   },
   "class_type": "SAM3_Detect",
   "_meta": {
-   "title": "SAM3 Rileva"
+   "title": "SAM3 Detect"
   }
  },
  "p3": {
@@ -499,7 +361,7 @@
   },
   "class_type": "SAM3_VideoTrack",
   "_meta": {
-   "title": "Esegui Tracciamento Video SAM3"
+   "title": "SAM3 video tracking"
   }
  },
  "p4": {
@@ -512,7 +374,7 @@
   },
   "class_type": "SAM3_TrackToMask",
   "_meta": {
-   "title": "SAM3 Traccia in Maschera"
+   "title": "SAM3 Track to Mask"
   }
  },
  "p5": {
@@ -542,7 +404,7 @@
    ]
   },
   "_meta": {
-   "title": "Salva"
+   "title": "Save"
   }
  },
  "9": {
@@ -551,7 +413,7 @@
    "image": "reference.png"
   },
   "_meta": {
-   "title": "Foto del nuovo look"
+   "title": "Photo of the new look"
   }
  },
  "980": {
@@ -566,7 +428,7 @@
   },
   "class_type": "ImageScaleToTotalPixels",
   "_meta": {
-   "title": "Scala Immagine al Numero Totale di Pixel"
+   "title": "Scale Image to Total Pixels"
   }
  },
  "40": {
@@ -576,24 +438,40 @@
     0
    ],
    "width": [
-    "901",
-    0
+    "fv",
+    1
    ],
    "height": [
-    "901",
-    1
+    "fv",
+    2
    ],
    "length": [
-    "33",
-    1
+    "fv",
+    3
    ],
-   "ref_image_size": "max",
+   "ref_image_size": "match",
    "clip": [
     "6",
     0
    ],
    "ref_images.ref_image_0": [
     "980",
+    0
+   ],
+   "ref_videos.ref_video_0": [
+    "p6",
+    0
+   ],
+   "ref_video_audios.ref_video_audio_0": [
+    "31",
+    1
+   ],
+   "vae": [
+    "7",
+    0
+   ],
+   "audio_vae": [
+    "8",
     0
    ]
   },
@@ -620,7 +498,71 @@
    "blur": 0.0015
   },
   "_meta": {
-   "title": "Ancora grigia sull'oggetto"
+   "title": "Grey shapes: where the edit goes (reference video)"
+  }
+ },
+ "L": {
+  "class_type": "LoraLoaderModelOnly",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "lora_name": "minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors",
+   "strength_model": 1.0
+  },
+  "_meta": {
+   "title": "DMAD 4-step speed LoRA (run at 6 steps)"
+  }
+ },
+ "fv": {
+  "class_type": "MiniMaxH3FantasticVideoEditLatent",
+  "inputs": {
+   "vae": [
+    "7",
+    0
+   ],
+   "images": [
+    "960",
+    0
+   ],
+   "mask": [
+    "p5",
+    0
+   ],
+   "grow": 0,
+   "keep_audio": true,
+   "audio_vae": [
+    "8",
+    0
+   ],
+   "audio": [
+    "31",
+    1
+   ],
+   "megapixels": 0
+  },
+  "_meta": {
+   "title": "Source video + audio latent (Fantastic)"
+  }
+ },
+ "mt": {
+  "class_type": "MiniMaxH3ContexMaskedTarget",
+  "inputs": {
+   "target_latent": [
+    "fv",
+    0
+   ],
+   "mask": [
+    "p5",
+    0
+   ],
+   "mask_meaning": "white = generate",
+   "audio_mode": "preserve source audio",
+   "mask_conversion": "H3 exact (causal/token max)"
+  },
+  "_meta": {
+   "title": "Masked target: white = regenerate (Context Loop)"
   }
  }
 }

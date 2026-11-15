@@ -5,7 +5,7 @@
       "image": "input.png"
     },
     "_meta": {
-      "title": "1 · Foto da illuminare (ingresso)"
+      "title": "1 · Photo to relight (input)"
     }
   },
   "relight_canvas": {
@@ -20,7 +20,7 @@
       "resolution_steps": 16
     },
     "_meta": {
-      "title": "2 · La foto a 3 MP (tela e riferimento)"
+      "title": "2 · The photo at 3 MP (canvas and reference)"
     }
   },
   "relight_size": {
@@ -32,7 +32,7 @@
       ]
     },
     "_meta": {
-      "title": "3 · Misura della tela (dalla foto)"
+      "title": "3 · Canvas size (from the photo)"
     }
   },
   "relight_latent": {
@@ -49,7 +49,7 @@
       "batch_size": 1
     },
     "_meta": {
-      "title": "4 · Tela latente alla misura della foto"
+      "title": "4 · Latent canvas at the photo size"
     }
   },
   "10": {
@@ -92,7 +92,7 @@
       "text": "Relight this photograph. Keep the person, face, identity, expression, pose, hair, clothing, framing and setting exactly as they are; change only the lighting and the colour of the light. Light the new photo as a dark horror scene: a single narrow cold white spotlight shines straight down from directly above, with a visible beam of light cutting through dusty air above the head; it lights the top of the hair, forehead, cheekbones, nose and shoulders, leaves deep shadows in the eye sockets and under the nose and chin, and the background falls to black. Cold, desaturated blue-grey colour grade."
     },
     "_meta": {
-      "title": "5 · Testo del look (PIN: promptNodeId 500, campo text)"
+      "title": "5 · Look text (PIN: promptNodeId 500, field text)"
     }
   },
   "14": {
@@ -104,7 +104,7 @@
       ]
     },
     "_meta": {
-      "title": "Negative vuoto"
+      "title": "Empty negative"
     }
   },
   "15": {
@@ -130,7 +130,7 @@
       ]
     },
     "_meta": {
-      "title": "6 · La foto come riferimento FLUX (una sola immagine, 3 MP)"
+      "title": "6 · The photo as FLUX reference (a single image, 3 MP)"
     }
   },
   "19": {
@@ -160,7 +160,7 @@
       ]
     },
     "_meta": {
-      "title": "7 · KSampler relight (PIN: seedNodeId 19, campo seed)"
+      "title": "7 · KSampler relight (PIN: seedNodeId 19, field seed)"
     }
   },
   "20": {
@@ -176,7 +176,7 @@
       ]
     },
     "_meta": {
-      "title": "Decodifica"
+      "title": "Decode"
     }
   },
   "21": {
@@ -189,7 +189,7 @@
       "filename_prefix": "relight/relight"
     },
     "_meta": {
-      "title": "8 · Salva (prefisso relight/relight)"
+      "title": "8 · Save (prefix relight/relight)"
     }
   }
 }

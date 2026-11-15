@@ -204,8 +204,23 @@ export interface ImagineJobProgress {
  * What ComfyUI is missing for a job, as comfyui-imagine's setup reported it:
  * the node packs to install and the model files to download.
  */
+/** A node pack the install would add, and where it comes from. */
+export interface ImagineSetupPack {
+  readonly id: string
+  readonly name: string
+  /** `registry`: the Comfy Registry's zip; `github`: a pinned commit of a pack the registry does not carry. */
+  readonly source: 'registry' | 'github'
+  /** What the registry says of the pinned version (`Active`, `Flagged`…), when it answered. */
+  readonly registryStatus?: string
+}
+
+/** True when a pack is not a plain, active registry entry: the user is always asked first. */
+export function setupPackUnverified(pack: ImagineSetupPack): boolean {
+  return pack.source !== 'registry' || pack.registryStatus !== 'Active'
+}
+
 export interface ImagineSetupPlan {
-  readonly packs: readonly { readonly id: string; readonly name: string }[]
+  readonly packs: readonly ImagineSetupPack[]
   readonly models: readonly { readonly name: string; readonly folder: string; readonly size: number }[]
   /** Bytes to download in all. */
   readonly bytes: number

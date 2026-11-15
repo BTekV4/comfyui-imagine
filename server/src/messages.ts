@@ -108,6 +108,10 @@ export const MESSAGES = {
     it: 'Per questa azione ComfyUI deve prima installare: {what}. Avviala dalla chat per confermare, oppure accendi «Installa automaticamente» in Impostazioni.',
     en: 'For this action ComfyUI first has to install: {what}. Start it from the chat to confirm, or turn on «Install automatically» in Settings.',
   },
+  'setup.banned': {
+    it: 'Il registro di ComfyUI ha bandito {what}: Imagine non lo installa. Serve un\'altra azione o una versione nuova di Imagine.',
+    en: 'The ComfyUI registry has banned {what}: Imagine does not install it. Use another action, or a newer Imagine.',
+  },
   'setup.declined': { it: 'Installazione non confermata: richiesta annullata.', en: 'Install not confirmed: request cancelled.' },
   'setup.failed': { it: 'Installazione su ComfyUI non riuscita: {reason}', en: 'Installing on ComfyUI failed: {reason}' },
   'setup.stillMissing': { it: 'Dopo l\'installazione a ComfyUI manca ancora: {what}', en: 'After the install ComfyUI is still missing: {what}' },

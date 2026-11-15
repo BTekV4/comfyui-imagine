@@ -202,7 +202,7 @@
  "600": {
   "class_type": "LoadImageMask",
   "_meta": {
-   "title": "Maschera della zona"
+   "title": "Zone mask"
   },
   "inputs": {
    "image": "region_mask.png",
@@ -248,7 +248,7 @@
  "611": {
   "class_type": "SetLatentNoiseMask",
   "_meta": {
-   "title": "Rigenera solo la zona"
+   "title": "Regenerate the zone only"
   },
   "inputs": {
    "samples": [
@@ -305,7 +305,7 @@
  "604": {
   "class_type": "ImageCompositeMasked",
   "_meta": {
-   "title": "Fuori dalla zona: pixel originali"
+   "title": "Outside the zone: original pixels"
   },
   "inputs": {
    "destination": [

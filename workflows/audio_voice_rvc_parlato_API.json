@@ -5,7 +5,7 @@
   },
   "class_type": "LoadAudio",
   "_meta": {
-   "title": "Audio da convertire"
+   "title": "Audio to convert"
   }
  },
  "4": {
@@ -15,7 +15,7 @@
   },
   "class_type": "LoadRVCModelNode",
   "_meta": {
-   "title": "Voce"
+   "title": "Voice"
   }
  },
  "5": {
@@ -24,7 +24,7 @@
   },
   "class_type": "RVCPitchOptionsNode",
   "_meta": {
-   "title": "Estrazione del pitch"
+   "title": "Pitch extraction"
   }
  },
  "6": {
@@ -42,13 +42,13 @@
   },
   "class_type": "RVCEngineNode",
   "_meta": {
-   "title": "Motore RVC"
+   "title": "RVC engine"
   }
  },
  "7": {
   "class_type": "UnifiedVoiceChangerNode",
   "_meta": {
-   "title": "Cambio voce"
+   "title": "Voice change"
   },
   "inputs": {
    "TTS_engine": [
@@ -71,7 +71,7 @@
  "9": {
   "class_type": "SaveAudioMP3",
   "_meta": {
-   "title": "Salva"
+   "title": "Save"
   },
   "inputs": {
    "audio": [

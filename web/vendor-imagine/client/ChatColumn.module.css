@@ -767,3 +767,22 @@
 
   .chatHead .chatHideNarrow { display: grid; }
 }
+
+/* The install's question wraps: it names every file, and the user is asked to agree to it. */
+.setupText {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.setupPacks {
+  margin: 2px 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+/* Node packs the registry has not cleared run code on the ComfyUI machine: said plainly before the yes. */
+.setupWarning {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--imagine-danger);
+}

@@ -132,8 +132,11 @@ const settings = await createHostSettings({
   },
 })
 
-// ComfyUI's setup (comfyui-imagine) reads the token and the switch when a run needs them.
-configureComfySetup(() => ({ hfToken: settings.current().hfToken, autoSetup: settings.current().autoSetup }))
+// ComfyUI's setup (comfyui-imagine) reads the keys and the switch when a run needs them.
+configureComfySetup(() => {
+  const { hfToken, autoSetup } = settings.current()
+  return { hfToken, autoSetup }
+})
 const now = (): HostSettingsValues => settings.current()
 
 /** Providers as the LLM client sees them, with the gateway fields from the settings. */

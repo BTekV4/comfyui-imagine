@@ -6,7 +6,9 @@
  * missing, and installs them on request — only entries of its own manifest,
  * each verified by SHA-256. Here the studio asks it before every run: nothing
  * missing, the run goes on as before; something missing, the user is asked in
- * the chat (unless Settings → «Install automatically» is on), then the pack
+ * the chat (unless Settings → «Install automatically» is on — node packs that
+ * are flagged by the Comfy Registry, or come from GitHub, are asked for
+ * anyway, and banned ones are refused), then the pack
  * installs it, ComfyUI restarts when a node pack came in, and the same run
  * continues. A ComfyUI without the pack answers 404 and nothing changes.
  * @module tool-comfy/comfy-setup
@@ -14,13 +16,13 @@
 import type { ImagineHost } from '../../src/host.ts'
 import { message } from '../../src/messages.ts'
 import type { ComfyGraph } from '../comfyui/index.ts'
-import type { ImagineSetupPlan } from '../../../shared/imagine-types.ts'
+import { setupPackUnverified, type ImagineSetupPack, type ImagineSetupPlan } from '../../../shared/imagine-types.ts'
 
 /** What `/imagine/setup/check` answers. */
 interface CheckAnswer {
   readonly ready: boolean
-  readonly packs: readonly { readonly id: string; readonly name: string }[]
-  readonly models: readonly { readonly name: string; readonly folder: string; readonly size: number }[]
+  readonly packs: readonly (ImagineSetupPack & { readonly version?: string })[]
+  readonly models: ImagineSetupPlan['models']
   readonly bytes: number
   readonly unknownClasses: readonly string[]
   readonly unknownFiles: readonly string[]
@@ -127,13 +129,23 @@ export async function ensureComfyReady(ctx: ImagineHost, graph: ComfyGraph, hook
   }
   const unknown = [...check.unknownClasses, ...check.unknownFiles]
   if (unknown.length > 0) throw new Error(message('setup.unknown', { what: unknown.join(', ') }))
-  const plan: ImagineSetupPlan = { packs: check.packs.map(({ id, name }) => ({ id, name })), models: check.models, bytes: check.bytes }
+  const banned = check.packs.filter(pack => pack.registryStatus === 'Banned')
+  if (banned.length > 0) throw new Error(message('setup.banned', { what: banned.map(pack => pack.name).join(', ') }))
   const settings = settingsOf()
-  if (!settings.autoSetup) {
+  const plan: ImagineSetupPlan = {
+    packs: check.packs.map(({ id, name, source, registryStatus }) => ({
+      id, name, source: source === 'github' ? 'github' : 'registry', ...registryStatus === undefined ? {} : { registryStatus },
+    })),
+    models: check.models,
+    bytes: check.bytes,
+  }
+  // A node pack runs code on the ComfyUI machine: one the registry has not
+  // cleared is installed only after a yes, whatever the switch says.
+  if (!settings.autoSetup || plan.packs.some(setupPackUnverified)) {
     if (hooks.approve === undefined) throw new Error(message('setup.askFirst', { what: describePlan(plan) }))
     await hooks.approve(plan)
   }
-  await install(ctx, plan, settings.hfToken, hooks)
+  await install(ctx, plan, settings, hooks)
   const after = await ctx.comfy.setupCall('check', { prompt: graph }, {}, hooks.signal) as CheckAnswer | undefined
   if (after !== undefined && !after.ready) {
     throw new Error(message('setup.stillMissing', { what: [...after.packs.map(pack => pack.name), ...after.models.map(model => model.name), ...after.unknownClasses, ...after.unknownFiles].join(', ') }))
@@ -161,10 +173,10 @@ function substitute(graph: ComfyGraph, substitutions: Readonly<Record<string, st
  * Ask the pack to install the plan, follow it, and restart ComfyUI when a node
  * pack came in.
  */
-async function install(ctx: ImagineHost, plan: ImagineSetupPlan, token: string, hooks: SetupHooks): Promise<void> {
+async function install(ctx: ImagineHost, plan: ImagineSetupPlan, settings: SetupSettings, hooks: SetupHooks): Promise<void> {
   const before = await ctx.comfy.setupCall('status', undefined, {}, hooks.signal) as StatusAnswer
   await ctx.comfy.setupCall('install', { packs: plan.packs.map(pack => pack.id), models: plan.models.map(model => model.name) },
-    token === '' ? {} : { 'X-HF-Token': token }, hooks.signal)
+    settings.hfToken === '' ? {} : { 'X-HF-Token': settings.hfToken }, hooks.signal)
   let task: TaskAnswer
   for (;;) {
     await sleep(pollMs, hooks.signal)

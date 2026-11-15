@@ -12,7 +12,7 @@ import { configureComfySetup, ensureComfyReady, type SetupProgress } from '../se
 import { approveSetup, waitForSetupApproval } from '../server/vendor/tool-comfy/job-queue.ts'
 
 const PLAN = {
-  packs: [{ id: 'comfyui-krea2edit', name: 'Krea 2 Identity Edit', installedNotLoaded: false }],
+  packs: [{ id: 'comfyui-krea2edit', name: 'Krea 2 Identity Edit', version: '1.2.3', source: 'registry', registryStatus: 'Active', installedNotLoaded: false }],
   models: [{ name: 'qwen_image_vae.safetensors', folder: 'vae', size: 253806246 }],
   bytes: 253806246,
 }
@@ -96,7 +96,7 @@ test('after the yes: install with the token, progress, restart for a node pack, 
   const seen: SetupProgress[] = []
   await ensureComfyReady(host, {}, { approve: async (plan) => { asked = plan }, progress: (state) => { seen.push(state) }, done: () => { finished = true } })
   assert.equal(finished, true)
-  assert.deepEqual(asked, { packs: [{ id: 'comfyui-krea2edit', name: 'Krea 2 Identity Edit' }], models: PLAN.models, bytes: PLAN.bytes })
+  assert.deepEqual(asked, { packs: [{ id: 'comfyui-krea2edit', name: 'Krea 2 Identity Edit', source: 'registry', registryStatus: 'Active' }], models: PLAN.models, bytes: PLAN.bytes })
   const install = calls.find(call => call.route === 'install')
   assert.deepEqual(install?.body, { packs: ['comfyui-krea2edit'], models: ['qwen_image_vae.safetensors'] })
   assert.equal(install?.headers?.['X-HF-Token'], 'hf_secret')
@@ -112,6 +112,32 @@ test('with «Install automatically» on nobody is asked', async () => {
   await ensureComfyReady(host, {}, { approve: async () => { throw new Error('must not ask') } })
   assert.ok(calls.some(call => call.route === 'install'))
   assert.equal(calls.some(call => call.route === 'restart'), false)
+})
+
+const pack = (source: string, registryStatus?: string) => ({
+  ...MISSING,
+  packs: [{ id: 'some-pack', name: 'Some Pack', source, ...registryStatus === undefined ? {} : { registryStatus } }],
+})
+
+test('a flagged, unchecked or GitHub node pack is asked for even with «Install automatically» on', async () => {
+  configureComfySetup(() => ({ hfToken: '', autoSetup: true }), 5)
+  for (const answer of [pack('registry', 'Flagged'), pack('registry'), pack('github')]) {
+    const { host, calls } = fakeComfy([answer, READY])
+    let asked = false
+    await ensureComfyReady(host, {}, { approve: async () => { asked = true } })
+    assert.equal(asked, true)
+    const refused = fakeComfy([answer])
+    await assert.rejects(ensureComfyReady(refused.host, {}), /Some Pack/)
+    assert.equal(refused.calls.some(call => call.route === 'install'), false)
+    assert.ok(calls.some(call => call.route === 'install'))
+  }
+})
+
+test('a node pack the registry banned is never installed', async () => {
+  configureComfySetup(() => ({ hfToken: '', autoSetup: false }), 5)
+  const { host, calls } = fakeComfy([pack('registry', 'Banned')])
+  await assert.rejects(ensureComfyReady(host, {}, { approve: async () => { throw new Error('must not ask') } }), /(banned|bandito) Some Pack/)
+  assert.equal(calls.some(call => call.route === 'install'), false)
 })
 
 test('a failed install stops the run with the reason', async () => {

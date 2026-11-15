@@ -1224,5 +1224,9 @@
   "imagine.host.autoSetupHelp": "Se una richiesta ha bisogno di nodi o modelli che ComfyUI non ha, li installa senza chiedere (pacchetto comfyui-imagine). Spento: prima chiede in chat.",
   "imagine.host.hfToken": "Chiave Hugging Face",
   "imagine.host.hfTokenSet": "impostata — lascia vuoto per tenerla",
-  "imagine.host.hfTokenNone": "serve solo per i modelli che richiedono un account"
+  "imagine.host.hfTokenNone": "serve solo per i modelli che richiedono un account",
+  "imagine.setupFromRegistry": "registro di ComfyUI",
+  "imagine.setupFromRegistryFlagged": "registro di ComfyUI, segnalato (non ha passato i suoi controlli)",
+  "imagine.setupFromGithub": "GitHub, fuori dal registro di ComfyUI",
+  "imagine.setupUnverified": "Alcuni di questi pacchetti di nodi non sono approvati dal registro di ComfyUI. Un pacchetto di nodi esegue codice sul computer di ComfyUI: Imagine installa solo la versione esatta con cui è stato provato, controllata file per file, ma installali solo se ti fidi dei loro autori. Lo chiede ogni volta, anche con «Installa automaticamente» acceso."
 }

@@ -260,7 +260,7 @@
       "upload": "video"
     },
     "_meta": {
-      "title": "Coda del clip da continuare"
+      "title": "Tail of the clip to continue"
     }
   },
   "1682:301": {
@@ -272,7 +272,7 @@
       ]
     },
     "_meta": {
-      "title": "Fotogrammi e audio della coda"
+      "title": "Frames and audio of the tail"
     }
   },
   "1682:302": {
@@ -286,7 +286,7 @@
       ]
     },
     "_meta": {
-      "title": "Ultimi 22 fotogrammi (17k+5)"
+      "title": "Last 22 frames (17k+5)"
     }
   },
   "1682:303": {
@@ -300,7 +300,7 @@
       "duration": 0.9167
     },
     "_meta": {
-      "title": "Audio degli stessi 22 fotogrammi"
+      "title": "Audio of the same 22 frames"
     }
   },
   "1682:304": {
@@ -333,7 +333,7 @@
       ]
     },
     "_meta": {
-      "title": "Contesto di movimento e di suono"
+      "title": "Motion and sound context"
     }
   },
   "1682:210": {
