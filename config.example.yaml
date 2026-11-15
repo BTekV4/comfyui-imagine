@@ -161,7 +161,7 @@ toolComfy:
     # Image upscale (SeedVR2, 4K).
     upscaleImage:
       path: ./workflows/SeedVR2_4K_image_upscale.json
-      outputExt: webp
+      outputExt: png
       imageNodeId: "16"
       seedNodeId: "10"
 

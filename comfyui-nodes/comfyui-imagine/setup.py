@@ -27,6 +27,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 import zipfile
 
@@ -47,7 +48,8 @@ FILES = {}
 for _name, _model in MANIFEST["models"].items():
     FILES[_name] = _model
     for _variant in _model.get("variants", []):
-        FILES[_variant["name"]] = {**_variant, "folder": _model["folder"]}
+        # A variant lives in the same folder, and in the same gated repo when the model is.
+        FILES[_variant["name"]] = {**_variant, "folder": _model["folder"], **({"gated": _model["gated"]} if "gated" in _model else {})}
 # The GPU's compute capability (12.0 for an RTX 50, 8.9 for an RTX 40): a
 # variant that needs a newer one (NVFP4 runs on Blackwell, 10.0 and up) is
 # downloaded only where it runs well.
@@ -161,7 +163,7 @@ def _check(prompt):
     return {
         "ready": not (missing_packs or missing_models or unknown_classes or unknown_files),
         "packs": [_pack_view(key) for key in sorted(missing_packs)],
-        "models": [{"name": name, "folder": FILES[name]["folder"], "size": FILES[name]["size"]} for name in sorted(missing_models)],
+        "models": [{"name": name, "folder": FILES[name]["folder"], "size": FILES[name]["size"], **({"gated": FILES[name]["gated"]} if "gated" in FILES[name] else {})} for name in sorted(missing_models)],
         "bytes": size,
         # What Imagine writes in the graph instead: a variant chosen for this GPU.
         "substitutions": substitutions,
@@ -175,8 +177,11 @@ def _set(**fields):
         _task.update(fields)
 
 
-def _download(url, target, size, sha256, tokens, label):
-    """Download url to target with resume and a SHA-256 check; progress goes in _task."""
+def _download(url, target, size, sha256, tokens, label, gated=None):
+    """Download url to target with resume and a SHA-256 check; progress goes in _task.
+
+    gated: the page of a Hugging Face repo that asks to accept a licence first.
+    """
     part = target + ".part"
     have = os.path.getsize(part) if os.path.exists(part) else 0
     digest = hashlib.sha256()
@@ -190,7 +195,14 @@ def _download(url, target, size, sha256, tokens, label):
             headers["Range"] = f"bytes={have}-"
         if tokens.get("huggingface") and url.startswith("https://huggingface.co/"):
             headers["Authorization"] = f"Bearer {tokens['huggingface']}"
-        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as response:
+        try:
+            response = urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60)
+        except urllib.error.HTTPError as error:
+            if gated and error.code in (401, 403):
+                raise RuntimeError(f"{label}: Hugging Face asks to accept the licence at {gated} with your account, "
+                                   "and a token of that account in Imagine's settings") from error
+            raise
+        with response:
             if have and response.status != 206:
                 have, digest = 0, hashlib.sha256()
             with open(part, "ab" if have else "wb") as out:
@@ -285,7 +297,7 @@ def _run(packs, models, tokens):
             target = os.path.join(folder, name)
             os.makedirs(os.path.dirname(target), exist_ok=True)
             _set(step=f"Downloading {name}", file=name, fileSize=model["size"], fileDone=0)
-            _download(model["url"], target, model["size"], model["sha256"], tokens, name)
+            _download(model["url"], target, model["size"], model["sha256"], tokens, name, model.get("gated"))
             with _lock:
                 _task["doneBefore"] += model["size"]
                 _task["done"] = _task["doneBefore"]

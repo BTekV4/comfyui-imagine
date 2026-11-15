@@ -703,6 +703,11 @@ async function parameterize(
      * 2026-10-21 the node always kept the 1080 it was saved with, and the
      * tile's 720p choice did nothing.
      */
+    // The native photo graph resizes the photo's long side before SeedVR2
+    // restores it: that side is the size asked for.
+    const longSide = Object.values(graph).find(node => node.class_type === 'ResizeImageMaskNode'
+      && 'resize_type.longer_size' in node.inputs)
+    if (longSide !== undefined) longSide.inputs['resize_type.longer_size'] = opts.resolutionMax
     const resize = Object.values(graph).find(node => node.class_type === 'ResizeImageMaskNode'
       && 'resize_type.shorter_size' in node.inputs)
     const clip = resize === undefined || inputVideo === undefined ? undefined : pixelsOfVideoBytes(inputVideo.bytes)

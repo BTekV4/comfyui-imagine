@@ -221,7 +221,13 @@ export function setupPackUnverified(pack: ImagineSetupPack): boolean {
 
 export interface ImagineSetupPlan {
   readonly packs: readonly ImagineSetupPack[]
-  readonly models: readonly { readonly name: string; readonly folder: string; readonly size: number }[]
+  readonly models: readonly {
+    readonly name: string
+    readonly folder: string
+    readonly size: number
+    /** The Hugging Face page whose licence has to be accepted before the download (a gated repo). */
+    readonly gated?: string
+  }[]
   /** Bytes to download in all. */
   readonly bytes: number
 }

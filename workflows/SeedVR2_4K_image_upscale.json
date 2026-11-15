@@ -1,1 +1,190 @@
-{"10": {"inputs": {"seed": 42, "resolution": 4096, "max_resolution": 4096, "batch_size": 1, "uniform_batch_size": false, "color_correction": "lab", "temporal_overlap": 0, "prepend_frames": 0, "input_noise_scale": 0, "latent_noise_scale": 0, "offload_device": "cpu", "enable_debug": false, "image": ["17", 0], "dit": ["14", 0], "vae": ["13", 0]}, "class_type": "SeedVR2VideoUpscaler", "_meta": {"title": "SeedVR2 Video Upscaler (v2.5.24)"}}, "13": {"inputs": {"model": "ema_vae_fp16.safetensors", "device": "cuda:0", "encode_tiled": true, "encode_tile_size": 1024, "encode_tile_overlap": 128, "decode_tiled": true, "decode_tile_size": 1024, "decode_tile_overlap": 128, "tile_debug": "false", "offload_device": "cpu", "cache_model": false}, "class_type": "SeedVR2LoadVAEModel", "_meta": {"title": "SeedVR2 (Down)Load VAE Model"}}, "14": {"inputs": {"model": "seedvr2_ema_7b_sharp_fp16.safetensors", "device": "cuda:0", "blocks_to_swap": 36, "swap_io_components": false, "offload_device": "cpu", "cache_model": false, "attention_mode": "sdpa"}, "class_type": "SeedVR2LoadDiTModel", "_meta": {"title": "SeedVR2 (Down)Load DiT Model"}}, "15": {"class_type": "Image Save", "_meta": {"title": "Save Image (WebP lossless)"}, "inputs": {"images": ["10", 0], "output_path": "[time(%Y-%m-%d)]", "filename_prefix": "seedvr2_4k", "filename_delimiter": "_", "filename_number_padding": 4, "filename_number_start": "false", "extension": "webp", "dpi": 300, "quality": 100, "optimize_image": "true", "lossless_webp": "true", "overwrite_mode": "false", "show_history": "false", "show_history_by_prefix": "true", "embed_workflow": "false", "show_previews": "true"}}, "16": {"inputs": {"image": "Sadhu_320x478.png"}, "class_type": "LoadImage", "_meta": {"title": "Load Image"}}, "17": {"inputs": {"image": ["16", 0], "alpha": ["16", 1]}, "class_type": "JoinImageWithAlpha", "_meta": {"title": "Join Image with Alpha"}}}
+{
+  "16": {
+    "inputs": {
+      "image": "input.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Photo to upscale (input)"
+    }
+  },
+  "3": {
+    "inputs": {
+      "input": [
+        "16",
+        0
+      ],
+      "resize_type": "scale longer dimension",
+      "resize_type.longer_size": 4096,
+      "scale_method": "lanczos"
+    },
+    "class_type": "ResizeImageMaskNode",
+    "_meta": {
+      "title": "Target size: long side 4096"
+    }
+  },
+  "4": {
+    "inputs": {
+      "resized_images": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "SeedVR2Preprocess",
+    "_meta": {
+      "title": "SeedVR2 preprocess"
+    }
+  },
+  "5": {
+    "inputs": {
+      "unet_name": "seedvr2_7b_sharp_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "SeedVR2 7B sharp"
+    }
+  },
+  "md": {
+    "inputs": {
+      "model": [
+        "5",
+        0
+      ],
+      "dtype": "bf16"
+    },
+    "class_type": "ModelComputeDtype",
+    "_meta": {
+      "title": "Compute in bf16 (the 7B overflows in fp16: black image)"
+    }
+  },
+  "6": {
+    "inputs": {
+      "vae_name": "ema_vae_fp16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "SeedVR2 VAE"
+    }
+  },
+  "7": {
+    "inputs": {
+      "pixels": [
+        "4",
+        0
+      ],
+      "vae": [
+        "6",
+        0
+      ],
+      "tile_size": 1024,
+      "overlap": 128,
+      "temporal_size": 64,
+      "temporal_overlap": 8
+    },
+    "class_type": "VAEEncodeTiled",
+    "_meta": {
+      "title": "Encode (tiled)"
+    }
+  },
+  "9": {
+    "inputs": {
+      "model": [
+        "md",
+        0
+      ],
+      "vae_conditioning": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "SeedVR2Conditioning",
+    "_meta": {
+      "title": "SeedVR2 conditioning"
+    }
+  },
+  "10": {
+    "inputs": {
+      "model": [
+        "md",
+        0
+      ],
+      "positive": [
+        "9",
+        0
+      ],
+      "negative": [
+        "9",
+        1
+      ],
+      "latent_image": [
+        "7",
+        0
+      ],
+      "seed": 42,
+      "steps": 1,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler (one step)"
+    }
+  },
+  "12": {
+    "inputs": {
+      "samples": [
+        "10",
+        0
+      ],
+      "vae": [
+        "6",
+        0
+      ],
+      "tile_size": 1024,
+      "overlap": 128,
+      "temporal_size": 64,
+      "temporal_overlap": 8
+    },
+    "class_type": "VAEDecodeTiled",
+    "_meta": {
+      "title": "Decode (tiled)"
+    }
+  },
+  "13": {
+    "inputs": {
+      "images": [
+        "12",
+        0
+      ],
+      "original_resized_images": [
+        "3",
+        0
+      ],
+      "color_correction_method": "lab"
+    },
+    "class_type": "SeedVR2PostProcessing",
+    "_meta": {
+      "title": "Colour match with the photo"
+    }
+  },
+  "15": {
+    "inputs": {
+      "images": [
+        "13",
+        0
+      ],
+      "filename_prefix": "seedvr2_4k",
+      "format": "png",
+      "lossless": true,
+      "quality": 95
+    },
+    "class_type": "ImagineSaveImage",
+    "_meta": {
+      "title": "Save Image (PNG)"
+    }
+  }
+}

@@ -112,6 +112,10 @@ export const MESSAGES = {
     it: 'Il registro di ComfyUI ha bandito {what}: Imagine non lo installa. Serve un\'altra azione o una versione nuova di Imagine.',
     en: 'The ComfyUI registry has banned {what}: Imagine does not install it. Use another action, or a newer Imagine.',
   },
+  'setup.hfGated': {
+    it: 'Questa azione usa {what}, che Hugging Face dà solo a chi ha accettato la licenza: apri {url} con il tuo account, accettala, poi crea una chiave (Impostazioni → Access Tokens, tipo «Read») e scrivila in Impostazioni → Installazione su ComfyUI.',
+    en: 'This action uses {what}, which Hugging Face only serves to accounts that accepted its licence: open {url} with your account, accept it, then create a token (Settings → Access Tokens, type «Read») and enter it in Settings → ComfyUI setup.',
+  },
   'setup.declined': { it: 'Installazione non confermata: richiesta annullata.', en: 'Install not confirmed: request cancelled.' },
   'setup.failed': { it: 'Installazione su ComfyUI non riuscita: {reason}', en: 'Installing on ComfyUI failed: {reason}' },
   'setup.stillMissing': { it: 'Dopo l\'installazione a ComfyUI manca ancora: {what}', en: 'After the install ComfyUI is still missing: {what}' },

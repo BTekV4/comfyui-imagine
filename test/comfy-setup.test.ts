@@ -140,6 +140,18 @@ test('a node pack the registry banned is never installed', async () => {
   assert.equal(calls.some(call => call.route === 'install'), false)
 })
 
+test('a model from a gated Hugging Face repo, without a token, stops before asking with the licence page', async () => {
+  configureComfySetup(() => ({ hfToken: '', autoSetup: true }), 5)
+  const answer = { ...MISSING, packs: [], models: [{ name: 'klein.safetensors', folder: 'diffusion_models', size: 5, gated: 'https://huggingface.co/some/repo' }] }
+  const { host, calls } = fakeComfy([answer])
+  await assert.rejects(ensureComfyReady(host, {}), /klein\.safetensors.*https:\/\/huggingface\.co\/some\/repo/)
+  assert.equal(calls.some(call => call.route === 'install'), false)
+  configureComfySetup(() => ({ hfToken: 'hf_x', autoSetup: true }), 5)
+  const withToken = fakeComfy([answer, READY])
+  await ensureComfyReady(withToken.host, {})
+  assert.equal(withToken.calls.find(call => call.route === 'install')?.headers?.['X-HF-Token'], 'hf_x')
+})
+
 test('a failed install stops the run with the reason', async () => {
   configureComfySetup(() => ({ hfToken: '', autoSetup: true }), 5)
   const { host } = fakeComfy([MISSING], { fail: 'checksum mismatch' })

@@ -78,6 +78,10 @@ A ComfyUI that already has the model, or a variant, keeps using it:
   "variants": [ { "name": "krea2_turbo_nvfp4.safetensors", "url": "...", "size": 0, "sha256": "...", "minComputeCapability": 10.0 } ] }
 ```
 
+A model from a **gated** Hugging Face repo (one that asks to accept a licence)
+carries `"gated": "<the repo's page>"`: Imagine asks for a token before the
+install, and a refused download names that page.
+
 `size` and `sha256` of a Hugging Face file are in its repo's file listing (the
 LFS object id is the SHA-256). `treeSha256` is the SHA-256 of the archive's
 files listed as `path\0sha256\n`, sorted by path, with the archive's top folder

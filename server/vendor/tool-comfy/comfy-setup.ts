@@ -132,6 +132,11 @@ export async function ensureComfyReady(ctx: ImagineHost, graph: ComfyGraph, hook
   const banned = check.packs.filter(pack => pack.registryStatus === 'Banned')
   if (banned.length > 0) throw new Error(message('setup.banned', { what: banned.map(pack => pack.name).join(', ') }))
   const settings = settingsOf()
+  // A gated Hugging Face repo serves nothing without a token: say so before asking.
+  const gated = check.models.filter(model => model.gated !== undefined)
+  if (gated.length > 0 && settings.hfToken === '') {
+    throw new Error(message('setup.hfGated', { what: gated.map(model => model.name).join(', '), url: [...new Set(gated.map(model => model.gated))].join(' ') }))
+  }
   const plan: ImagineSetupPlan = {
     packs: check.packs.map(({ id, name, source, registryStatus }) => ({
       id, name, source: source === 'github' ? 'github' : 'registry', ...registryStatus === undefined ? {} : { registryStatus },

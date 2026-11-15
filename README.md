@@ -77,19 +77,19 @@ point at another graph — see [The workflows](#the-workflows).
 | Generate image, redraw a video's first frame | **Krea 2 Turbo** ([Comfy-Org/Krea-2](https://huggingface.co/Comfy-Org/Krea-2)) | `krea2_turbo_int8_convrot` (or `krea2_turbo_nvfp4` on an RTX 50), text encoder `qwen3vl_4b_int8_convrot`, VAE `qwen_image_vae` |
 | Edit photo, precise edit (brush), reference image | **Krea 2 Turbo** + identity-edit LoRA | the three above + `krea2_identity_edit_v1_2` (LoRA) |
 | Compose a person with a reference (costume, setting) | **Qwen-Image 2.1** | `qwen_image_2.1_int8_convrot`, `qwen3vl_8b_int8_convrot`, `qwen_image_2.1_vae_bf16` |
-| Relight a photo | **FLUX.3 Klein** | `flux3-image-klein-int8-convrot`, `qwen3vl_4b_nvfp4`, `flux2-vae` |
+| Relight a photo | **FLUX.3 Klein** | `flux3-image-klein-int8-convrot` ([black-forest-labs](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy), gated), `qwen3vl_4b_int8_convrot` (the Krea 2 text encoder), `flux2-vae` |
 | Make video, loop, extend, video on a song, recreate video | **MiniMax H3** (fast and quality graphs) | `minimax_h3_fl2va` / `minimax_h3_ref2va` (int8), text encoder `qwen3vl_32b_minimax_h3_nvfp4_awq`, video and audio VAEs, Pika H3 Flex turbo LoRAs |
 | Edit object in a video: change, remove, background, add | **MiniMax H3** + **SAM 3.1** | `minimax_h3_ref2va` + the DMAD 4-step LoRA ([Kijai/MiniMax-H3-experimental](https://huggingface.co/Kijai/MiniMax-H3-experimental)) at 6 steps, `sam3.1_multiplex_fp16` — the masked-edit recipe Openjutsu uses |
 | Regenerate detail (video at 1.5×) | **MiniMax H3** | latent upscaler 3D + `minimax_h3_open_regenerate_2k` LoRA |
 | Segments (objects in a photo) | **SAM 3.1** + the vision model | `sam3.1_multiplex_fp16`, node in [comfyui-nodes/comfyui-imagine](comfyui-nodes/comfyui-imagine) |
-| Upscale photo / video | **SeedVR2** | `seedvr2_ema_7b_sharp_fp16` (photo), `seedvr2_3b_int8_convrot` (video), `ema_vae_fp16` |
+| Upscale photo / video | **SeedVR2** | `seedvr2_7b_sharp_int8_convrot` (photo), `seedvr2_3b_int8_convrot` (video), `ema_vae_fp16` — ComfyUI's native SeedVR2 nodes, NVFP4 builds on an RTX 50 ([Comfy-Org/SeedVR2](https://huggingface.co/Comfy-Org/SeedVR2)) |
 | Remove background | **BiRefNet** | `birefnet` |
 | Music | **MiniMax Music 3** | `minimax_music3_dit_fp16`, its text encoder and `minimax_music3_dav` |
 | Change voice / extract vocals | **RVC** / **MelBand RoFormer** | your `voice-model.pth`; `MelBandRoformer_fp16` |
 | Remove object (photo) | **LaMa** in IOPaint | through the IOPaint plugin, outside ComfyUI |
 
-**Installed for you:** the Krea 2 actions (generate, edit, precise edit),
-Segments, Remove background, every MiniMax H3 video action and Music. With the
+**Installed for you:** every action that runs in ComfyUI except the two voice
+ones. With the
 [comfyui-imagine](#the-comfyui-pack) pack in ComfyUI, the first request that
 needs them downloads the weights above from Hugging Face and the node packs
 they use:
@@ -101,13 +101,27 @@ they use:
   about 88 GB with the INT8 one on other cards; each action downloads only the
   files it uses.
 - Music: about 14.3 GB.
+- Compose (Qwen-Image 2.1): about 17.3 GB.
+- Relight (FLUX.3 Klein): about 5.6 GB on an RTX 50 (NVFP4), 6.2 GB on other
+  cards, on top of the Krea 2 text encoder. Its
+  weights are in a **gated** repo: accept the licence on
+  [its page](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy)
+  with your Hugging Face account and put a token of that account in
+  Settings → ComfyUI setup; without one, the chat says so before anything is
+  downloaded.
+- Upscale: photo 4.8 GB on an RTX 50 (8.3 GB on other cards), video 2.0 GB
+  (3.5 GB), plus a 0.5 GB VAE; long videos also use Video Helper Suite.
 
 Most of the H3 node packs are marked **Flagged** in the Comfy Registry, and a
 few come straight from GitHub because the registry does not carry them. Imagine
 installs them only at the exact version it was tested with, checked file by
 file, and always asks first, even with **Install automatically** on: the chat
 card says where each pack comes from. A version the registry has banned is
-never installed. Compose, Relight and Upscale still go in by hand for now.
+never installed.
+
+Change voice and Extract vocals still go in by hand: they need
+[TTS Audio Suite](https://github.com/diodiogod/TTS-Audio-Suite), a large pack
+with many dependencies, and Change voice runs your own RVC voice model.
 
 **Text and vision** go to any OpenAI-compatible chat-completions endpoint
 (Ollama, vLLM, LM Studio, llama.cpp, a hosted API): the model writes the

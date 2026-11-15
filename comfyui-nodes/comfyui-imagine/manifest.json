@@ -585,6 +585,61 @@
         "MiniMaxH3TaggedVideoReference",
         "MiniMaxH3UpscaleReferencePromptOverride"
       ]
+    },
+    "comfyui-videohelpersuite": {
+      "name": "Video Helper Suite",
+      "version": "1.7.9",
+      "source": "registry",
+      "registry": {
+        "id": "comfyui-videohelpersuite",
+        "version": "1.7.9"
+      },
+      "url": "https://cdn.comfy.org/kosinkadink/comfyui-videohelpersuite/1.7.9/node.zip",
+      "size": 106498,
+      "sha256": "ac63991d8b237afe5b2cd2b287a14b4a4d40ff203c0f2ee9d5fe61059f57cdf8",
+      "folder": "comfyui-videohelpersuite",
+      "classes": [
+        "VHS_AudioToVHSAudio",
+        "VHS_BatchManager",
+        "VHS_DuplicateImages",
+        "VHS_DuplicateLatents",
+        "VHS_DuplicateMasks",
+        "VHS_GetImageCount",
+        "VHS_GetLatentCount",
+        "VHS_GetMaskCount",
+        "VHS_LoadAudio",
+        "VHS_LoadAudioUpload",
+        "VHS_LoadImagePath",
+        "VHS_LoadImages",
+        "VHS_LoadImagesPath",
+        "VHS_LoadVideo",
+        "VHS_LoadVideoFFmpeg",
+        "VHS_LoadVideoFFmpegPath",
+        "VHS_LoadVideoPath",
+        "VHS_MergeImages",
+        "VHS_MergeLatents",
+        "VHS_MergeMasks",
+        "VHS_PruneOutputs",
+        "VHS_SelectEveryNthImage",
+        "VHS_SelectEveryNthLatent",
+        "VHS_SelectEveryNthMask",
+        "VHS_SelectFilename",
+        "VHS_SelectImages",
+        "VHS_SelectLatents",
+        "VHS_SelectLatest",
+        "VHS_SelectMasks",
+        "VHS_SplitImages",
+        "VHS_SplitLatents",
+        "VHS_SplitMasks",
+        "VHS_Unbatch",
+        "VHS_VAEDecodeBatched",
+        "VHS_VAEEncodeBatched",
+        "VHS_VHSAudioToAudio",
+        "VHS_VideoCombine",
+        "VHS_VideoInfo",
+        "VHS_VideoInfoLoaded",
+        "VHS_VideoInfoSource"
+      ]
     }
   },
   "models": {
@@ -737,6 +792,82 @@
       "url": "https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/loras/minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors",
       "size": 366647000,
       "sha256": "ddfdd94f4c9a0f32bf3649bb8e98ca20db572e4db6bcd9cca546a5b33ea32d11"
+    },
+    "qwen_image_2.1_int8_convrot.safetensors": {
+      "folder": "diffusion_models",
+      "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
+      "size": 7256783064,
+      "sha256": "cb74113cb03faecd79611b01fd7fd642f0aa60d6f0b95086abee214d75eaa57d"
+    },
+    "qwen3vl_8b_int8_convrot.safetensors": {
+      "folder": "text_encoders",
+      "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+      "size": 9350798360,
+      "sha256": "8bfd0f6e12abf2d2d697ecc888e5e90b0d6741d6708f05799f53afa560452e8f"
+    },
+    "qwen_image_2.1_vae_bf16.safetensors": {
+      "folder": "vae",
+      "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
+      "size": 675509688,
+      "sha256": "bb21f7473051e1ac368515dd3f2e15cd44d7a11748ee8823e1ddca3e4876b7c9"
+    },
+    "flux2-vae.safetensors": {
+      "folder": "vae",
+      "url": "https://huggingface.co/Comfy-Org/Flux-2-Klein-4B/resolve/main/split_files/vae/flux2-vae.safetensors",
+      "size": 336211292,
+      "sha256": "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3"
+    },
+    "ema_vae_fp16.safetensors": {
+      "folder": "vae",
+      "url": "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/vae/ema_vae_fp16.safetensors",
+      "size": 501324814,
+      "sha256": "20678548f420d98d26f11442d3528f8b8c94e57ee046ef93dbb7633da8612ca1"
+    },
+    "seedvr2_3b_int8_convrot.safetensors": {
+      "folder": "diffusion_models",
+      "url": "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_3b_int8_convrot.safetensors",
+      "size": 3458259704,
+      "sha256": "c3dec8bcc5916843a8a858572970597462e1f2dc598d6dfd818f6cd40f53a157",
+      "variants": [
+        {
+          "name": "seedvr2_3b_nvfp4.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_3b_nvfp4.safetensors",
+          "size": 1996687726,
+          "sha256": "c8dea38b04d43295621726e2cd371c0d2d001006169c113aea17950f2cb2e295",
+          "minComputeCapability": 10.0
+        }
+      ]
+    },
+    "seedvr2_7b_sharp_int8_convrot.safetensors": {
+      "folder": "diffusion_models",
+      "url": "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_7b_sharp_int8_convrot.safetensors",
+      "size": 8334897976,
+      "sha256": "db48be2f1cc7e36b01a2aa529810f5d9c6a971edd29be225cf1b0eb18d51c366",
+      "variants": [
+        {
+          "name": "seedvr2_7b_sharp_nvfp4.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_7b_sharp_nvfp4.safetensors",
+          "size": 4759694792,
+          "sha256": "80d57af7722f5a5bd4c01d2ab2688f2bf05e552e59d3d3287257de709db10397",
+          "minComputeCapability": 10.0
+        }
+      ]
+    },
+    "flux3-image-klein-int8-convrot.safetensors": {
+      "folder": "diffusion_models",
+      "url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-int8-convrot.safetensors",
+      "size": 5827874779,
+      "sha256": "847d8933548afd93df4af2cac2498e70891bf28d9dae06d695f536992e168fe2",
+      "gated": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy",
+      "variants": [
+        {
+          "name": "flux3-image-klein-nvfp4.safetensors",
+          "url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-nvfp4.safetensors",
+          "size": 5277685632,
+          "sha256": "15d421e2558443fcf83ba46f3cd884d9d181c2c7a0a7bdcd2974af234a2d4f5c",
+          "minComputeCapability": 10.0
+        }
+      ]
     }
   }
 }
