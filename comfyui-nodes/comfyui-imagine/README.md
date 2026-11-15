@@ -28,8 +28,8 @@ Imagine calls these routes before running a graph:
 
 | Route | What |
 |---|---|
-| `GET /imagine/setup/status` | version, when this ComfyUI started, which manifest packs and models are installed, the install in progress |
-| `POST /imagine/setup/check` | `{"prompt": <API graph>}` → the node packs and model files it is missing, and anything missing that the manifest does not know |
+| `GET /imagine/setup/status` | version, when this ComfyUI started, the GPU and its compute capability, which manifest packs and models are installed, the install in progress |
+| `POST /imagine/setup/check` | `{"prompt": <API graph>}` → the node packs and model files it is missing, anything missing that the manifest does not know, and `substitutions`: file names Imagine writes in the graph instead (a variant chosen for this GPU) |
 | `POST /imagine/setup/install` | `{"packs": [...], "models": [...]}` → installs them in the background; an `X-HF-Token` header is used for Hugging Face downloads only |
 | `POST /imagine/setup/restart` | restarts ComfyUI, to load node packs just installed |
 
@@ -54,6 +54,16 @@ A node pack's `requirements.txt`, if it has one, is installed with ComfyUI's own
   "<name as the graph writes it>": { "folder": "<models folder>", "url": "https://huggingface.co/.../resolve/main/...",
                                      "size": 0, "sha256": "..." }
 }
+```
+
+A model can list **variants** for some GPUs. The first request on a GPU whose
+compute capability reaches `minComputeCapability` downloads the variant instead
+(NVFP4 needs Blackwell: 10.0 and up), and Imagine writes its name in the graph.
+A ComfyUI that already has the model, or a variant, keeps using it:
+
+```json
+"krea2_turbo_int8_convrot.safetensors": { "folder": "diffusion_models", "url": "...", "size": 0, "sha256": "...",
+  "variants": [ { "name": "krea2_turbo_nvfp4.safetensors", "url": "...", "size": 0, "sha256": "...", "minComputeCapability": 10.0 } ] }
 ```
 
 `size` and `sha256` of a Hugging Face file are in its repo's file listing (the

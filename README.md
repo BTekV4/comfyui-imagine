@@ -72,7 +72,7 @@ point at another graph — see [The workflows](#the-workflows).
 
 | Action | Model family | Weights the graph loads |
 |---|---|---|
-| Generate image, redraw a video's first frame | **Krea 2 Turbo** ([Comfy-Org/Krea-2](https://huggingface.co/Comfy-Org/Krea-2)) | `krea2_turbo_int8_convrot`, text encoder `qwen3vl_4b_int8_convrot`, VAE `qwen_image_vae` |
+| Generate image, redraw a video's first frame | **Krea 2 Turbo** ([Comfy-Org/Krea-2](https://huggingface.co/Comfy-Org/Krea-2)) | `krea2_turbo_int8_convrot` (or `krea2_turbo_nvfp4` on an RTX 50), text encoder `qwen3vl_4b_int8_convrot`, VAE `qwen_image_vae` |
 | Edit photo, precise edit (brush), reference image | **Krea 2 Turbo** + identity-edit LoRA | the three above + `krea2_identity_edit_v1_2` (LoRA) |
 | Compose a person with a reference (costume, setting) | **Qwen-Image 2.1** | `qwen_image_2.1_int8_convrot`, `qwen3vl_8b_int8_convrot`, `qwen_image_2.1_vae_bf16` |
 | Relight a photo | **FLUX.3 Klein** | `flux3-image-klein-int8-convrot`, `qwen3vl_4b_nvfp4`, `flux2-vae` |
@@ -90,7 +90,10 @@ point at another graph — see [The workflows](#the-workflows).
 Segments and Remove background. With the [comfyui-imagine](#the-comfyui-pack)
 pack in ComfyUI, the first request that needs them downloads the weights above
 (about 22.6 GB in all, from the official Hugging Face repos) and the one node
-pack they use. The other families still go in by hand for now.
+pack they use. On an RTX 50 (Blackwell) it takes the NVFP4 build of Krea 2
+instead: 7.7 GB rather than 13.5, and on an RTX 5070 Ti about 11% faster with
+3.5 GB less VRAM at the same quality. The other families still go in by hand
+for now.
 
 **Text and vision** go to any OpenAI-compatible chat-completions endpoint
 (Ollama, vLLM, LM Studio, llama.cpp, a hosted API): the model writes the

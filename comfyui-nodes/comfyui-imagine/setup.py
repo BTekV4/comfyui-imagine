@@ -31,6 +31,7 @@ import zipfile
 
 import folder_paths
 import nodes
+import torch
 from aiohttp import web
 from server import PromptServer
 
@@ -39,6 +40,17 @@ VERSION = "1.0.0"
 BOOT = int(time.time() * 1000)
 MANIFEST = json.load(open(os.path.join(os.path.dirname(__file__), "manifest.json"), encoding="utf-8"))
 MODEL_FILE = re.compile(r"\.(safetensors|ckpt|pt|pth|bin|gguf)$", re.IGNORECASE)
+# Every file that can be downloaded, by name: the models the graphs name and
+# their variants (a variant lives in the same folder as its model).
+FILES = {}
+for _name, _model in MANIFEST["models"].items():
+    FILES[_name] = _model
+    for _variant in _model.get("variants", []):
+        FILES[_variant["name"]] = {**_variant, "folder": _model["folder"]}
+# The GPU's compute capability (12.0 for an RTX 50, 8.9 for an RTX 40): a
+# variant that needs a newer one (NVFP4 runs on Blackwell, 10.0 and up) is
+# downloaded only where it runs well.
+CAPABILITY = float("{}.{}".format(*torch.cuda.get_device_capability(0))) if torch.cuda.is_available() else None
 CHUNK = 4 * 1024 * 1024
 
 _lock = threading.Lock()
@@ -55,6 +67,21 @@ def _pack_loaded(pack):
 
 def _model_present(name, model):
     return folder_paths.get_full_path(model["folder"], name) is not None
+
+
+def _choice(name, model):
+    """The file to use for a model the manifest knows: the one this ComfyUI has,
+    else the variant this GPU runs best, else the model the graph names."""
+    if _model_present(name, model):
+        return name
+    variants = model.get("variants", [])
+    for variant in variants:
+        if _model_present(variant["name"], FILES[variant["name"]]):
+            return variant["name"]
+    for variant in variants:
+        if CAPABILITY is not None and CAPABILITY >= variant.get("minComputeCapability", 0):
+            return variant["name"]
+    return name
 
 
 def _options(class_name, input_name):
@@ -81,6 +108,7 @@ def _options(class_name, input_name):
 
 def _check(prompt):
     missing_packs, missing_models, unknown_classes, unknown_files = set(), set(), set(), set()
+    substitutions = {}
     for node in prompt.values():
         if not isinstance(node, dict):
             continue
@@ -97,18 +125,23 @@ def _check(prompt):
             name = value.replace("\\", "/")
             model = MANIFEST["models"].get(name)
             if model is not None:
-                if not _model_present(name, model):
-                    missing_models.add(name)
+                chosen = _choice(name, model)
+                if chosen != name:
+                    substitutions[value] = chosen
+                if not _model_present(chosen, FILES[chosen]):
+                    missing_models.add(chosen)
             elif cls in nodes.NODE_CLASS_MAPPINGS:
                 options = _options(cls, key)
                 if options is not None and not spellings.intersection(options):
                     unknown_files.add(value)
-    size = sum(MANIFEST["models"][name]["size"] for name in missing_models)
+    size = sum(FILES[name]["size"] for name in missing_models)
     return {
         "ready": not (missing_packs or missing_models or unknown_classes or unknown_files),
         "packs": [{"id": key, "name": MANIFEST["packs"][key]["name"], "installedNotLoaded": _pack_installed(MANIFEST["packs"][key])} for key in sorted(missing_packs)],
-        "models": [{"name": name, "folder": MANIFEST["models"][name]["folder"], "size": MANIFEST["models"][name]["size"]} for name in sorted(missing_models)],
+        "models": [{"name": name, "folder": FILES[name]["folder"], "size": FILES[name]["size"]} for name in sorted(missing_models)],
         "bytes": size,
+        # What Imagine writes in the graph instead: a variant chosen for this GPU.
+        "substitutions": substitutions,
         "unknownClasses": sorted(unknown_classes),
         "unknownFiles": sorted(unknown_files),
     }
@@ -184,7 +217,7 @@ def _run(packs, models, token):
                 _task["done"] = _task["doneBefore"]
                 _task["restart"] = True
         for name in models:
-            model = MANIFEST["models"][name]
+            model = FILES[name]
             if _model_present(name, model):
                 continue
             folder = folder_paths.get_folder_paths(model["folder"])[0]
@@ -221,7 +254,8 @@ async def setup_status(request):
         "version": VERSION,
         "boot": BOOT,
         "packs": {key: {"name": p["name"], "version": p["version"], "installed": _pack_installed(p), "loaded": _pack_loaded(p)} for key, p in MANIFEST["packs"].items()},
-        "models": {name: {"folder": m["folder"], "size": m["size"], "present": _model_present(name, m)} for name, m in MANIFEST["models"].items()},
+        "gpu": {"name": torch.cuda.get_device_name(0), "computeCapability": CAPABILITY} if CAPABILITY is not None else None,
+        "models": {name: {"folder": m["folder"], "size": m["size"], "present": _model_present(name, m)} for name, m in FILES.items()},
         "task": _progress(),
     })
 
@@ -240,13 +274,13 @@ async def setup_install(request):
     body = await request.json()
     packs = [key for key in body.get("packs") or [] if isinstance(key, str)]
     models = [name for name in body.get("models") or [] if isinstance(name, str)]
-    unknown = [key for key in packs if key not in MANIFEST["packs"]] + [name for name in models if name not in MANIFEST["models"]]
+    unknown = [key for key in packs if key not in MANIFEST["packs"]] + [name for name in models if name not in FILES]
     if unknown:
         return web.json_response({"error": f"not in the Imagine manifest: {', '.join(unknown)}"}, status=400)
     with _lock:
         if _task.get("state") == "running":
             return web.json_response({"error": "an install is already running", "task": dict(_task)}, status=409)
-        total = sum(MANIFEST["packs"][k]["size"] for k in packs) + sum(MANIFEST["models"][n]["size"] for n in models if not _model_present(n, MANIFEST["models"][n]))
+        total = sum(MANIFEST["packs"][k]["size"] for k in packs) + sum(FILES[n]["size"] for n in models if not _model_present(n, FILES[n]))
         _task.clear()
         _task.update(state="running", started=time.time(), total=total, done=0, doneBefore=0, step="Starting", restart=False, packs=packs, models=models)
     token = request.headers.get("X-HF-Token") or os.environ.get("HF_TOKEN")

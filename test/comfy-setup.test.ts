@@ -54,6 +54,27 @@ test('a ComfyUI without the pack, or with everything, is left as it is', async (
   assert.deepEqual(ready.calls.map(call => call.route), ['check'])
 })
 
+test('the file the pack chose for this GPU is written in the graph', async () => {
+  configureComfySetup(() => ({ hfToken: '', autoSetup: false }), 5)
+  const graph = {
+    '1': { class_type: 'UNETLoader', inputs: { unet_name: 'krea2_turbo_int8_convrot.safetensors', weight_dtype: 'default' } },
+    '2': { class_type: 'CLIPLoader', inputs: { clip_name: 'qwen3vl_4b_int8_convrot.safetensors' } },
+  }
+  const { host } = fakeComfy([{ ...READY, substitutions: { 'krea2_turbo_int8_convrot.safetensors': 'krea2_turbo_nvfp4.safetensors' } }])
+  await ensureComfyReady(host, graph)
+  assert.equal(graph['1'].inputs.unet_name, 'krea2_turbo_nvfp4.safetensors')
+  assert.equal(graph['2'].inputs.clip_name, 'qwen3vl_4b_int8_convrot.safetensors', 'the others stay')
+})
+
+test('after an install the substitution of the last check is applied', async () => {
+  configureComfySetup(() => ({ hfToken: '', autoSetup: true }), 5)
+  const graph = { '1': { class_type: 'UNETLoader', inputs: { unet_name: 'krea2_turbo_int8_convrot.safetensors' } } }
+  const subs = { 'krea2_turbo_int8_convrot.safetensors': 'krea2_turbo_nvfp4.safetensors' }
+  const { host } = fakeComfy([{ ...MISSING, substitutions: subs }, { ...READY, substitutions: subs }])
+  await ensureComfyReady(host, graph)
+  assert.equal(graph['1'].inputs.unet_name, 'krea2_turbo_nvfp4.safetensors')
+})
+
 test('what the pack cannot install is reported by name', async () => {
   configureComfySetup(() => ({ hfToken: '', autoSetup: true }), 5)
   const { host } = fakeComfy([{ ...READY, ready: false, unknownClasses: ['FL_InpaintCrop'], unknownFiles: ['mine.safetensors'] }])

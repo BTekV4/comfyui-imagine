@@ -7,7 +7,10 @@
       "size": 24384,
       "sha256": "0bbc7e726253d08a67868fe428540bce46868c1070ab584b2e5fc6c63ad31c63",
       "folder": "comfyui-krea2edit",
-      "classes": ["Krea2EditModelPatch", "Krea2EditGroundedEncode"]
+      "classes": [
+        "Krea2EditModelPatch",
+        "Krea2EditGroundedEncode"
+      ]
     }
   },
   "models": {
@@ -15,7 +18,16 @@
       "folder": "diffusion_models",
       "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/diffusion_models/krea2_turbo_int8_convrot.safetensors",
       "size": 13492686496,
-      "sha256": "8e4eeda70dd5037ab1ba2bef6b417f9f901e26093117cf397f741fc1fdaaf3f1"
+      "sha256": "8e4eeda70dd5037ab1ba2bef6b417f9f901e26093117cf397f741fc1fdaaf3f1",
+      "variants": [
+        {
+          "name": "krea2_turbo_nvfp4.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/diffusion_models/krea2_turbo_nvfp4.safetensors",
+          "size": 7673668448,
+          "sha256": "61527003b2d537055494d01bc8efe51d6e86e64192ba23e3721a5647231fe394",
+          "minComputeCapability": 10.0
+        }
+      ]
     },
     "qwen3vl_4b_int8_convrot.safetensors": {
       "folder": "text_encoders",

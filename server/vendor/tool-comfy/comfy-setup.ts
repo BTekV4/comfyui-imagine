@@ -24,6 +24,12 @@ interface CheckAnswer {
   readonly bytes: number
   readonly unknownClasses: readonly string[]
   readonly unknownFiles: readonly string[]
+  /**
+   * File names to write in the graph instead of the ones it has: the variant
+   * of a model chosen for this GPU (`krea2_turbo_nvfp4` on an RTX 50 for the
+   * graph's `krea2_turbo_int8_convrot`).
+   */
+  readonly substitutions?: Readonly<Record<string, string>>
 }
 
 /** The install task, as `/imagine/setup/status` reports it. */
@@ -114,7 +120,11 @@ export function describePlan(plan: ImagineSetupPlan): string {
  */
 export async function ensureComfyReady(ctx: ImagineHost, graph: ComfyGraph, hooks: SetupHooks = {}): Promise<void> {
   const check = await ctx.comfy.setupCall('check', { prompt: graph }, {}, hooks.signal) as CheckAnswer | undefined
-  if (check === undefined || check.ready) return
+  if (check === undefined) return
+  if (check.ready) {
+    substitute(graph, check.substitutions)
+    return
+  }
   const unknown = [...check.unknownClasses, ...check.unknownFiles]
   if (unknown.length > 0) throw new Error(message('setup.unknown', { what: unknown.join(', ') }))
   const plan: ImagineSetupPlan = { packs: check.packs.map(({ id, name }) => ({ id, name })), models: check.models, bytes: check.bytes }
@@ -128,7 +138,23 @@ export async function ensureComfyReady(ctx: ImagineHost, graph: ComfyGraph, hook
   if (after !== undefined && !after.ready) {
     throw new Error(message('setup.stillMissing', { what: [...after.packs.map(pack => pack.name), ...after.models.map(model => model.name), ...after.unknownClasses, ...after.unknownFiles].join(', ') }))
   }
+  substitute(graph, after?.substitutions ?? check.substitutions)
   hooks.done?.()
+}
+
+/**
+ * Write the files the pack chose into the graph, in place: every input whose
+ * value is a key becomes the file it names.
+ * @param graph - the graph about to be submitted.
+ * @param substitutions - graph value to file name.
+ */
+function substitute(graph: ComfyGraph, substitutions: Readonly<Record<string, string>> | undefined): void {
+  if (substitutions === undefined || Object.keys(substitutions).length === 0) return
+  for (const node of Object.values(graph)) {
+    for (const [key, value] of Object.entries(node.inputs)) {
+      if (typeof value === 'string' && substitutions[value] !== undefined) node.inputs[key] = substitutions[value]
+    }
+  }
 }
 
 /**
