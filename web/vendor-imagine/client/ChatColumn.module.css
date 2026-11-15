@@ -1,0 +1,756 @@
+/*
+ * The project's chat column (ChatColumn.tsx). The studio marks it
+ * `data-imagine-studio` and, under "Hide canvas", `data-canvas-hidden`: the
+ * rules for that state read the attributes, since the studio is the page's.
+ */
+
+.chatCol {
+  /* Float over the board, not beside it: the board fills the whole studio and
+     the canvas (with its tiles) pans behind this column, so a photo moved
+     under the chat reads through the glass — the grok.com/imagine look. Taken
+     out of flow, the board becomes the studio's only flex child and spans full
+     width. The stacked phone layout restores static flow below. */
+  position: absolute;
+  left: 0;
+  /*
+   * With a conversation the column takes the studio's whole height, from the
+   * top edge down (2026-11-11: it looked "cut off at the top", because the
+   * column started at the bottom and grew with its content, leaving a strip
+   * of canvas above it). Empty it stays as it was: only the composer bar at
+   * the bottom, which is why the 2026-11-04 review sized it to its content.
+   */
+  top: 0;
+  bottom: 0;
+  max-height: 100%;
+  z-index: 3;
+  flex: none;
+  flex-basis: var(--imagine-chat-w, 360px);
+  width: var(--imagine-chat-w, 360px);
+  display: flex;
+  flex-direction: column;
+  min-width: 360px;
+  max-width: 560px;
+  min-height: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--imagine-line);
+  /* Glass over the same ground as the board, the way Grok's chat sits on the
+     canvas: a light mix keeps the canvas legible through the panel, and the
+     blur below carries readability. */
+  background: var(--imagine-surface);
+  background: color-mix(in srgb, var(--imagine-surface) 28%, transparent);
+  /* Prefixed first: the CSS build keeps the LAST of the two declarations, so
+     writing the standard property second is what makes it survive. */
+  -webkit-backdrop-filter: blur(18px) saturate(120%);
+  backdrop-filter: blur(18px) saturate(120%);
+}
+
+.chatResize {
+  position: absolute;
+  top: 0;
+  /* Kept inside the column: .chatCol clips its overflow, so a handle hanging
+     over the edge loses the half the user actually aims at. */
+  right: 0;
+  z-index: 4;
+  width: 10px;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: col-resize;
+}
+
+.iconBtn {
+  composes: iconBtn from './imagine-shared.module.css';
+}
+
+.messages {
+  /* Not "flex: 1": it must take the content's height (zero with an empty
+     chat). When the content exceeds the studio's height the column stops at
+     its maximum and this shrinks and scrolls. */
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 16px 8px;
+}
+
+.bubble {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--imagine-chip);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  /* A line is shown as it was written: its breaks and its indents. Collapsed
+     whitespace turned a list into one run of words (asked 2026-09-10). */
+  white-space: pre-wrap;
+}
+
+/* The thinking kept under an answer, folded until asked for. */
+.thinkingKept {
+  margin: 0 0 8px;
+}
+
+.thinkingKept summary {
+  cursor: pointer;
+  color: var(--imagine-muted);
+  font-size: 12px;
+  user-select: none;
+}
+
+.thinkingKept .thinkingReasoning {
+  max-height: 240px;
+  margin: 6px 0 0;
+}
+
+/* The studio speaking, not a job reporting: it keeps the full text colour a
+   status line gives up, and loses the chip so the column reads as a
+   conversation with the user's own lines standing out in it. */
+.bubble[data-role='assistant'] {
+  background: transparent;
+  padding: 4px 4px 12px;
+}
+
+.bubble[data-role='status'] {
+  background: transparent;
+  color: var(--imagine-muted);
+  padding: 4px 4px 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The studio's written answer: paragraphs and short lists, the way it was
+   written. It has no chip — the assistant line is a voice in the column, not
+   a notification — and it keeps the full text colour a status line gives up. */
+.prose {
+  margin: 0 0 12px;
+  padding: 4px 4px 0;
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.proseLine {
+  margin: 0 0 8px;
+}
+
+.proseLine:last-child,
+.proseList:last-child {
+  margin-bottom: 0;
+}
+
+.proseList {
+  margin: 0 0 8px;
+  padding-left: 18px;
+}
+
+.proseList li {
+  margin: 0 0 3px;
+}
+
+/* What the studio did while reading one line: the steps it took and, when the
+   route emits any, the model's own thinking. It is a status block rather than a
+   bubble of its own — nobody wrote it — so it borrows the muted status colour
+   and only marks the thinking apart from the steps. */
+.thinking {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.thinkingStep,
+.thinkingLive,
+.thinkingReasoning {
+  margin: 0;
+}
+
+.thinkingStep::before {
+  /* A step is one thing that happened, in order; the marker is what makes the
+     list readable as a sequence rather than as three unrelated sentences. */
+  content: '·';
+  margin-right: 6px;
+}
+
+/* The model's own words, not the studio's: set apart the way a quotation is,
+   and capped so a long chain of thought cannot push the composer off screen.
+   It scrolls inside itself instead. */
+.thinkingReasoning {
+  max-height: 140px;
+  overflow-y: auto;
+  padding-left: 8px;
+  border-left: 2px solid var(--imagine-line);
+  font-size: 13px;
+  font-style: italic;
+  opacity: 0.85;
+  white-space: pre-wrap;
+}
+
+.chatDock {
+  flex: none;
+  min-width: 0;
+  padding: 8px 12px 16px;
+}
+
+.bubbleWrap {
+  display: flex;
+  flex-direction: column;
+  /* The stamp belongs to the bubble above it, so it sits close to that one and
+     the spacing goes between groups. With the gap the other way round it reads
+     as a heading for the message below. */
+  gap: 3px;
+  margin-bottom: 14px;
+}
+
+.bubbleWrap > .bubble {
+  margin-bottom: 0;
+}
+
+/* The files a line was sent with, above its text: the same thumbnails the
+   composer showed while they were staged, so the column reads as "these,
+   and then this sentence about them". */
+.bubbleFiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-self: flex-end;
+  max-width: 100%;
+}
+
+.bubbleFile {
+  display: inline-flex;
+  flex: none;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.fileThumb {
+  width: 52px;
+  height: 52px;
+  object-fit: cover;
+  border-radius: 10px;
+  background: var(--imagine-media-bed);
+}
+
+.audioThumb {
+  composes: audioThumb from './imagine-shared.module.css';
+}
+
+.bubbleFile:focus-visible {
+  outline: 2px solid var(--imagine-focus, currentColor);
+  outline-offset: 2px;
+}
+
+/* The chat thumbnail of what is selected on the board stays marked. */
+.bubbleFile[data-on] {
+  outline: 2px solid var(--imagine-ink);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+/* What the runs of one answer made, under its prose: Grok Imagine puts the
+   files where the sentence left them, not in a receipt of their own. The grid
+   follows the column width, so three photos are a row and one is one. */
+.bubbleResults {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 6px;
+  max-width: 100%;
+  margin: 0 0 10px;
+  padding: 0 4px;
+}
+
+.result {
+  display: block;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.resultThumb {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 10px;
+  background: var(--imagine-media-bed);
+}
+
+.result:focus-visible {
+  outline: 2px solid var(--imagine-focus, currentColor);
+  outline-offset: 2px;
+}
+
+.result[data-on] {
+  outline: 2px solid var(--imagine-ink);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+.bubbleWrap > .bubble[data-role='status'],
+.bubbleWrap > .bubble[data-role='assistant'] {
+  padding-bottom: 0;
+}
+
+.chatTimestamp {
+  font-size: 10px;
+  color: var(--imagine-muted);
+  padding: 0 4px;
+}
+
+/* The stamp and the line's own buttons. The buttons keep their space whether
+   or not they are showing, so a hover does not move the conversation under the
+   pointer. */
+.chatMeta {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.msgBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--imagine-muted);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.bubbleWrap:hover .msgBtn,
+.msgBtn:focus-visible {
+  opacity: 1;
+}
+
+.msgBtn:hover:not(:disabled) {
+  background: var(--imagine-hover);
+  color: var(--imagine-ink);
+}
+
+.msgBtn:disabled {
+  cursor: default;
+  opacity: 0;
+}
+
+/* Empty chat: no message area (it was a strip of padding only). The head
+   disappears from 641 up; on a phone it stays, because it carries "Expand".
+   Empty, the column goes back to the height of its content, resting at the
+   bottom: the case the 2026-11-04 review wanted light. */
+.chatCol:not(:has(> .messages > *)) {
+  top: auto;
+  height: auto;
+}
+
+.chatCol:not(:has(> .messages > *)) .messages { display: none; }
+
+@media (min-width: 641px) {
+  .chatCol:not(:has(> .messages > *)) .chatHead { display: none; }
+}
+
+.chatHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px 0 16px;
+}
+
+.chatHeadBtn {
+  padding: 2px 8px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  /* A pill's ends stay round: the universal superellipse squares them off. */
+  corner-shape: round;
+  background: transparent;
+  color: var(--imagine-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chatHeadBtn:hover:not(:disabled) {
+  background: var(--imagine-hover);
+  color: var(--imagine-ink);
+}
+
+.chatHeadBtn:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* Stacked, the chat is a band over the top of the studio: the bar above the
+   canvas would sit on it, and the phone has Expand in the chat's own place.
+   Scoped to the head so it outranks the shared icon button it composes with. */
+.chatHead .chatHideNarrow { display: none; }
+
+/*
+ * What is running, at the top of the conversation: one row per job, with its
+ * progress and its stop button. The canvas carries a tile per live job, which
+ * is out of sight while the user reads or writes in the column — the place
+ * the question "is it running?" is asked. Same numbers, where the answer is
+ * wanted.
+ */
+.chatWorking {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px 0 16px;
+}
+
+.chatWork {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--imagine-hover);
+  color: var(--imagine-ink);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.chatWorkLabel {
+  display: flex;
+  align-items: baseline;
+  font-weight: 600;
+}
+
+/* One line, clipped: the node name is context, not a title. */
+.chatWorkStage {
+  overflow: hidden;
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.8;
+}
+
+/* Stop a live job, or give up on a reading: the queue is served one prompt at
+   a time and a start the user regrets otherwise blocks everything behind it. */
+.stopJob {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-surface);
+  color: var(--imagine-danger);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.stopJob:hover {
+  background: var(--imagine-hover);
+}
+
+/* In a job's row the button closes the label line, at its right end. */
+.chatWorkLabel .stopJob {
+  margin-left: auto;
+  font-weight: 400;
+}
+
+/* The workflow change the studio is offering: a diff, not prose. These graphs
+   are the deployment and live outside the repository, so the values being
+   replaced are shown in full rather than summarised. */
+.proposal {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.proposalFile {
+  margin: 0 0 8px;
+  font-family: var(--imagine-mono);
+  font-size: 12px;
+  color: var(--imagine-muted);
+  overflow-wrap: anywhere;
+}
+
+.proposalRow {
+  display: grid;
+  /* The node and its class name can be long, and wrap; the three values
+     after it keep their columns so a row reads as one change. */
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  margin: 0 0 8px;
+  font-family: var(--imagine-mono);
+  font-size: 12px;
+}
+
+.proposalNode {
+  grid-column: 1 / -1;
+  color: var(--imagine-muted);
+  overflow-wrap: anywhere;
+}
+
+.proposalField {
+  overflow-wrap: anywhere;
+}
+
+.proposalFrom {
+  text-decoration: line-through;
+  color: var(--imagine-muted);
+  overflow-wrap: anywhere;
+}
+
+.proposalTo {
+  grid-column: 2;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.proposalWarn {
+  margin: 0 0 6px;
+  color: var(--imagine-muted);
+  font-size: 12px;
+}
+
+.proposalActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.proposalApply,
+.proposalCancel {
+  flex: none;
+  padding: 6px 12px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  border: 1px solid var(--imagine-line);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.proposalApply {
+  background: var(--imagine-chip);
+  font-weight: 600;
+}
+
+/*
+ * The opening frames of a "Recreate video" scan.
+ *
+ * A frame has to be judged here and not recognised, so these are the largest
+ * stills the column holds: three columns of portrait tiles, the number of the
+ * draw in the corner, the chosen one ringed. The grid never grows past the
+ * column's own width — the column is resizable and the tiles follow it.
+ */
+.choose {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 12px;
+  background: var(--imagine-surface);
+}
+
+/* The title and the button that closes the block share a row: the button sits
+   on the right, where the eye looks for "put this away". */
+.chooseHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.chooseTitle {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.chooseCancel {
+  flex: none;
+  padding: 1px 9px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-surface);
+  color: var(--imagine-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.chooseCancel:hover {
+  background: var(--imagine-hover);
+  color: var(--imagine-ink);
+}
+
+.chooseScene {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--imagine-muted);
+  overflow-wrap: anywhere;
+}
+
+.chooseGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 6px;
+}
+
+.chooseTile {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 1px solid var(--imagine-line);
+  border-radius: 10px;
+  background: var(--imagine-media-bed);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.chooseTile:hover:not(:disabled) {
+  border-color: var(--imagine-ink);
+}
+
+.chooseTile:focus-visible {
+  outline: 2px solid var(--imagine-focus);
+  outline-offset: 2px;
+}
+
+.chooseTile[data-chosen] {
+  border-color: var(--imagine-ink);
+}
+
+.chooseTile:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.chooseThumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  background: var(--imagine-media-bed);
+}
+
+.chooseNumber {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 0 5px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: rgb(0 0 0 / 0.6);
+  color: var(--imagine-on-media);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.chooseHint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--imagine-muted);
+}
+
+/* "Hide canvas": the chat across the studio, its content in a centred column. */
+[data-imagine-studio][data-canvas-hidden] .chatCol {
+  position: relative;
+  flex: 1;
+  width: auto;
+  height: 100%;
+  max-height: none;
+  max-width: none;
+  border-right: none;
+  background: var(--imagine-bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+[data-imagine-studio][data-canvas-hidden] .chatCol > * {
+  width: 100%;
+  max-width: 820px;
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+
+[data-imagine-studio][data-canvas-hidden] .chatResize { display: none; }
+
+[data-imagine-studio][data-canvas-hidden] .chatCol .messages { flex: 1 1 auto; }
+
+/* Touch has no hover: there the line's buttons are simply always there, since
+   the alternative is a control that cannot be reached at all. */
+@media (hover: none) {
+  .msgBtn {
+    opacity: 1;
+  }
+
+  .msgBtn:disabled {
+    opacity: 0.4;
+  }
+}
+
+@media (max-width: 960px) {
+  .chatCol {
+    min-width: 220px;
+  }
+}
+
+@media (max-width: 900px) {
+  .chatCol {
+    /*
+     * Still on the left, still floating over the board — only narrower. The
+     * width the user dragged is meant for a wide window: kept here it would
+     * cover more than half of a small one. The page caps the value it sends
+     * (CHAT_NARROW_MAX) so the canvas framing, the resize handle and this box
+     * all agree on one number; the cap below is what holds if the property
+     * ever arrives unclamped.
+     */
+    min-width: 240px;
+    max-width: 320px;
+  }
+}
+
+/*
+ * A phone is the one place the chat cannot stay beside the canvas. It floats
+ * over the board rather than beside it, so on a wide window it costs the
+ * canvas nothing — but at 390px a 280px column (its narrowest) leaves 110px of
+ * visible board, which is less than one tile. Here, and only here, it becomes
+ * a band under the canvas, in flow (the composer at the foot of the screen,
+ * as grok.com/imagine has it): as high as its content up to the cap below,
+ */
+@media (max-width: 640px) {
+  .chatCol {
+    position: static;
+    z-index: auto;
+    flex: none;
+    flex-basis: auto;
+    width: 100%;
+    /* As tall as its content: an empty chat is the composer bar, and it
+       grows with the messages up to the cap (which stays the earlier one). */
+    height: auto;
+    max-height: 44vh;
+    min-width: 0;
+    max-width: none;
+    border-right: none;
+    border-bottom: 1px solid var(--imagine-line);
+  }
+
+  .chatHead .chatHideNarrow { display: grid; }
+}

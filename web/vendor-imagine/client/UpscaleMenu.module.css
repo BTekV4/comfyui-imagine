@@ -1,0 +1,69 @@
+.menu {
+  position: fixed;
+  z-index: 200;
+  box-sizing: border-box;
+  padding: 6px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 14px;
+  background: var(--imagine-surface);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.55);
+  color: var(--imagine-ink);
+  font-size: 13px;
+}
+
+.head {
+  margin: 4px 8px 6px;
+  font-size: 12px;
+  color: var(--imagine-muted);
+}
+
+.group {
+  margin: 8px 8px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--imagine-muted);
+}
+
+.choice {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.choice:hover,
+.choice:focus-visible {
+  background: var(--imagine-hover);
+  outline: none;
+}
+
+.label {
+  font-weight: 600;
+}
+
+.size {
+  color: var(--imagine-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.none,
+.note {
+  margin: 6px 8px;
+  color: var(--imagine-muted);
+  line-height: 1.4;
+}
+
+.note {
+  font-size: 12px;
+}

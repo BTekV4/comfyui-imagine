@@ -1,0 +1,83 @@
+/* Theme tokens the studio's CSS reads, one set (2026-10-25: the `--dsw-*` names
+   inherited from DSH became these). Always dark, Grok Imagine-like (2026-10-17). */
+:root {
+  color-scheme: dark;
+  --imagine-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  /* Read by the settings fields, the file details and the logs; it used to be
+     two names nobody defined, so each place fell back on its own stack. */
+  --imagine-mono: ui-monospace, monospace;
+  /* Dark like Grok Imagine (asked 2026-10-17): near-black ground, panels a
+     step above it, hairline borders, light ink. Always dark, whatever the OS. */
+  --imagine-bg: #141414;
+  --imagine-surface: #1b1b1b;
+  --imagine-ink: #fafafa;
+  --imagine-ink-fg: #0a0a0a;
+  --imagine-muted: #a1a1a1;
+  --imagine-faint: #737373;
+  --imagine-line: rgb(255 255 255 / 0.08);
+  --imagine-line-2: rgb(255 255 255 / 0.12);
+  --imagine-line-3: rgb(255 255 255 / 0.18);
+  --imagine-line-4: rgb(255 255 255 / 0.24);
+  /* The round send button, as on Grok. */
+  --imagine-send: #3b6cf6;
+  --imagine-chip: #242424;
+  --imagine-chip-on: #303030;
+  /* Soft ink on chips and menus, and the mid grey of placeholders and counts:
+     both were literals in the modules (#f2f2f2 23 times, #8a8a8a 13). */
+  --imagine-ink-soft: #f2f2f2;
+  --imagine-dim: #8a8a8a;
+  /* A "Like" heart. */
+  --imagine-like: #ff4d6d;
+  --imagine-hover: rgb(255 255 255 / 0.07);
+  --imagine-dot: rgb(255 255 255 / 0.12);
+  /*
+   * The keyboard focus ring, one token for the board and every panel beside
+   * it. It was read as `var(--imagine-focus, currentColor)` before it was
+   * ever declared, so the ring silently fell back to the element's own
+   * colour — invisible on a muted label.
+   */
+  --imagine-focus: #fafafa;
+  --imagine-on-media: #fff;
+  --imagine-media-bed: #171717;
+  --imagine-scrim: rgb(0 0 0 / 0.6);
+  /* Tooltip colours: a raised dark chip, white text. */
+  --imagine-tooltip: #333333;
+  --imagine-accent: #7aaaff;
+  /* One red for every error (there were three: #f25a5a, #ef4444, #b3271b). */
+  --imagine-danger: #f25a5a;
+  --imagine-success: #22c55e;
+  --imagine-warn: #f59e0b;
+  --imagine-warn-label: #dd8629;
+  --imagine-radius-sm: 8px;
+  --imagine-radius-md: 12px;
+  /* A pill: fully round ends, whatever the height (it was 999px, written 85 times). */
+  --imagine-radius-pill: 999px;
+  --imagine-shadow: 0 8px 24px 0 rgb(0 0 0 / 0.5);
+  --imagine-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  /* The studio's chrome (2026-11-07: moved here from ImaginePage.module.css's
+     `.page`, so every module reads them from one place). Imagine reads in the
+     UI font; the two font tokens keep display and body text separate seats. */
+  --imagine-font-display: var(--imagine-font);
+  --imagine-font-text: var(--imagine-font);
+  --imagine-rail: 256px;
+  /* The collapsed strip: 44 rather than 56, asked 2026-09-10. The 36px icon
+     buttons keep 4px of air each side; the header's 36px control fits too. */
+  --imagine-rail-collapsed: 44px;
+  --imagine-header: 56px;
+  --imagine-radius-card: 16px;
+  --imagine-radius-composer: 20px;
+  /* The viewer's ground and its strip's empty thumbnails: darker than the page. */
+  --imagine-viewer-bg: #050505;
+  --imagine-film-bg: #111;
+  /* The rail's raised squares (All media, the media deck). */
+  --imagine-raised: var(--imagine-chip);
+  --imagine-raised-hover: #2c2c2c;
+  /* The canvas buttons in the header: resting, hovered or on, and on's ground. */
+  --imagine-icon: #bdbdbd;
+  --imagine-icon-hover: var(--imagine-ink-soft);
+  --imagine-icon-on: #262626;
+  /* The alignment guides on the board, Grok's orange. */
+  --imagine-guide: #fb923c;
+}
+html, body, #root { height: 100%; margin: 0; }
+body { background: var(--imagine-bg); color: var(--imagine-ink); font-family: var(--imagine-font); }

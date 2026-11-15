@@ -1,0 +1,42 @@
+.modelPick {
+  /* Shrinks before anything else in the row: a truncated model name is a much
+     smaller loss than a control pushed out of the column. */
+  flex: 1 1 auto;
+  min-width: 96px;
+  max-width: 160px;
+  /* Matches the icon buttons and the send, which are the buttons it sits between. */
+  height: 36px;
+  padding: 0 26px 0 12px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-chip);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  /* Without this the platform draws its own frame and arrow, and the control
+     is the only undesigned thing in the bar. */
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, currentcolor 50%),
+    linear-gradient(135deg, currentcolor 50%, transparent 50%);
+  background-position: calc(100% - 14px) calc(50% + 1px), calc(100% - 9px) calc(50% + 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+.modelPick:hover {
+  background-color: var(--imagine-chip-on);
+}
+
+.modelPick:focus-visible {
+  outline: 2px solid var(--imagine-accent, currentcolor);
+  outline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .modelPick {
+    max-width: 120px;
+    font-size: 11px;
+  }
+}

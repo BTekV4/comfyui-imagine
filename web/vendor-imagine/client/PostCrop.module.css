@@ -1,0 +1,92 @@
+/* «Ritaglia» on the photo (PostCrop.tsx), as Grok's: dimmed around, thirds,
+   white corner handles, the two buttons under the photo. */
+.shade {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.frame {
+  position: absolute;
+  z-index: 5;
+  box-sizing: border-box;
+  border: 1.5px solid rgb(255 255 255 / 0.95);
+  /* Everything outside the frame darkened, as Grok's overlay. */
+  box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.72);
+  cursor: move;
+  touch-action: none;
+}
+
+.thirdV,
+.thirdH {
+  position: absolute;
+  background: rgb(255 255 255 / 0.35);
+  pointer-events: none;
+}
+
+.thirdV { top: 0; bottom: 0; width: 1px; }
+.thirdH { left: 0; right: 0; height: 1px; }
+
+.grip {
+  position: absolute;
+  z-index: 1;
+  touch-action: none;
+}
+
+.grip[data-g='n'], .grip[data-g='s'] { left: 12px; right: 12px; height: 12px; cursor: ns-resize; }
+.grip[data-g='e'], .grip[data-g='w'] { top: 12px; bottom: 12px; width: 12px; cursor: ew-resize; }
+.grip[data-g='n'] { top: -6px; }
+.grip[data-g='s'] { bottom: -6px; }
+.grip[data-g='e'] { right: -6px; }
+.grip[data-g='w'] { left: -6px; }
+
+.grip[data-g='nw'], .grip[data-g='ne'], .grip[data-g='sw'], .grip[data-g='se'] {
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 2px solid #fff;
+  background: rgb(0 0 0 / 0.4);
+}
+
+.grip[data-g='nw'] { left: -6px; top: -6px; cursor: nwse-resize; }
+.grip[data-g='ne'] { right: -6px; top: -6px; cursor: nesw-resize; }
+.grip[data-g='sw'] { left: -6px; bottom: -6px; cursor: nesw-resize; }
+.grip[data-g='se'] { right: -6px; bottom: -6px; cursor: nwse-resize; }
+
+.bar {
+  position: fixed;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
+}
+
+.cancel,
+.apply {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid rgb(255 255 255 / 0.15);
+  border-radius: var(--imagine-radius-pill);
+  background: rgb(20 20 20 / 0.85);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.apply { background: rgb(255 255 255 / 0.25); }
+.apply:hover:not(:disabled) { background: rgb(255 255 255 / 0.35); }
+.cancel:hover:not(:disabled) { background: rgb(40 40 40 / 0.9); }
+.cancel:disabled,
+.apply:disabled { opacity: 0.45; cursor: default; }
+
+.error {
+  color: var(--imagine-danger, #ff6b6b);
+  font-size: 13px;
+}

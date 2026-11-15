@@ -1,0 +1,127 @@
+/*
+ * The History's list view. It takes the board's seat in the studio, so the
+ * chat column, the filter bar and the composer keep working around it.
+ */
+
+.list {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 12px 16px;
+  background: var(--imagine-bg);
+  font-family: var(--imagine-font-text);
+}
+
+/*
+ * The rows start where the floating chat column ends, like the bar above them:
+ * a row's thumbnail and name under an opaque column are not dimmed, they are
+ * gone. Below the phone breakpoint the column is a band above the board.
+ */
+@media (min-width: 641px) {
+  .list {
+    padding-left: calc(var(--imagine-chat-w, 0px) + 12px);
+  }
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 52px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--imagine-hover);
+}
+
+.thumb {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 44px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--imagine-chip);
+}
+
+.thumb img,
+.audioThumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.audioThumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--imagine-muted);
+  font-size: 18px;
+}
+
+/* The name takes the room that is left and truncates; the three facts beside
+   it keep a column each, so a long name does not push them around. */
+.name {
+  composes: ellipsis from './imagine-shared.module.css';
+}
+
+.origin {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-chip);
+  color: var(--imagine-muted);
+  font-size: 11px;
+}
+
+.meta {
+  flex: none;
+  color: var(--imagine-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.more {
+  display: block;
+  margin: 12px auto 0;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-surface);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.more:hover {
+  background: var(--imagine-hover);
+}
+
+/* A phone has no room for the date and the size beside a 64px thumb. */
+@media (max-width: 640px) {
+  .row {
+    height: 60px;
+    gap: 8px;
+  }
+
+  .meta:last-child {
+    display: none;
+  }
+}

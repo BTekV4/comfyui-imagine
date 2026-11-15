@@ -1,0 +1,206 @@
+# Imagine
+
+A local studio for ComfyUI: a chat that turns a sentence into the right graph, a
+queue that runs it, a gallery, and a set of ready-made recipes — image to video,
+object swap, relighting, animated loops, music, voice, upscaling.
+
+It is a single Node process plus a React interface. It talks to ComfyUI over its
+HTTP API and to any OpenAI-compatible chat-completions endpoint for the text and
+vision work. Nothing leaves your machine except the calls to the model endpoint
+you configure.
+
+The interface is written in English; other languages are installable packs, and
+the repository ships Italian (see [Languages](#languages)).
+
+## What it does
+
+- **Chat that drives the graphs.** You describe what you want; the studio picks
+  an action, stages the files you dropped in, and asks the text model to write
+  the prompt for that specific graph.
+- **Recipes, not single nodes.** "Recreate" reads a video with the vision
+  model, redraws its opening frame and renders the clip again from it. "Edit
+  object" tracks an object in a clip and changes, removes or adds it, window by
+  window.
+- **A job queue that survives.** Long renders report progress, can be cancelled,
+  and a music video left half-made is picked up again after a restart.
+- **Graphs as configuration.** Every action is an API-format ComfyUI graph plus a
+  handful of node ids in `config.yaml`. Swap the model, keep the studio.
+- **An MCP server.** `mcp/` exposes the studio's projects, files and jobs as
+  typed tools for MCP clients (Claude Code and other agents). It is a separate
+  process that talks to the studio only through its HTTP API — see
+  [mcp/README.md](mcp/README.md).
+
+## Requirements
+
+- Node 24 or newer (`package.json` declares `"engines": { "node": ">=24" }`).
+- `git`, to get the code and to update it.
+- `ffmpeg` and `ffprobe` on the `PATH`: thumbnails, crops, trims and every
+  video step use them (`apt install ffmpeg` on Debian/Ubuntu).
+- A reachable ComfyUI, with the custom nodes your graphs use.
+- An OpenAI-compatible endpoint for text, and ideally one that takes images.
+- The checkpoints, VAEs and LoRAs your graphs name. **They are not included.**
+
+## Install
+
+```sh
+git clone https://github.com/BTekV4/comfyui-imagine.git
+cd comfyui-imagine
+npm install
+cp config.example.yaml config.yaml     # then edit it: ComfyUI's address, your model endpoint
+npm run build
+node dist/server.mjs
+```
+
+To keep it running, `deploy/imagine.service` is a systemd unit to copy (it
+assumes the app in `/opt/imagine`; keys go in `/opt/imagine/imagine.env`).
+
+To update: `git pull`, `npm install`, `npm run build`, restart. The plugins you
+installed are brought up to the new version at the next start (the old files
+stay beside them as `*.bak-<time>-update`; their settings are never touched).
+
+`npm run build` runs `scripts/build.mjs`, which bundles the server
+(`dist/server.mjs`), the MCP server (`dist/imagine-mcp.mjs`) and the TypeScript
+plugins (`plugins/<id>/index.mjs`) with esbuild, then `vite build web` builds
+the page into `dist/web`. Each part also builds alone: `npm run build:server`,
+`build:mcp`, `build:plugins`, `build:web`. `npm test` runs the test suite.
+
+Open `http://localhost:3090`.
+
+**There is no login until you turn it on.** Whoever reaches the address gets
+in, so on a shared network set a password in **Settings → Access** and switch on
+**Ask for the password**. It works over plain `http://` too; behind an HTTPS
+reverse proxy the login cookie is also marked `Secure` (the proxy must send
+`X-Forwarded-Proto`, as nginx and Nginx Proxy Manager do).
+
+The files live in two places:
+
+| Where | What |
+|---|---|
+| Paths in `config.yaml`, read relative to that file (`./data/…` in the example) | the media the studio makes (`toolComfy.outputDir`), the password hash (`passwordFile`) and the cookie secret (`secretFile`) |
+| `<data>`: `$IMAGINE_HOME`, or `~/.imagine` when the variable is not set | projects, likes and tags, thumbnails, installed plugins and language packs, custom workflows, custom covers, and the settings the page writes |
+
+Back up both. Pointing `toolComfy.outputDir` inside `<data>` keeps everything
+in one folder.
+
+## Configuration
+
+Everything deployment-specific lives in `config.yaml` — no address, path or
+model name is compiled into the code, and every path in it is read relative to
+the file itself.
+
+| Key | What it is |
+|---|---|
+| `providers` / `models` | One entry per OpenAI-shaped endpoint and the models it serves. `vision: true` marks the ones that can read a frame. |
+| `comfy.baseURL` | Where ComfyUI listens. |
+| `toolComfy.workflows` | One entry per action: the graph file, the output extension, and the ids of the nodes carrying the prompt, seed, canvas or input image. An entry you leave out disables that action. |
+| `toolComfy.persona.path` | Who the prompts describe. See below. |
+| `toolComfy.tts` | The speech endpoint for the `speak` action. |
+
+### The persona
+
+Every prompt that has to show a person starts with the same paragraph, and that
+paragraph is data: a JSON file named by `toolComfy.persona.path`.
+
+```json
+{
+  "identity": "The subject, a person standing alone in the photograph, photographed from the front in natural light.",
+  "hair": ""
+}
+```
+
+- `identity` — the paragraph prepended to every draw.
+- `hair` — a colour to pin in the text, when the source frame keeps winning.
+  Empty leaves the text alone.
+
+A deployment without a persona file boots and works: it draws a neutral,
+undescribed person.
+
+## The workflows
+
+`workflows/` holds the graphs in ComfyUI's API format — the same JSON you get
+from "Save (API format)". `config.example.yaml` wires one of them to every
+action, with the node ids that match the shipped files; the others are
+alternative recipes for the same actions (FastH3, MiniMax H3), which take the
+same pins. [workflows/README.md](workflows/README.md) lists every file, the
+config key it serves and what it does. They are examples from one machine: the
+model and LoRA names in them are the ones installed there, so adapt them to
+your ComfyUI. Change a graph, change the model, or write your own, then update
+the pins.
+
+There is no LoRA switching by keyword anywhere: a graph is static, and what
+varies at run time is only what the pins address.
+
+## The home covers
+
+The cards on the home page show no cover until you add your own: the artwork is
+content, not code, and this repository does not ship any. Pick an action in
+**Settings → Workflows** and choose a file under "Cover for this action" (an
+image or a short video), or put files named after the card's key into
+`<data>/covers/` (for example `<data>/covers/video.webp`). Covers live in the
+data directory, so updates do not touch them. Without one a card renders as a
+plain tile and every action still works.
+
+## Languages
+
+English is the source language: it is compiled into the page and is the
+fallback for any key a pack leaves out. Every other language is a pack — one
+JSON file — installed at runtime; see
+[docs/language-packs.md](docs/language-packs.md). The `locales/` folder holds the
+packs this repository ships (Italian, `locales/it.json`); the Plugins page
+installs them.
+
+A browser that has never chosen a language starts in the first of its own
+languages that the installation has (English, or an installed pack), else in
+English. To change the language,
+pick one in **Settings → Language** (the choice is kept in a cookie and in the
+browser's storage), or open the page with `?lang=en` (any installed code works).
+
+The server writes its own texts (errors, notices composed in the background)
+in the language of the page that asked, and otherwise in the installation's base
+language: `language:` in `config.yaml`, `en` by default (`it` is the other one
+the server speaks).
+
+## Plugins
+
+Extra features are plugins, installed as a folder under `<data>/plugins/<id>/`
+with a `manifest.json` and an `index.mjs`. The studio with no plugins is the
+studio as described in this file: no route, no section in the settings page, no
+timer. A plugin declares its settings in the manifest and the settings page draws
+them, so adding one needs no change here.
+
+The base studio has no social side at all: publishing to Instagram and the
+Telegram alerts are plugins too, in `plugins/instagram/` and `plugins/telegram/`,
+and `plugins/example-webhook/` is the small one to copy. The page **Plugin** in
+the rail lists what is installed (with a switch each), what could not load, and
+what the repository ships and the data folder does not have — with an Install
+button, so installing one needs no terminal.
+
+`plugins/openjutsu/` and `plugins/iopaint/` show two separate web apps inside the
+studio (and IOPaint also powers **Remove object**). The apps are not part of this
+repository: install and run them on their own, then enter their address in the
+plugin's settings. Their READMEs say what each one needs.
+
+`docs/plugin-api.md` is the contract: manifest fields, the `ctx` a plugin is set
+up with, routes under `/plugin/<id>/`, the tick and the status, how settings are
+stored and validated, and what happens when a plugin is broken. A plugin can be
+plain `.mjs` or TypeScript: `npm run build:plugins` bundles `plugins/<id>/src/`
+into the `index.mjs` the host loads, inlining the host modules it imports.
+
+## Status
+
+This is a working studio published as-is, not a framework. The graphs are tied to
+specific model families (Krea 2 for images, MiniMax H3 for video; Qwen-Image,
+FLUX.3 Klein, SeedVR2 and MiniMax Music for single actions) because
+that is what the recipes were measured on. Other families work if you write the graph.
+
+## Contributing
+
+Help is welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for how to run it in
+development, the tests, and the few rules the code follows. Bugs and ideas go to
+[GitHub issues](https://github.com/BTekV4/comfyui-imagine/issues).
+
+## License
+
+MIT — see `LICENSE`. Portions derive from DeepSeek Harness (MIT); the notice is
+in `NOTICE`. The model weights the graphs reference are not distributed here and
+carry their own licenses.

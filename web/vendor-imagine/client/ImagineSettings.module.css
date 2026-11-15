@@ -1,0 +1,554 @@
+/*
+ * The Imagine settings page. It reads in Imagine's own tokens (--imagine-*,
+ * defined on .page) so it follows the theme like every other surface here, and
+ * it sets box-sizing itself: this page has no global border-box.
+ */
+
+.root {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  color: var(--imagine-ink);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 6px 24px 24px;
+  max-width: 1040px;
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+}
+
+.title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.2px;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--imagine-muted);
+  font-size: 12.5px;
+}
+
+.endpoint {
+  font-family: var(--imagine-mono);
+  font-size: 11.5px;
+  color: var(--imagine-ink);
+  overflow-wrap: anywhere;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  background: var(--imagine-surface);
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-card);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 650;
+}
+
+.subTitle {
+  margin: 12px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sectionHint,
+.hint,
+.muted,
+.running {
+  margin: 0;
+  color: var(--imagine-muted);
+  font-size: 12px;
+}
+
+.running code {
+  color: var(--imagine-ink);
+}
+
+/* ── Configuration fields ───────────────────────────────────────────── */
+
+.fields {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.fieldHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fieldLabel {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.fieldBadges {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.badge {
+  padding: 1px 7px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  color: var(--imagine-muted);
+  font-size: 10.5px;
+}
+
+.reset {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--imagine-muted);
+  font: inherit;
+  font-size: 11.5px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.select,
+.textarea,
+.input,
+.filter {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 7px 9px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--imagine-ink);
+  background: var(--imagine-chip);
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-sm);
+}
+
+.textarea {
+  min-height: 66px;
+  resize: vertical;
+  font-family: var(--imagine-mono);
+}
+
+.invalid {
+  margin: 0;
+  color: var(--imagine-danger);
+  font-size: 11.5px;
+}
+
+.error {
+  margin: 0;
+  color: var(--imagine-danger);
+  font-size: 12px;
+}
+
+.ok {
+  margin: 0;
+  color: var(--imagine-success);
+  font-size: 12px;
+}
+
+.notice,
+.warn {
+  margin: 0;
+  padding: 8px 11px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-sm);
+  font-size: 12px;
+}
+
+.notice {
+  color: var(--imagine-warn);
+  background: var(--imagine-hover);
+}
+
+.warn {
+  color: var(--imagine-warn);
+}
+
+/* ── Status ─────────────────────────────────────────────────────────── */
+
+.statusHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.statusWord {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.dotOn,
+.dotOff {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  corner-shape: round;
+  flex: none;
+}
+
+.dotOn {
+  background: var(--imagine-success);
+}
+
+.dotOff {
+  background: var(--imagine-danger);
+}
+
+.facts {
+  display: grid;
+  gap: 4px 12px;
+  grid-template-columns: auto 1fr;
+  margin: 0;
+  font-size: 12px;
+}
+
+.fact {
+  display: contents;
+}
+
+.fact dt {
+  color: var(--imagine-muted);
+}
+
+.fact dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────── */
+
+.button,
+.buttonPrimary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--imagine-ink);
+  background: var(--imagine-chip);
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-sm);
+  cursor: pointer;
+}
+
+.buttonPrimary {
+  color: var(--imagine-ink-fg);
+  background: var(--imagine-focus);
+  border-color: transparent;
+}
+
+.button:disabled,
+.buttonPrimary:disabled,
+.iconButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.button:focus-visible,
+.buttonPrimary:focus-visible,
+.iconButton:focus-visible,
+.reset:focus-visible,
+.select:focus-visible,
+.textarea:focus-visible,
+.input:focus-visible,
+.filter:focus-visible {
+  outline: 2px solid var(--imagine-focus);
+  outline-offset: 1px;
+}
+
+/* ── Workflows ──────────────────────────────────────────────────────── */
+
+.filter {
+  max-width: 420px;
+}
+
+.node {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 9px 11px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-md);
+}
+
+.nodeHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--imagine-muted);
+  font-size: 11.5px;
+}
+
+.nodeHead code {
+  color: var(--imagine-ink);
+  font-family: var(--imagine-mono);
+  font-size: 12px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(80px, 150px) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.rowLabel {
+  font-size: 12px;
+  color: var(--imagine-muted);
+  overflow-wrap: anywhere;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--imagine-muted);
+  background: var(--imagine-chip);
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-sm);
+  cursor: pointer;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.diff {
+  color: var(--imagine-muted);
+  overflow-wrap: anywhere;
+}
+
+.diff code {
+  color: var(--imagine-ink);
+  font-family: var(--imagine-mono);
+}
+
+/* ── Staged save bar ────────────────────────────────────────────────── */
+
+.footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 10px 24px;
+  background: var(--imagine-surface);
+  border-top: 1px solid var(--imagine-line);
+}
+
+@media (max-width: 640px) {
+  .body {
+    padding: 4px 14px 20px;
+  }
+
+  .footer {
+    padding: 10px 14px;
+  }
+
+  .row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .rowLabel {
+    grid-column: 1 / -1;
+  }
+}
+
+/* The settings page tabs: one row that scrolls horizontally when they do not
+   fit, instead of wrapping and stealing height. */
+.tabBar {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 0 10px;
+  border-bottom: 1px solid var(--imagine-line);
+  margin-bottom: 14px;
+  scrollbar-width: none;
+}
+.tabBar::-webkit-scrollbar { display: none; }
+.tabBarButton, .tabBarOn {
+  flex: 0 0 auto;
+  border: 1px solid var(--imagine-line);
+  background: transparent;
+  color: inherit;
+  border-radius: var(--imagine-radius-pill);
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+.tabBarOn {
+  opacity: 1;
+  background: var(--imagine-surface);
+  border-color: var(--imagine-accent);
+}
+
+/* The language: a single row at the top of the settings, always visible. */
+.localeRow { display: flex; flex-direction: column; align-items: flex-start; }
+.localeLabel { display: flex; width: 100%; max-width: 520px; }
+/* A language asked for but not installed: say so, do not stay silent. */
+.localeFallback {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--imagine-danger);
+}
+
+/* A graph node: one row to open, not forty boxes in a line. */
+.node summary { cursor: pointer; list-style: none; }
+.node summary::-webkit-details-marker { display: none; }
+.node summary::before {
+  content: '▸';
+  display: inline-block;
+  width: 12px;
+  opacity: 0.6;
+  transition: transform 0.15s ease;
+}
+.node[open] summary::before { transform: rotate(90deg); }
+.nodeClass { opacity: 0.65; font-size: 12px; }
+.nodeCount {
+  margin-left: auto;
+  font-size: 11px;
+  opacity: 0.5;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  padding: 1px 7px;
+}
+
+/* The "Apply" text on the left, the buttons on the right (2026-11-07). */
+.footer > [role='status'] { margin-right: auto; }
+
+/* The host tabs stay mounted (drafts are not lost): same spacing as the body. */
+.pane { display: flex; flex-direction: column; gap: 16px; }
+.pane[hidden] { display: none; }
+
+/*
+ * The settings rework of 2026-11-13.
+ *
+ * A field that stands alone in its card takes the same width as the host's
+ * fields (520 px) instead of the whole card.
+ */
+.fieldsOne {
+  display: grid;
+  gap: 12px;
+  max-width: 520px;
+}
+
+/* "Advanced": closed by default, one row that says what is inside. */
+.more {
+  margin-top: 6px;
+  border-top: 1px solid var(--imagine-line);
+  padding-top: 10px;
+}
+
+.more > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.more > summary::-webkit-details-marker { display: none; }
+
+.moreHead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.moreHead::before {
+  content: '▸';
+  display: inline-block;
+  width: 12px;
+  opacity: 0.6;
+  transition: transform 0.15s ease;
+}
+
+.more[open] > .moreHead::before { transform: rotate(90deg); }
+
+.more[open] > .moreHead { margin-bottom: 10px; }
+
+.moreHint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--imagine-muted);
+}
+
+/* Every label of the page in one size and weight, the Workflow tab's too. */
+.fieldLabel {
+  font-size: 13px;
+}
+
+/*
+ * The shared field primitive draws a list (12 px of padding and a rule between
+ * two fields); in a grid that rule cut across one column only and pushed the
+ * "Path separators" field out of line with its neighbours.
+ */
+.section .fields > div,
+.section .fieldsOne > div {
+  padding: 0;
+  border-top: none;
+}
+
+.fields {
+  align-items: start;
+}
+
+/* The shared primitive's labels in the same weight as the page's own. */
+.section .fields > div label,
+.section .fieldsOne > div label {
+  font-weight: 600;
+}
+
+/* The action picker as wide as the other single fields. */
+.actionPick {
+  max-width: 520px;
+}

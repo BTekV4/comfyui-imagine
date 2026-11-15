@@ -1,0 +1,385 @@
+/* The viewer's column (PostPanel.tsx), as Grok's post page: tools along the
+   top, the tool's content, the actions and a row of icons at the foot. */
+.panel {
+  grid-area: panel;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  box-sizing: border-box;
+  background: var(--imagine-viewer-bg);
+  color: var(--imagine-on-media);
+}
+
+.tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 52px;
+}
+
+.tool {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: rgb(255 255 255 / 0.75);
+  cursor: pointer;
+  transition: background-color 150ms, color 150ms, transform 150ms;
+}
+
+.tool:hover { background: rgb(255 255 255 / 0.08); color: #fff; }
+.tool:active { transform: scale(0.95); }
+.tool[aria-pressed='true'] { background: rgb(255 255 255 / 0.12); color: #fff; }
+
+.body {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.actions {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 16px 8px;
+}
+
+.big {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.06);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 150ms;
+}
+
+.big:hover { background: rgb(255 255 255 / 0.1); }
+.big[data-primary] { background: #fff; color: #000; }
+.big[data-primary]:hover { background: rgb(255 255 255 / 0.9); }
+.big:disabled { opacity: 0.45; cursor: default; }
+.bigIcon { display: inline-flex; flex: none; width: 20px; justify-content: center; }
+.bigIcon svg { width: 16px; height: 16px; }
+.bigLabel { flex: 1; text-align: center; }
+
+.foot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 4px 12px 14px;
+}
+
+.icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: rgb(255 255 255 / 0.7);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.icon:hover { background: rgb(255 255 255 / 0.08); color: #fff; }
+.icon[aria-pressed='true'] { color: var(--imagine-like); }
+.icon svg { width: 18px; height: 18px; }
+
+.menuBox { position: relative; }
+
+.menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 220px;
+  max-height: 60vh;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 6px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 14px;
+  background: var(--imagine-surface);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.menuItem:hover { background: rgb(255 255 255 / 0.08); }
+.menuItem[data-danger] { color: var(--imagine-danger, #ff6b6b); }
+.menuItem:disabled { opacity: 0.45; cursor: default; }
+.menuItem svg { flex: none; width: 16px; height: 16px; }
+
+/* A tool's own content. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 16px;
+}
+
+.sectionTitle {
+  color: rgb(255 255 255 / 0.6);
+  font-size: 14px;
+}
+
+.slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.06);
+}
+
+.slider input {
+  flex: 1;
+  accent-color: #fff;
+  cursor: pointer;
+}
+
+.dotSmall,
+.dotLarge {
+  flex: none;
+  box-sizing: border-box;
+  border: 1.5px solid rgb(255 255 255 / 0.6);
+  border-radius: 50%;
+}
+
+.dotSmall { width: 8px; height: 8px; }
+.dotLarge { width: 18px; height: 18px; }
+
+.hint {
+  margin: 0;
+  color: rgb(255 255 255 / 0.55);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.link {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: rgb(255 255 255 / 0.75);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .panel { max-height: 45vh; }
+}
+
+/* ── «Colori» ─────────────────────────────────────────────────────────────── */
+.paletteStrip {
+  display: flex;
+  height: 36px;
+  overflow: hidden;
+  border-radius: 10px;
+}
+
+.swatch {
+  position: relative;
+  flex: 1;
+  cursor: pointer;
+}
+
+.swatch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.swatchRemove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.swatch:hover .swatchRemove { display: block; }
+
+.softButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.06);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.softButton:hover { background: rgb(255 255 255 / 0.1); }
+
+.presets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 10px;
+}
+
+.preset {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.presetStrip {
+  display: flex;
+  width: 100%;
+  height: 30px;
+  overflow: hidden;
+  border-radius: 8px;
+  transition: transform 150ms;
+}
+
+.presetStrip > span { flex: 1; }
+.preset:hover .presetStrip { transform: scale(1.03); }
+.presetName { color: rgb(255 255 255 / 0.85); }
+
+.applyButton {
+  flex: none;
+  height: 44px;
+  margin-top: 6px;
+  border: none;
+  border-radius: 12px;
+  background: #fff;
+  color: #000;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.applyButton:disabled { background: rgb(255 255 255 / 0.1); color: rgb(255 255 255 / 0.45); cursor: default; }
+
+/* ── «Disegna» ────────────────────────────────────────────────────────────── */
+.segmented {
+  display: flex;
+  padding: 3px;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.06);
+}
+
+.segment {
+  flex: 1;
+  height: 30px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: rgb(255 255 255 / 0.6);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.segment[aria-checked='true'] { background: rgb(255 255 255 / 0.12); color: #fff; }
+
+.colorRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.colorDot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.2);
+}
+
+.colorDot[aria-pressed='true'] { border-color: #fff; box-shadow: 0 0 0 2px rgb(0 0 0 / 0.6) inset; }
+.colorDot[data-tool] { background: rgb(255 255 255 / 0.08); }
+
+.colorDot input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.select {
+  height: 36px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.06);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+}

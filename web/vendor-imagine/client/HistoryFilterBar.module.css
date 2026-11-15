@@ -1,0 +1,154 @@
+/*
+ * The History's filter bar. It sits in the flow above the board, so it never
+ * covers a tile and the board's own gestures never see a press on it; the two
+ * menus hang over the board from their own seat.
+ */
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--imagine-line);
+  background: var(--imagine-surface);
+  font-family: var(--imagine-font-text);
+}
+
+/*
+ * Above the phone breakpoint the chat column floats over the studio's left
+ * edge, so the bar starts where the column ends. Below it the column is a band
+ * above the board and the plain inset is right. The column is opaque, so a chip
+ * under it is not dimmed — it is invisible.
+ */
+@media (min-width: 641px) {
+  .bar {
+    padding-left: calc(var(--imagine-chat-w, 0px) + 12px);
+  }
+}
+
+.seat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* A menu keeps its own seat so the panel hangs under the button. */
+.menuSeat {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  /* 28, not the composer's 36: this bar is a strip above the board and every
+     pixel of height it takes comes off the canvas. */
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-chip);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip:hover {
+  background: var(--imagine-hover);
+}
+
+.chip[data-on] {
+  background: var(--imagine-chip-on);
+  box-shadow: 0 0 0 1px var(--imagine-line);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-surface);
+  font-size: 11px;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 176px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--imagine-surface);
+  box-shadow: 0 10px 28px var(--imagine-scrim);
+}
+
+.menu button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.menu button:hover {
+  background: var(--imagine-hover);
+}
+
+.menu button[data-on] {
+  background: var(--imagine-chip-on);
+}
+
+/* The tick keeps its column whether or not it is drawn, so the labels line up. */
+.mark {
+  display: inline-block;
+  width: 12px;
+  color: var(--imagine-muted);
+}
+
+.count {
+  margin-left: auto;
+  color: var(--imagine-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.clear {
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: transparent;
+  color: var(--imagine-muted);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.clear:hover {
+  background: var(--imagine-hover);
+  color: inherit;
+}

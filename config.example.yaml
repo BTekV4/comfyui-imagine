@@ -1,0 +1,538 @@
+# Imagine — example configuration.
+#
+# Copy to config.yaml (or point IMAGINE_CONFIG at it) and fill in your own
+# values. Nothing here is secret: API keys are read from the environment
+# variable each provider names, so this file can be committed.
+#
+# Every path is read relative to THIS FILE, so the app can be started from
+# anywhere.
+
+port: 3090
+host: 0.0.0.0
+# The language the server writes in when the page does not say (notices,
+# errors of background work): en or it. The page itself follows the browser.
+language: en
+# Built by `npm run build`.
+webDir: ./dist/web
+
+# Login: the password is hashed into this file on first run.
+passwordFile: ./data/password.json
+secretFile: ./data/cookie-secret
+
+# ---------------------------------------------------------------------------
+# LLM providers: anything that speaks the OpenAI chat-completions shape.
+# ---------------------------------------------------------------------------
+providers:
+  local:
+    baseURL: http://127.0.0.1:11434/v1     # Ollama, vLLM, LM Studio, llama.cpp…
+    apiKeyEnv: LOCAL_API_KEY               # optional: omit for a keyless server
+    timeoutMs: 600000
+  openai:
+    baseURL: https://api.openai.com/v1
+    apiKeyEnv: OPENAI_API_KEY
+
+# The models the composer offers. `vision: true` ones can read the clip frames.
+models:
+  - provider: local
+    id: qwen3-vl:8b
+    name: Qwen3-VL 8B
+    vision: true
+  - provider: openai
+    id: gpt-4o-mini
+    name: GPT-4o mini
+    vision: true
+
+defaultModel:
+  provider: local
+  model: qwen3-vl:8b
+
+# ---------------------------------------------------------------------------
+# ComfyUI
+# ---------------------------------------------------------------------------
+comfy:
+  baseURL: http://127.0.0.1:8188
+  pathStyle: auto          # auto | absolute | relative
+  timeoutMs: 2700000
+
+# ---------------------------------------------------------------------------
+# The studio: where files land, which graphs back which action, who it draws.
+# Every entry under `workflows` is optional: an action whose graph is missing
+# simply reports that it is not configured.
+# ---------------------------------------------------------------------------
+toolComfy:
+  outputDir: ./data/outputs
+
+  # Who the prompts describe. See persona/example.json for the shape.
+  persona:
+    path: ./persona/example.json
+
+  # Text to speech, for the `speak` action (OpenAI-shaped speech API).
+  # tts:
+  #   baseURL: http://127.0.0.1:8880/v1
+  #   model: kokoro
+  #   voice: af_heart
+  #   format: mp3
+
+  # One entry per action. `path` is an API-format graph (ComfyUI "Save (API
+  # format)"); the other fields pin the node ids the studio writes on every
+  # run. The ids below match the graphs shipped in ./workflows/: if you edit a
+  # graph or bring your own, update them. `pathHigh`, where present, is the
+  # graph used when the job asks for high quality (or slow speed); it must
+  # carry the same pins. See workflows/README.md for the alternatives.
+  workflows:
+    # ---------------------------------------------------------------- images
+
+    # Text to image (Krea 2). Prompt, seed and canvas pins; `steps.high` is the
+    # sampler step count used for "Quality: high" (the graph is saved at 8).
+    generateImage:
+      path: ./workflows/comfyui_generazione_krea2_API.json
+      outputExt: webp
+      promptNodeId: "73"
+      seedNodeId: "53"
+      sizeNodeId: "52"
+      steps:
+        nodeId: "53"
+        field: steps
+        high: 16
+
+    # The opening frame a "recreate" redraws from the reference clip's
+    # description. Any text-to-image graph works; here the same Krea 2 graph.
+    recreateFrame:
+      path: ./workflows/comfyui_generazione_krea2_API.json
+      outputExt: webp
+      promptNodeId: "73"
+      seedNodeId: "53"
+      sizeNodeId: "52"
+      steps:
+        nodeId: "53"
+        field: steps
+        high: 16
+
+    # Image to image (the "remix" action): an anchored Krea 2 edit.
+    editImage:
+      path: ./workflows/comfyui_edit_krea2_API.json
+      outputExt: webp
+      promptNodeId: "500"
+      steps:
+        nodeId: "307"
+        field: steps
+        high: 16
+
+    # The same edit confined to a zone the user marked: the mask goes into the
+    # `lastImageNodeId` node, and pixels outside it stay the source's own.
+    editImageRegion:
+      path: ./workflows/comfyui_edit_krea2_region_API.json
+      outputExt: webp
+      promptNodeId: "500"
+      seedNodeId: "307"
+      imageNodeId: "76"
+      lastImageNodeId: "600"
+      steps:
+        nodeId: "307"
+        field: steps
+        high: 16
+
+    # "Compose with references" (Qwen-Image 2.1): two photos, the person and a
+    # reference (outfit, setting), into one. The prompt node is the encoder.
+    composeRefs:
+      path: ./workflows/qwen_compose_refs_API.json
+      outputExt: png
+      promptNodeId: "6"
+      imageNodeId: "4"
+      lastImageNodeId: "5"
+
+    # "Relight the photo" (FLUX.3 Klein): the text is the chosen lighting look.
+    # The graph derives its canvas from the photo, so there is no sizeNodeId.
+    relight:
+      path: ./workflows/comfyui_edit_flux3_relight_API.json
+      outputExt: png
+      promptNodeId: "500"
+      promptField: text
+      seedNodeId: "19"
+      seedField: seed
+      imageNodeId: "9"
+
+    # Image upscale (SeedVR2, 4K).
+    upscaleImage:
+      path: ./workflows/SeedVR2_4K_image_upscale.json
+      outputExt: webp
+      imageNodeId: "16"
+      seedNodeId: "10"
+
+    # Background removal (BiRefNet), the "bg" action.
+    removeBackground:
+      path: ./workflows/utility_birefnet_remove_background.json
+      outputExt: webp
+      imageNodeId: "22"
+
+    # ---------------------------------------------------------------- video
+    # The clip graphs below use MiniMax H3 with the Pika LoRA: the "fast" graph
+    # (4 steps) by default, the "quality" graph (6 steps) as `pathHigh`. The
+    # FastH3 graphs in ./workflows/ take the same pins and can replace either.
+    # `realism` is the optional realism LoRA node: its strength and trigger
+    # word are applied when a job asks for it.
+
+    # Image to video. `lastImageNodeId` is the optional end frame: without one
+    # the studio unlinks it.
+    createVideo:
+      path: ./workflows/comfyui_video_i2v_pika_fast_API.json
+      pathHigh: ./workflows/comfyui_video_i2v_pika_quality_API.json
+      outputExt: mp4
+      promptNodeId: "105:104"
+      promptField: prompt
+      imageNodeId: "1682:114"
+      lastImageNodeId: "9001"
+      lastFrameNodeId: "105:104"
+      seedNodeId: "105:15"
+      seedField: noise_seed
+      sizeNodeId: "105:104"
+      aspectRatio:
+        nodeId: "1682:115"
+        field: aspect_ratio
+      seconds:
+        nodeId: "105:111"
+        field: value
+      realism:
+        nodeId: "1682:200"
+        field: strength_model
+        strength: 1.25
+        token: r34l1sm
+
+    # The clip a "recreate" renders from its redrawn opening frame. Left out,
+    # recreate uses createVideo; here it is the same graph, spelt out.
+    recreateVideo:
+      path: ./workflows/comfyui_video_i2v_pika_fast_API.json
+      pathHigh: ./workflows/comfyui_video_i2v_pika_quality_API.json
+      outputExt: mp4
+      promptNodeId: "105:104"
+      promptField: prompt
+      imageNodeId: "1682:114"
+      lastImageNodeId: "9001"
+      lastFrameNodeId: "105:104"
+      seedNodeId: "105:15"
+      seedField: noise_seed
+      sizeNodeId: "105:104"
+      aspectRatio:
+        nodeId: "1682:115"
+        field: aspect_ratio
+      seconds:
+        nodeId: "105:111"
+        field: value
+      realism:
+        nodeId: "1682:200"
+        field: strength_model
+        strength: 1.25
+        token: r34l1sm
+
+    # Animated background (the "loop" action): the graph wraps the latent's end
+    # onto its start, so the clip comes back periodic; the photo is a
+    # reference, not a pinned first frame.
+    loopVideo:
+      path: ./workflows/comfyui_video_loop_pika_fast_API.json
+      pathHigh: ./workflows/comfyui_video_loop_pika_quality_API.json
+      outputExt: mp4
+      promptNodeId: "105:104"
+      promptField: prompt
+      imageNodeId: "1682:114"
+      seedNodeId: "105:15"
+      seedField: noise_seed
+      aspectRatio:
+        nodeId: "1682:115"
+        field: aspect_ratio
+      seconds:
+        nodeId: "105:111"
+        field: value
+      realism:
+        nodeId: "1682:200"
+        field: strength_model
+        strength: 1.25
+        token: r34l1sm
+
+    # Continue an existing clip (the "extend" action): the tail of the clip
+    # goes into the video node.
+    extendVideo:
+      path: ./workflows/comfyui_video_extend_pika_fast_API.json
+      pathHigh: ./workflows/comfyui_video_extend_pika_quality_API.json
+      outputExt: mp4
+      promptNodeId: "1682:131"
+      promptField: prompt
+      seedNodeId: "1682:129"
+      seedField: noise_seed
+      videoNodeId: "1682:300"
+      videoField: file
+      sizeNodeId: "1682:131"
+      aspectRatio:
+        nodeId: "1682:115"
+        field: aspect_ratio
+      seconds:
+        nodeId: "1682:133"
+        field: value
+      realism:
+        nodeId: "1682:200"
+        field: strength_model
+        strength: 1.25
+        token: r34l1sm
+
+    # A clip that sings a given track: the song slice is anchored at a frame
+    # (MiniMaxH3AddGuide), so the mouth follows the song. `chain` pins the
+    # nodes that carry one shot into the next. An optional `lipsync` block
+    # ({ probe: <script>, min, retries }) re-renders shots whose mouth does not
+    # follow the song; it needs a probe script of your own, so it is left out.
+    videoOnSong:
+      path: ./workflows/comfyui_video_song_pika_fast_API.json
+      pathHigh: ./workflows/comfyui_video_song_pika_quality_API.json
+      outputExt: mp4
+      promptNodeId: "1682:131"
+      promptField: prompt
+      imageNodeId: "1682:114"
+      seedNodeId: "1682:129"
+      seedField: noise_seed
+      aspectRatio:
+        nodeId: "1682:115"
+        field: aspect_ratio
+      seconds:
+        nodeId: "1682:133"
+        field: value
+      realism:
+        nodeId: "1682:200"
+        field: strength_model
+        strength: 1.25
+        token: r34l1sm
+      songAudio:
+        nodeId: "1682:400"
+        field: audio
+      songStart:
+        nodeId: "1682:401"
+        field: start_index
+      songDuration:
+        nodeId: "1682:401"
+        field: duration
+      songFrame:
+        nodeId: "1682:402"
+        field: frame_idx
+      songPrerollStart:
+        nodeId: "1682:602"
+        field: start_index
+      songPrerollDuration:
+        nodeId: "1682:602"
+        field: duration
+      chain:
+        loadNodeId: "1682:501"
+        saveNodeId: "1682:500"
+
+    # "Edit object": a windowed H3 swap whose tracked subject is an object,
+    # one window of the clip per run (`canvasMegapixels` caps the canvas to
+    # keep a window fast). One entry per mode, each with its own graph.
+    # subjectText is what the segmenter tracks; referenceText and sceneText
+    # are the two halves of the prompt.
+
+    # Mode "change": the tracked object is replaced (optionally from a photo).
+    objectSwap:
+      path: ./workflows/comfyui_video_object_swap_API.json
+      outputExt: mp4
+      imageNodeId: "9"
+      videoNodeId: "30"
+      videoField: file
+      seedNodeId: "42"
+      seedField: seed
+      sizeNodeId: "900"
+      canvasMegapixels: 0.58
+      subjectText:
+        nodeId: p0
+        field: text
+      referenceText:
+        nodeId: "10"
+        field: values.a
+      sceneText:
+        nodeId: "10"
+        field: values.b
+      seconds:
+        nodeId: "32"
+        field: value
+      windowStart:
+        nodeId: "35"
+        field: start_time
+
+    # Mode "remove": the masked area is regenerated as the surrounding scene.
+    objectSwapRemove:
+      path: ./workflows/comfyui_video_object_swap_remove_API.json
+      outputExt: mp4
+      videoNodeId: "30"
+      videoField: file
+      seedNodeId: "42"
+      seedField: seed
+      sizeNodeId: "900"
+      canvasMegapixels: 0.58
+      subjectText:
+        nodeId: p0
+        field: text
+      referenceText:
+        nodeId: "10"
+        field: values.a
+      sceneText:
+        nodeId: "10"
+        field: values.b
+      seconds:
+        nodeId: "32"
+        field: value
+      windowStart:
+        nodeId: "35"
+        field: start_time
+
+    # Mode "background": the mask is inverted, so the surroundings are redrawn
+    # and the tracked subject stays. Takes no photo.
+    objectSwapBackground:
+      path: ./workflows/comfyui_video_object_swap_background_API.json
+      outputExt: mp4
+      videoNodeId: "30"
+      videoField: file
+      seedNodeId: "42"
+      seedField: seed
+      sizeNodeId: "900"
+      canvasMegapixels: 0.58
+      subjectText:
+        nodeId: p0
+        field: text
+      referenceText:
+        nodeId: "10"
+        field: values.a
+      sceneText:
+        nodeId: "10"
+        field: values.b
+      seconds:
+        nodeId: "32"
+        field: value
+      windowStart:
+        nodeId: "35"
+        field: start_time
+
+    # Mode "add", described in words: the object is drawn inside the box the
+    # user placed, written as JSON keyframes into the placement node.
+    objectSwapAdd:
+      path: ./workflows/comfyui_video_object_swap_add_API.json
+      outputExt: mp4
+      videoNodeId: "30"
+      videoField: file
+      seedNodeId: "42"
+      seedField: seed
+      sizeNodeId: "900"
+      canvasMegapixels: 0.58
+      referenceText:
+        nodeId: "10"
+        field: values.a
+      sceneText:
+        nodeId: "10"
+        field: values.b
+      seconds:
+        nodeId: "32"
+        field: value
+      windowStart:
+        nodeId: "35"
+        field: start_time
+      placementText:
+        nodeId: p_place
+        field: placement
+
+    # Mode "add" from a photo of the object: chosen instead of objectSwapAdd
+    # when the request carries a photo.
+    objectSwapAddPhoto:
+      path: ./workflows/comfyui_video_object_swap_add_photo_API.json
+      outputExt: mp4
+      imageNodeId: "9"
+      videoNodeId: "30"
+      videoField: file
+      seedNodeId: "42"
+      seedField: seed
+      sizeNodeId: "900"
+      canvasMegapixels: 0.58
+      referenceText:
+        nodeId: "10"
+        field: values.a
+      sceneText:
+        nodeId: "10"
+        field: values.b
+      seconds:
+        nodeId: "32"
+        field: value
+      windowStart:
+        nodeId: "35"
+        field: start_time
+      placementText:
+        nodeId: p_place
+        field: placement
+
+    # Video upscale (SeedVR2, HD) for clips up to `shortSeconds` long.
+    upscaleVideo:
+      path: ./workflows/SeedVR2_HD_video_upscale_native.json
+      outputExt: mp4
+      videoNodeId: "1"
+      seedNodeId: "10"
+      shortSeconds: 10
+
+    # The same for longer clips: a VHS meta-batch chain that ComfyUI requeues
+    # once per block of frames.
+    upscaleVideoLong:
+      path: ./workflows/SeedVR2_HD_video_upscale_native_batched.json
+      outputExt: mp4
+      videoNodeId: "1"
+      videoField: video
+      seedNodeId: "10"
+      metaBatchNodeId: "30"
+      videoCombineNodeId: "15"
+
+    # "Regenerate detail" (Open-H3 refiner): lifts the clip's latent with a 3D
+    # convolution and redraws it in a few steps. `sizeNodeId` declares the
+    # format to the sampler; `upscaleNodeId` receives it as mode.width/height.
+    regenerateDetail:
+      path: ./workflows/comfyui_video_regenerate_detail_API.json
+      outputExt: mp4
+      promptNodeId: "10"
+      promptField: value
+      seedNodeId: "17"
+      seedField: noise_seed
+      videoNodeId: "1"
+      videoField: file
+      sizeNodeId: "11"
+      upscaleNodeId: "5"
+
+    # ---------------------------------------------------------------- audio
+
+    # Text to music (MiniMax Music 3): caption, lyrics and length pins.
+    generateMusic:
+      path: ./workflows/audio_minimax_music_3.json
+      outputExt: mp3
+      promptNodeId: "37:13"
+      promptField: caption
+      seedNodeId: "37:38"
+      seedField: seed
+      lyrics:
+        nodeId: "37:13"
+        field: lyrics
+      duration:
+        nodeId: "37:13"
+        field: max_duration
+
+    # Voice changer (the "voice" action): RVC over the isolated vocal. `voices`
+    # lists the RVC model files offered; name the ones installed on your
+    # ComfyUI (the list below is a placeholder).
+    changeVoice:
+      path: ./workflows/audio_voice_rvc_parlato_API.json
+      outputExt: mp3
+      audioNodeId: "1"
+      audioField: audio
+      voice:
+        nodeId: "4"
+        field: model
+      pitch:
+        nodeId: "6"
+        field: pitch
+      voices:
+        - voice-model.pth
+
+    # Internal step: isolates a track's vocal, which the singing clip listens
+    # to (the full mix still goes over the video).
+    extractVocals:
+      path: ./workflows/audio_vocals_API.json
+      outputExt: mp3
+      audioNodeId: "1"
+      audioField: audio

@@ -1,0 +1,134 @@
+/* The project canvas (Board.tsx): the dotted board, its world layer, the
+   marquee, the alignment guides and the bar under a multi-selection. */
+
+.board {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  /* The stage is a column now: without this the board would refuse to shrink
+     under the filter bar and push itself out of the studio. */
+  min-height: 0;
+  overflow: hidden;
+  background: var(--imagine-bg);
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
+/*
+ * What arrived while the user was looking somewhere else: the board used to
+ * jump to every new tile by itself, which lost the place it was read at. The
+ * count sits under the board, out of the way, and travels there on a press.
+ */
+/* Same pill as the History's "more files", under the board instead of over
+   it: the two never show at once, and they must read as the same control. */
+.newMedia {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 10;
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-surface);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: var(--imagine-shadow);
+}
+
+.newMedia:hover {
+  background: var(--imagine-hover);
+}
+
+/* `scale`, not `transform`: the translate above centres the pill, and a
+   transform here would replace it and jump it out from under the cursor. */
+.newMedia:active {
+  scale: 0.97;
+}
+
+.boardHand {
+  cursor: grab;
+}
+
+.boardPanning {
+  cursor: grabbing;
+}
+
+/*
+ * The dot grid, painted over the visible board only and moved with the camera
+ * through --imagine-grid-*. It used to be a 16000px square inside the scaled
+ * .canvas layer, repainted whole (48000px at 3x) on every zoom step. The
+ * variables sit on this node and not on .board: a custom property on the board
+ * is inherited by every tile, and changing it per step restyled the whole tree.
+ */
+.grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(
+    circle,
+    var(--imagine-dot) calc(1px * var(--imagine-grid-dot, 1)),
+    transparent calc(1.2px * var(--imagine-grid-dot, 1))
+  );
+  background-size: var(--imagine-grid-step, 22px) var(--imagine-grid-step, 22px);
+  background-position: var(--imagine-grid-x, 0) var(--imagine-grid-y, 0);
+}
+
+.canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  transform-origin: 0 0;
+}
+
+.marquee {
+  position: absolute;
+  z-index: 4;
+  box-sizing: border-box;
+  border: 1px solid rgb(255 255 255 / 0.85);
+  background: rgb(255 255 255 / 0.12);
+  pointer-events: none;
+}
+
+/* Alignment lines while a tile moves or resizes, Grok's orange. */
+.guideV,
+.guideH {
+  position: absolute;
+  z-index: 5;
+  background: var(--imagine-guide);
+  pointer-events: none;
+}
+
+.guideV { top: -100000px; height: 200000px; }
+.guideH { left: -100000px; width: 200000px; }
+
+.selectionBar {
+  /* Anchored by its top-centre under the selection's bounding box, inside the
+     canvas layer: it pans with the board and counter-scales against the zoom,
+     the way one tile's own toolbar does. */
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--imagine-surface);
+  box-shadow: 0 10px 28px var(--imagine-scrim);
+  transform-origin: top center;
+}
+
+@media (max-width: 640px) {
+  .board {
+    /* The canvas takes everything the stacked chat leaves. */
+    flex: 1;
+    min-height: 0;
+  }
+}

@@ -1,0 +1,106 @@
+/*
+ * MusicClipPanel — the music-video form over the Imagine canvas. The sheet
+ * itself is the floating panel the Instagram one uses too.
+ */
+
+.panel {
+  composes: panel from './floating-panel.module.css';
+  gap: 12px;
+}
+
+.header {
+  composes: header from './floating-panel.module.css';
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.subtitle {
+  margin-top: 2px;
+  color: var(--imagine-muted);
+  font-size: 12px;
+}
+
+.closeBtn {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--imagine-muted);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 8px;
+}
+
+.closeBtn:hover {
+  background: var(--imagine-hover);
+  color: var(--imagine-ink);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field > span {
+  color: var(--imagine-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.field select,
+.field input,
+.field textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 8px;
+  background: var(--imagine-surface);
+  color: var(--imagine-ink);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+/* Two fields on one line: the voice and the length are both one word wide. */
+.row {
+  display: flex;
+  gap: 10px;
+}
+
+.row > .field {
+  flex: 1 1 0;
+}
+
+.lyrics {
+  resize: vertical;
+  min-height: 96px;
+  line-height: 1.45;
+}
+
+.start {
+  margin-top: 2px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--imagine-ink);
+  color: var(--imagine-ink-fg);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.start:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* Keyboard focus: the ring every panel shares (`.focusRing` in imagine-shared). */
+.closeBtn { composes: focusRing from './imagine-shared.module.css'; }
+.start { composes: focusRing from './imagine-shared.module.css'; }

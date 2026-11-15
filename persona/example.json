@@ -1,0 +1,5 @@
+{
+  "_comment": "Example persona: who the prompts describe. Replace this with your subject; `identity` is the paragraph every draw starts from. `hair` is the short form used in some prompts.",
+  "identity": "A person in their early thirties with shoulder-length dark hair, brown eyes and a calm, direct expression. Light olive skin, an average build and a relaxed posture. Photographed in soft, even light.",
+  "hair": "shoulder-length dark hair"
+}

@@ -1,0 +1,299 @@
+/* The comment record. Shares the page's tokens, so it reads as one surface
+   with the calendar above it rather than as a widget dropped underneath. */
+
+.section {
+  composes: section from './social-shared.module.css';
+}
+
+.header {
+  composes: header from './social-shared.module.css';
+}
+
+.sectionTitle {
+  composes: sectionTitle from './social-shared.module.css';
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.note,
+.summary,
+.pass {
+  margin: 0;
+  color: var(--imagine-muted);
+  font-size: 11.5px;
+}
+
+.runBtn {
+  padding: 4px 10px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-surface);
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.runBtn:hover:not(:disabled) {
+  background: var(--imagine-hover);
+}
+
+.runBtn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.clearBtn {
+  margin-right: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: none;
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.clearBtn:hover {
+  background: var(--imagine-hover);
+}
+
+.list {
+  composes: list from './social-shared.module.css';
+}
+
+.row {
+  composes: row from './social-shared.module.css';
+}
+
+/* A flagged comment is marked, never hidden: removing it is the account
+   owner's call, and they can only make it if they can see the thing. */
+.row[data-flagged] {
+  border-color: color-mix(in srgb, var(--imagine-danger) 40%, transparent);
+}
+
+.head {
+  composes: head from './social-shared.module.css';
+}
+
+.author {
+  color: var(--imagine-ink);
+  font-size: 12.5px;
+  font-weight: 620;
+}
+
+.kind {
+  composes: chipLabel from './imagine-shared.module.css';
+}
+
+.kind[data-kind='offensive'],
+.kind[data-kind='spam'] {
+  background: color-mix(in srgb, var(--imagine-danger) 16%, transparent);
+  color: var(--imagine-danger);
+}
+
+.when {
+  color: var(--imagine-muted);
+  font-size: 11px;
+}
+
+.permalink {
+  margin-left: auto;
+  color: var(--imagine-muted);
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.permalink:hover {
+  color: var(--imagine-ink);
+}
+
+.text {
+  margin: 0;
+  color: var(--imagine-ink);
+  font-size: 12.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.noText {
+  margin: 0;
+  color: var(--imagine-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.likeBtn {
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: none;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.likeBtn:hover:not(:disabled) {
+  background: var(--imagine-hover);
+}
+
+.likeBtn:disabled {
+  cursor: default;
+}
+
+.replyBtn {
+  padding: 2px 9px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: none;
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.replyBtn:hover {
+  background: var(--imagine-hover);
+}
+
+.done {
+  color: var(--imagine-success);
+  font-size: 11.5px;
+}
+
+.skip {
+  color: var(--imagine-muted);
+  font-size: 11px;
+  font-style: italic;
+}
+
+/* The reply as it stands under the comment on Instagram: indented, quieter
+   than the comment, so a glance tells them apart. */
+.reply {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  padding-left: 4px;
+  color: var(--imagine-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.replyMark {
+  flex: none;
+  opacity: 0.7;
+}
+
+/* The proposal reads like the reply it would become, but dashed and labelled:
+   what is on Instagram and what is only worked out must never look alike. */
+.proposal {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 5px 8px;
+  border: 1px dashed var(--imagine-line);
+  border-radius: 9px;
+  color: var(--imagine-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.proposalTag {
+  flex: none;
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-chip);
+  font-size: 10.5px;
+  letter-spacing: 0.3px;
+}
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 9px;
+  background: var(--imagine-media-bed);
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.sendBtn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 9px;
+  background: var(--imagine-ink);
+  color: var(--imagine-ink-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sendBtn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.error {
+  composes: error from './social-shared.module.css';
+}
+
+.empty {
+  composes: empty from './social-shared.module.css';
+}
+
+/* Inside a post panel the list is a footnote to the post, not a section of
+   its own: no controls, and nothing at all when the post has no comments. */
+.inline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--imagine-line);
+}
+
+.inlineTitle {
+  color: var(--imagine-muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+/* Keyboard focus: the ring every panel shares (`.focusRing` in imagine-shared). */
+.likeBtn { composes: focusRing from './imagine-shared.module.css'; }
+.replyBtn { composes: focusRing from './imagine-shared.module.css'; }
+.sendBtn { composes: focusRing from './imagine-shared.module.css'; }
+.runBtn { composes: focusRing from './imagine-shared.module.css'; }
+.clearBtn { composes: focusRing from './imagine-shared.module.css'; }
+.replyMark { composes: focusRing from './imagine-shared.module.css'; }
+.permalink { composes: focusRing from './imagine-shared.module.css'; }

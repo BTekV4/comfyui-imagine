@@ -1,0 +1,85 @@
+{
+ "1": {
+  "inputs": {
+   "audio": "input.wav"
+  },
+  "class_type": "LoadAudio",
+  "_meta": {
+   "title": "Audio da convertire"
+  }
+ },
+ "4": {
+  "inputs": {
+   "model": "voice-model.pth",
+   "index_mode": "auto"
+  },
+  "class_type": "LoadRVCModelNode",
+  "_meta": {
+   "title": "Voce"
+  }
+ },
+ "5": {
+  "inputs": {
+   "pitch_detection": "rmvpe"
+  },
+  "class_type": "RVCPitchOptionsNode",
+  "_meta": {
+   "title": "Estrazione del pitch"
+  }
+ },
+ "6": {
+  "inputs": {
+   "pitch": 0,
+   "index_ratio": 0.75,
+   "consonant_protection": 0.35,
+   "volume_envelope": 1.0,
+   "rvc_pitch_options": [
+    "5",
+    0
+   ],
+   "device": "auto",
+   "output_sample_rate": 44100
+  },
+  "class_type": "RVCEngineNode",
+  "_meta": {
+   "title": "Motore RVC"
+  }
+ },
+ "7": {
+  "class_type": "UnifiedVoiceChangerNode",
+  "_meta": {
+   "title": "Cambio voce"
+  },
+  "inputs": {
+   "TTS_engine": [
+    "6",
+    0
+   ],
+   "source_audio": [
+    "1",
+    0
+   ],
+   "narrator_target": [
+    "4",
+    0
+   ],
+   "refinement_passes": 1,
+   "max_chunk_duration": 30,
+   "chunk_method": "smart"
+  }
+ },
+ "9": {
+  "class_type": "SaveAudioMP3",
+  "_meta": {
+   "title": "Salva"
+  },
+  "inputs": {
+   "audio": [
+    "7",
+    0
+   ],
+   "filename_prefix": "audio/change_voice",
+   "quality": "V0"
+  }
+ }
+}

@@ -1,0 +1,342 @@
+/* "All media", as Grok's /imagine/saved: a full-bleed masonry with 2px
+   seams, a bar of pills floating over its top and the composer over its foot. */
+.page {
+  position: relative;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--imagine-surface);
+}
+
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 12px 13px;
+  background: var(--imagine-surface);
+}
+
+.spacer { flex: 1; }
+
+/* "Search the media": the files' words (prompt and description), next to the
+   view pills. The index is the server's: here there is only the box. */
+.search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 250px;
+  min-width: 0;
+  height: 40px;
+  padding: 0 10px 0 12px;
+  border-radius: var(--imagine-radius-pill);
+  background: var(--imagine-chip);
+  color: #cfcfcf;
+}
+
+.search[data-busy] { opacity: 0.6; }
+
+.searchInput {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--imagine-ink-soft);
+  font: inherit;
+  font-size: 14px;
+}
+
+.searchInput::placeholder { color: var(--imagine-dim); }
+/* The browser's own "clear" would leave two crosses. */
+.searchInput::-webkit-search-cancel-button { display: none; }
+
+.searchCount {
+  flex: none;
+  color: var(--imagine-dim);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.searchClear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  background: #333;
+  color: var(--imagine-ink-soft);
+  cursor: pointer;
+}
+
+.searchClear:hover { background: #454545; }
+
+.round,
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 40px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  background: var(--imagine-chip);
+  color: var(--imagine-ink-soft);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.round { width: 40px; }
+.chip { padding: 0 16px; }
+.round:hover,
+.chip:hover:not(:disabled) { background: var(--imagine-chip-on); }
+.chip[data-on] { background: var(--imagine-ink-soft); color: var(--imagine-surface); }
+.chip:disabled { opacity: 0.4; cursor: default; }
+.chip[data-danger]:not(:disabled) { color: var(--imagine-danger); }
+
+.menuBox { position: relative; }
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 206px;
+  padding: 6px;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 14px;
+  background: var(--imagine-chip);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.45);
+}
+
+.menuHead { display: block; padding: 8px 10px 4px; font-size: 12px; color: var(--imagine-dim); }
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--imagine-ink-soft);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.menuItem:hover { background: rgb(255 255 255 / 0.07); }
+.menuLabel { flex: 1; text-align: left; }
+
+.grid {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 60vh;
+}
+
+.column { display: flex; flex-direction: column; gap: 2px; }
+
+.cell {
+  position: relative;
+  overflow: hidden;
+  background: var(--imagine-media-bed);
+}
+
+.open {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.media {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cell:hover .open .media { filter: brightness(1.06); }
+.cell[data-picked] .open { outline: 3px solid var(--imagine-ink-soft); outline-offset: -3px; }
+
+.pick {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid rgb(255 255 255 / 0.85);
+  border-radius: var(--imagine-radius-pill);
+  background: rgb(0 0 0 / 0.25);
+  color: var(--imagine-surface);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 120ms;
+}
+
+.cell:hover > .pick,
+.cell[data-selecting] .pick,
+.pick[data-on] { opacity: 1; }
+.pick[data-on] { background: var(--imagine-ink-soft); border-color: var(--imagine-ink-soft); }
+
+.likedMark {
+  position: absolute;
+  top: 10px;
+  /* Accanto al tasto «Apri progetto», che sta negli stessi 8 px. */
+  right: 48px;
+  color: var(--imagine-like);
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.6));
+}
+
+.badge,
+.makeVideo {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  background: rgb(0 0 0 / 0.4);
+  backdrop-filter: blur(2px);
+  color: #fff;
+}
+
+.badge { pointer-events: none; }
+.makeVideo { opacity: 0; cursor: pointer; transition: opacity 120ms; }
+.cell:hover > .makeVideo { opacity: 1; }
+.makeVideo:hover { background: rgb(0 0 0 / 0.7); }
+
+/* "Open project": top right in the tile, while the pointer is over it
+   (2026-11-11). The heart of "Like" moves down beside it, right of the button. */
+.openProject {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.4);
+  backdrop-filter: blur(2px);
+  color: #fff;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 120ms;
+}
+
+.cell:hover > .openProject { opacity: 1; }
+.openProject:hover { background: rgb(0 0 0 / 0.7); }
+.openProject:focus-visible { opacity: 1; }
+
+.empty { width: 100%; margin: 120px 0; text-align: center; color: var(--imagine-dim); }
+
+.tail { height: 160px; }
+
+/* The composer floats over the grid's foot, as on Grok's page. */
+.composer {
+  position: sticky;
+  bottom: 16px;
+  z-index: 3;
+  width: min(752px, calc(100% - 32px));
+  margin: -140px auto 0;
+}
+
+/* Tags: chips after Liked that scroll sideways on a narrow window, and
+   the "New tag" dialog as Grok draws it (2026-10-18). */
+.tags {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tags > .chip { flex-shrink: 0; }
+.menuItem { gap: 8px; }
+.menuItem[data-danger] { color: var(--imagine-danger); }
+.menuSep { display: block; height: 1px; margin: 6px 4px; background: rgb(255 255 255 / 0.08); }
+
+/* The tag dialog's box inside the studio's Modal: narrower than the canvas
+   dialogs. The attribute outweighs the Modal's own `.dialog`. */
+.dialog[role='dialog'] {
+  width: min(400px, 100%);
+  padding: 20px;
+  border-radius: 16px;
+  background: #1f1f1f;
+  box-shadow: 0 20px 50px rgb(0 0 0 / 0.5);
+}
+
+.field {
+  box-sizing: border-box;
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 8px;
+  background: #0f0f0f;
+  color: var(--imagine-ink-soft);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.field:focus { border-color: rgb(255 255 255 / 0.3); }
+.field::placeholder { color: var(--imagine-dim); }
+
+.dialogActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+.ghost,
+.primary {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--imagine-radius-pill);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.ghost { border: 1px solid rgb(255 255 255 / 0.15); background: transparent; color: var(--imagine-ink-soft); }
+.ghost:hover { background: rgb(255 255 255 / 0.06); }
+.primary { border: none; background: var(--imagine-ink-soft); color: var(--imagine-surface); }
+.primary:disabled { background: var(--imagine-dim); cursor: default; }
+
+/* A phone: the pills past All keep only their icon (the name stays for
+   screen readers and as the tooltip), so the bar fits 390px. */
+@media (max-width: 640px) {
+  /* On the phone the bar wraps: the search takes its own row, because
+     squeezed between the pills it was a magnifier with a cross and no field
+     (seen 2026-11-02 at 390 px). */
+  .bar { flex-wrap: wrap; gap: 6px; padding: 10px 8px 11px; }
+  .search { order: -1; flex: 1 1 100%; padding: 0 10px 0 12px; }
+  .searchCount { display: none; }
+  .chip[data-compact] { width: 40px; padding: 0; flex-shrink: 0; }
+  .chip[data-compact] .label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .chip { padding: 0 12px; }
+  /* The "…" pill sits on the left of the bar: its menu opens rightwards. */
+  .menu[data-start] { right: auto; left: 0; }
+}

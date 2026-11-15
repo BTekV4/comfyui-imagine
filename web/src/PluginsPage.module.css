@@ -1,0 +1,718 @@
+/*
+ * The plugins page: a page, not a section of the settings.
+ *
+ * The measurements come from the DeepSeek Harness plugins page (the GUI the
+ * studio runs in): header with two actions on the right, titled groups,
+ * horizontal cards with a 48 icon, 14/20 title and truncated 13/18
+ * description, and a 36×20 switch at the end. The colours are the studio's.
+ */
+.page {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 28px clamp(20px, 4vw, 44px) 56px;
+  color: var(--imagine-ink);
+  font-family: var(--imagine-font);
+}
+
+/* ------------------------------------------------------------------ testata */
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.heading {
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 22px;
+  line-height: 30px;
+  font-weight: 500;
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--imagine-muted);
+}
+
+.headEnd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ------------------------------------------------------------------ comandi */
+
+.button,
+.primary,
+.danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 16px;
+  color: var(--imagine-ink);
+  background: var(--imagine-chip);
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.button:hover:not(:disabled),
+.danger:hover:not(:disabled) {
+  background: var(--imagine-hover);
+}
+
+.primary {
+  color: var(--imagine-ink-fg);
+  background: var(--imagine-focus);
+  border-color: transparent;
+}
+
+.primary:disabled,
+.button:disabled,
+.danger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.danger {
+  color: var(--imagine-danger);
+  border-color: var(--imagine-line);
+}
+
+.button:focus-visible,
+.primary:focus-visible,
+.danger:focus-visible,
+.switch:focus-visible,
+.crumb:focus-visible,
+.cardMain:focus-visible {
+  outline: 2px solid var(--imagine-focus);
+  outline-offset: 2px;
+}
+
+/* The "Add plugin" menu: a list, not a window. */
+.addWrap {
+  position: relative;
+}
+
+.menu {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(380px, 84vw);
+  padding: 6px;
+  background: var(--imagine-raised);
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-md);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 28%);
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--imagine-ink);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--imagine-radius-sm);
+  cursor: pointer;
+}
+
+.menuItem:hover:not(:disabled) {
+  background: var(--imagine-hover);
+}
+
+.menuItem:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.menuIcon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-size: 15px;
+  border: 0.5px solid var(--imagine-line);
+  border-radius: 8px;
+}
+
+.menuMain {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.menuDesc {
+  overflow: hidden;
+  font-size: 11.5px;
+  color: var(--imagine-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.menuAction {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--imagine-muted);
+}
+
+.menuEmpty {
+  margin: 0;
+  padding: 10px;
+  font-size: 12.5px;
+  color: var(--imagine-muted);
+}
+
+/* ------------------------------------------------------------------- gruppi */
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 26px;
+}
+
+.groupTitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* -------------------------------------------------------------------- card */
+
+.card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  min-width: 0;
+  /* The hover surface reaches 8px past the content, while the content stays
+     aligned with the page title. */
+  margin: 0 -8px;
+  padding: 8px;
+  border-radius: var(--imagine-radius-md);
+}
+
+.card:hover {
+  background: var(--imagine-hover);
+}
+
+.card[data-off] .cardIcon,
+.card[data-off] .cardTitle {
+  opacity: 0.65;
+}
+
+.cardProblem {
+  border: 1px solid color-mix(in srgb, var(--imagine-danger) 40%, transparent);
+  background: color-mix(in srgb, var(--imagine-danger) 6%, transparent);
+}
+
+.cardMain {
+  display: flex;
+  flex: 1;
+  gap: 14px;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.cardIcon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--imagine-muted);
+  border: 0.5px solid var(--imagine-line-3);
+  border-radius: var(--imagine-radius-md);
+}
+
+/* In place of the icon, the language's two letters. */
+.cardIcon[data-code] {
+  font-family: var(--imagine-mono);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--imagine-ink);
+}
+
+.cardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.titleRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.cardTitle {
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.badge {
+  padding: 1px 7px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--imagine-muted);
+  background: var(--imagine-chip);
+  border-radius: var(--imagine-radius-pill);
+}
+
+.cardDesc {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--imagine-muted);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.cardEnd {
+  display: inline-flex;
+  flex: none;
+  gap: 10px;
+  align-items: center;
+}
+
+.statusText {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  max-width: 240px;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--imagine-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dot[data-tone='ok'] { background: var(--imagine-success); }
+.dot[data-tone='warn'] { background: #d9a03a; }
+.dot[data-tone='bad'] { background: var(--imagine-danger); }
+.dot[data-tone='muted'] { background: var(--imagine-faint); }
+
+/* -------------------------------------------------------------- interruttore */
+
+.switch {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  background: var(--imagine-line-3);
+  border: 0;
+  border-radius: var(--imagine-radius-pill);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.switch[data-on] {
+  background: var(--imagine-success);
+}
+
+.switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: var(--imagine-ink-fg);
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
+  transition: transform 120ms ease;
+}
+
+.switch[data-on] .knob {
+  transform: translateX(16px);
+}
+
+/* ------------------------------------------------------------------ dettaglio */
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: var(--imagine-muted);
+}
+
+.crumb {
+  padding: 0;
+  font: inherit;
+  color: var(--imagine-muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.crumb:hover {
+  color: var(--imagine-ink);
+}
+
+.crumbSep {
+  color: var(--imagine-faint);
+}
+
+.crumbHere {
+  color: var(--imagine-ink);
+}
+
+.detailHead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.detailHead .heading {
+  flex: 1;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px solid var(--imagine-line);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+}
+
+.lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.lineOk, .lineWarn, .lineBad, .lineMuted {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lineDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.lineDot[data-tone='ok'] { background: var(--imagine-success); }
+.lineDot[data-tone='warn'] { background: #d9a03a; }
+.lineDot[data-tone='bad'] { background: var(--imagine-danger); }
+.lineDot[data-tone='muted'] { background: var(--imagine-faint); }
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 560px;
+}
+
+.actionBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.help,
+.muted {
+  margin: 0;
+  font-size: 12px;
+  color: var(--imagine-muted);
+}
+
+.error,
+.problem {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--imagine-danger);
+}
+
+.problem {
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--imagine-danger) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--imagine-danger) 35%, transparent);
+  border-radius: var(--imagine-radius-sm);
+}
+
+.input {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 560px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--imagine-ink);
+  background: var(--imagine-bg);
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-sm);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--imagine-focus);
+  outline-offset: 1px;
+}
+
+.search {
+  margin-top: 20px;
+  max-width: 320px;
+}
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--imagine-danger) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--imagine-danger) 30%, transparent);
+  border-radius: var(--imagine-radius-sm);
+  font-size: 13px;
+}
+
+.confirm p {
+  margin: 0;
+}
+
+.facts {
+  display: grid;
+  gap: 6px 16px;
+  grid-template-columns: 120px minmax(0, 1fr);
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.fact {
+  display: contents;
+}
+
+.facts dt {
+  color: var(--imagine-muted);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  font-family: var(--imagine-mono);
+  font-size: 11.5px;
+}
+
+.empty {
+  margin: 26px 0 0;
+  font-size: 13px;
+  color: var(--imagine-muted);
+}
+
+/* ------------------------------------------------------------------ loading */
+
+.skeletonList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 26px;
+}
+
+.skeletonCard {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 8px;
+  margin: 0 -8px;
+}
+
+.skeleton {
+  display: block;
+  background: var(--imagine-chip);
+  border-radius: var(--imagine-radius-sm);
+  animation: plugins-pulse 2s cubic-bezier(0.36, 0, 0.64, 1) infinite;
+}
+
+.skeletonIcon {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--imagine-radius-md);
+}
+
+.skeletonMain {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeletonTitle {
+  width: min(180px, 40%);
+  height: 12px;
+}
+
+.skeletonLine {
+  width: min(320px, 70%);
+  height: 12px;
+}
+
+@keyframes plugins-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* --------------------------------------------------------------------- phone */
+
+@media (max-width: 560px) {
+  .page {
+    padding: 20px 16px 40px;
+  }
+
+  .title {
+    font-size: 19px;
+    line-height: 26px;
+  }
+
+  .card {
+    margin: 0;
+    padding: 8px 0;
+  }
+
+  .cardMain {
+    gap: 12px;
+  }
+
+  .cardIcon {
+    width: 40px;
+    height: 40px;
+    font-size: 17px;
+  }
+
+  /* The description wraps onto two lines: at 390px a single line says nothing. */
+  .cardDesc {
+    -webkit-line-clamp: 2;
+  }
+
+  .statusText {
+    display: none;
+  }
+
+  /* The switch stays on the right but the column narrows. */
+  .cardEnd {
+    gap: 6px;
+  }
+
+  .headEnd {
+    width: 100%;
+  }
+
+  .menu {
+    right: auto;
+    left: 0;
+  }
+
+  .facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

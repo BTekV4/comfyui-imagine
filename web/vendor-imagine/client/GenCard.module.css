@@ -1,0 +1,78 @@
+/* The generation card on the canvas: the frame the result will take, and the
+   prompt under it at screen size. */
+.card { position: absolute; width: 260px; }
+
+.frame {
+  display: grid;
+  place-items: center;
+  width: 260px;
+  aspect-ratio: 9 / 16;
+  box-sizing: border-box;
+  border: 2px dashed rgb(255 255 255 / 0.25);
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.03);
+}
+
+.frameLabel { font-size: 14px; color: var(--imagine-muted); }
+
+.ask {
+  display: grid;
+  gap: 8px;
+  width: 320px;
+  margin-top: 10px;
+  padding: 10px;
+  box-sizing: border-box;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 16px;
+  background: var(--imagine-chip);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.45);
+  transform-origin: top left;
+}
+
+.refs { display: flex; gap: 6px; }
+.ref { width: 40px; height: 40px; object-fit: cover; border-radius: 8px; }
+
+.field {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 2px;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--imagine-ink-soft);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.field::placeholder { color: var(--imagine-dim); }
+.row { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+
+.ghost {
+  height: 30px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  background: transparent;
+  color: var(--imagine-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.ghost:hover { color: var(--imagine-ink-soft); }
+
+.send {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  background: var(--imagine-ink-soft);
+  color: var(--imagine-surface);
+  cursor: pointer;
+}
+
+.send:disabled { opacity: 0.35; cursor: default; }

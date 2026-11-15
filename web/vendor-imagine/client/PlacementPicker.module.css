@@ -1,0 +1,72 @@
+/* The box picker of "Add an object" (2026-11-06). */
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 10px;
+  background: var(--imagine-surface);
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--imagine-ink);
+}
+
+.hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--imagine-muted);
+}
+
+/* 3×3 grid: the cells are touching squares, so it is clear the box goes in
+   a precise spot of the frame. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  width: min(100%, 210px);
+}
+
+.cell {
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid var(--imagine-line);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.cellOn {
+  border-color: var(--imagine-accent);
+  background: color-mix(in srgb, var(--imagine-accent) 28%, transparent);
+}
+
+.sizes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.size {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.sizeOn {
+  border-color: var(--imagine-accent);
+  background: color-mix(in srgb, var(--imagine-accent) 22%, transparent);
+}

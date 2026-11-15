@@ -1,0 +1,67 @@
+/*
+ * The bar under a multi-selection on the board: its buttons read as chips,
+ * since the icons alone were ambiguous — a label is what tells "Download" from
+ * "Upscale". The board places and scales the bar (Board.module.css).
+ */
+.chipBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: transparent;
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.chipBtn:hover {
+  background: var(--imagine-hover);
+}
+
+.chipBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.chipBtn[data-danger]:hover {
+  color: var(--imagine-danger);
+}
+
+.chipBtn:active {
+  scale: 0.97;
+}
+
+.batchClear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.batchClear:hover {
+  background: var(--imagine-chip);
+}
+
+/* Same threshold as the drawer rail: below it the tiles are narrow too. */
+@media (max-width: 900px) {
+  .chipBtn {
+    height: 26px;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+}

@@ -1,0 +1,169 @@
+/*
+ * Openjutsu / IOPaint inside the stage: the frame takes all of it, with a
+ * small "open in a tab" link in the corner for a bigger window.
+ */
+.page {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  margin: 0 12px 12px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--imagine-bg);
+}
+
+.page[hidden] {
+  display: none;
+}
+
+.frame {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+.open {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--imagine-ink);
+  background: var(--imagine-bg);
+  border: 1px solid var(--imagine-line);
+  text-decoration: none;
+  opacity: 0.55;
+}
+
+.open:hover,
+.open:focus-visible {
+  opacity: 1;
+}
+
+@media (max-width: 720px) {
+  .page {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+  }
+}
+
+/* The gallery picker the app inside asks for (2026-11-13). */
+.pickDialog {
+  width: min(920px, 100%);
+}
+
+.pickBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.pickFilter {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--imagine-radius-pill);
+  background: var(--imagine-chip);
+}
+
+.pickFilterBtn {
+  height: 26px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  background: transparent;
+  color: var(--imagine-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pickFilterBtn[data-on] {
+  background: var(--imagine-surface);
+  color: var(--imagine-ink);
+  font-weight: 600;
+}
+
+.pickCount {
+  color: var(--imagine-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pickEmpty {
+  margin: 24px 0;
+  color: var(--imagine-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.pickGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.pickTile {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: var(--imagine-media-bed);
+  cursor: pointer;
+}
+
+.pickTile:hover {
+  border-color: var(--imagine-line-4);
+}
+
+.pickTile[data-on] {
+  border-color: var(--imagine-accent);
+}
+
+.pickTile:focus-visible {
+  outline: 2px solid var(--imagine-focus);
+  outline-offset: 1px;
+}
+
+.pickThumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pickDuration {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  padding: 1px 6px;
+  border-radius: var(--imagine-radius-pill);
+  background: var(--imagine-scrim);
+  color: var(--imagine-on-media);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pickMark {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--imagine-accent);
+  color: var(--imagine-ink-fg);
+  font-size: 12px;
+  font-weight: 700;
+}

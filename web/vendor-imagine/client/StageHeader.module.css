@@ -1,0 +1,170 @@
+/* The bar above the stage (StageHeader.tsx): the rail toggle on narrow
+   windows, the project's title, the canvas's own buttons and "New project". */
+
+/* Relative for the canvas's buttons in the header: see .headCanvasLeft. */
+.stageTop {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  height: var(--imagine-header);
+  padding: 0 22px;
+  gap: 12px;
+}
+
+.iconBtn {
+  composes: iconBtn from './imagine-shared.module.css';
+}
+
+/* Scoped to the bar so they outrank the shared icon button they compose with. */
+.stageTop .railToggle {
+  display: none;
+}
+
+/* Back-to-home affordance for the narrow stage, where the rail is hidden. */
+.stageTop .mobileHome {
+  display: none;
+}
+
+.projectTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--imagine-font-text);
+  font-size: 15px;
+  font-weight: 550;
+}
+
+/*
+ * A rejected save. The rail keeps showing the work either way, so without this
+ * the only sign was the project being gone after the next reload.
+ */
+.syncFailed {
+  margin-right: auto;
+  overflow: hidden;
+  color: var(--imagine-danger);
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-ink);
+  color: var(--imagine-ink-fg);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* The canvas's buttons in the header (Grok's top edge): File/Canvas where the
+   canvas begins, Expand/Hide canvas at the end. */
+.headCanvasLeft {
+  position: absolute;
+  left: calc(var(--imagine-chat-w, 360px) + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Grok's «Azioni del pannello»: at the canvas's top right, 10px in. */
+.headCanvasRight {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.stageTop[data-canvas-hidden] .headCanvasLeft { display: none; }
+
+/* Expand: no chat column to line up with, so File/Canvas follow the title. */
+.stageTop[data-chat-hidden] .headCanvasLeft { position: static; transform: none; }
+
+/* The title stays over the chat column and never runs under File/Canvas. */
+.stageTop:has(.headCanvasLeft) .projectTitle {
+  flex: 0 1 auto;
+  max-width: calc(var(--imagine-chat-w, 360px) - 96px);
+}
+
+.stageTop:has(.headCanvasLeft) .projectTitle + .headCanvasLeft + .headCanvasRight { margin-left: auto; }
+
+/* The same pill as the canvas bar at the bottom (CanvasToolbar.module.css). */
+.canvasTopGroup {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgb(27 27 27);
+  box-shadow: 0 0 0 0.5px rgb(255 255 255 / 0.08), 0 2px 8px rgb(0 0 0 / 0.18);
+}
+
+.canvasTopBtn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: rgb(255 255 255 / 0.75);
+  cursor: pointer;
+  transition: background-color 150ms, color 150ms;
+}
+
+.canvasTopBtn:hover { background: rgb(255 255 255 / 0.06); color: #fff; }
+.canvasTopBtn[data-on] { background: rgb(255 255 255 / 0.08); color: #fff; }
+
+/* After the :has() rule above, which it has to beat. */
+.stageTop[data-chat-hidden] .projectTitle { max-width: 40%; }
+
+/*
+ * Below this the stage is narrow enough that a labelled button crowds the bar.
+ * Keep the icon and drop the words; the accessible name stays on the button.
+ */
+@media (max-width: 1000px) {
+  .primaryLabel {
+    display: none;
+  }
+}
+
+/* The rail is a drawer here (see Rail.module.css): its toggle and the way home
+   come into the bar. */
+@media (max-width: 900px) {
+  .stageTop .mobileHome {
+    display: inline-flex;
+  }
+
+  .stageTop .railToggle {
+    display: inline-flex;
+    /*
+     * The bar is justify-content: flex-end: without this the rail toggle
+     * (the navigation) ended up among the page actions, at x=228 on a
+     * 390 phone (measured 2026-11-05). The left is where the drawer it opens
+     * lives.
+     */
+    margin-right: auto;
+  }
+}
+
+/* All media carries its own bar on a wide screen. */
+@media (min-width: 901px) {
+  .stageTop[data-media] { display: none; }
+}
+
+/* Stacked, the chat is a band over the top of the studio: File/Canvas would
+   sit on it. */
+@media (max-width: 640px) {
+  .headCanvasLeft { display: none; }
+}

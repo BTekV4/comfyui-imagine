@@ -1,0 +1,302 @@
+/* "New generation" (HomeView.tsx): the headline, the composer and the grid
+   of cards, or the panel one card opened. */
+
+.home {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  /*
+   * `safe center` centres while there is room and falls back to the start edge
+   * when there is not. With plain `center` the overflow goes both ways, so at
+   * intermediate widths — where the cards grow taller — the top of the hero
+   * slid under the stage bar and could not even be scrolled back into view.
+   */
+  align-items: center;
+  align-items: safe center;
+  justify-content: center;
+  overflow: auto;
+  /* A card sets the composer, which on a phone is a screen above the cards;
+     the studio scrolls it back into view, and a jump would read as a reload. */
+  scroll-behavior: smooth;
+  /* The extra bottom padding lifts the hero optically above the true centre,
+     which is what the old negative margin on .hero did — without ever pushing
+     content outside the box. */
+  padding: 24px 24px calc(24px + 6vh);
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(900px, 100%);
+}
+
+/*
+ * The title and the chat bar get room on the first screen: the block sits in
+ * the middle of ~62vh and the cards start below, as on Grok's home. Before,
+ * the block was at the top and the bar looked tall (2026-11-03).
+ */
+.heroLead {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  /*
+   * How much room the title+composer block takes before the cards. On Grok
+   * the landing has the title at y 223, the composer at 271-378 and the cards
+   * from 411 (33px gap); with 62vh our composer ended at 340 and the cards at
+   * 654, 204px lower, and the first row was cut by the edge (bottom 929 of
+   * 900). Measured on 2026-11-05 on the live page: with 42vh the cards rise
+   * to 482.
+   */
+  min-height: min(42vh, 380px);
+}
+
+/*
+ * Desktop: no box of its own, so the composer stays the hero's flex item
+ * exactly as it was before this wrapper existed. On a phone it becomes the
+ * pinned bar described in the 900px block below.
+ */
+.heroComposer {
+  display: contents;
+}
+
+.headline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.35em;
+  /* Room to read as a heading: at 18px the 28px title sat against the top edge
+     of the composer and the two read as one block. */
+  margin: 0 0 36px;
+  font-family: var(--imagine-font-display);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.headline svg {
+  flex-shrink: 0;
+}
+
+/*
+ * The grid sits in the same column as the composer: a single width, as on
+ * Grok's landing (2026-11-20). The hero is up to 1180px wide, so without this
+ * cap the cards reached 1135 while the composer stopped at 760: two different
+ * columns. 760px is the composer's `max-width` in Composer.module.css, and
+ * .hero centres on the axis, so the two edges match at every width.
+ */
+.actions {
+  display: flex;
+  /*
+   * Three fixed columns of stacked cards, not a grid of rows: this way each
+   * card keeps its own height and the next column flows up beneath it
+   * (masonry) instead of aligning to equal rows. The 14px gap makes the three
+   * columns land at exactly 244px inside the composer's 760px, which is the
+   * size on Grok Imagine's home.
+   */
+  align-items: flex-start;
+  gap: 14px;
+  width: 100%;
+  max-width: 760px;
+  margin-top: 24px;
+}
+
+/* One of the three stacks of cards; see .actions. */
+.column {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.action {
+  position: relative;
+  overflow: hidden;
+  display: block;
+  /* A tile, not a card with a text band: the height used to be whatever the
+     cover's own 4:3 file made it (275x206 at four columns), so the photo was a
+     letterbox strip with the copy sitting on it. The shape is now the one Grok
+     Imagine's home gives these cards — 244x254, a little wider than square —
+     and the tall one below is the 244x362 of its centre card. */
+  aspect-ratio: 244 / 254;
+  /* In a flex column a tile must keep the height its own shape asks for. */
+  flex: none;
+  padding: 0;
+  border: none;
+  border-radius: 18px;
+  background: var(--imagine-media-bed);
+  color: var(--imagine-on-media);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The tall card at the top of the middle column: on Grok Imagine's home the
+   centre card is 244x362 against the 244x254 of the others, and that height
+   difference is what makes the three columns interlock. */
+.actionTall {
+  aspect-ratio: 244 / 362;
+}
+
+.actionCover {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.actionShade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgb(0 0 0 / 0) 42%, rgb(0 0 0 / 0.72) 100%);
+  pointer-events: none;
+}
+
+.actionCopy {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.action:hover .actionCover {
+  transform: scale(1.03);
+  transition: transform 0.35s ease;
+}
+
+.action:active {
+  scale: 0.97;
+}
+
+.actionTitle {
+  font-family: var(--imagine-font-text);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  text-shadow: 0 1px 8px rgb(0 0 0 / 0.45);
+}
+
+.actionHint {
+  color: rgb(255 255 255 / 0.82);
+  font-size: 12px;
+  line-height: 1.35;
+  font-style: italic;
+  /* Two lines, not one: on a square tile a single line cut the sentence in the
+     middle of a word ("Pick a photo, then pi…"), which reads as broken text
+     rather than as a shortened hint. Two lines end on a word for every tile at
+     both widths and still leave the photo most of the square. The whole
+     sentence stays reachable as the tile's tooltip. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Wide enough for the composer's toolbar to keep the send button on the same
+   line instead of alone under a 40px band of nothing, and for a look's two
+   menus to carry titles like "2B NIER CON VISOR MASCHERA". */
+@media (min-width: 1180px) {
+  .hero {
+    width: min(1180px, 100%);
+  }
+}
+
+@media (max-width: 900px) {
+  /*
+   * The bottom of the sticky composer and the bottom edge of the scrollport
+   * must coincide. The padding-bottom of .home (24px + 6vh, needed on
+   * desktop) enters the sticky's rectangle: on a phone the bar stopped 78px
+   * above the bottom and the cards could be seen scrolling in that strip,
+   * with their text coming out from under the bar (measured on 2026-11-05 at
+   * 390 and 768: composer.bottom 822 in a 900 viewport).
+   */
+  .home {
+    padding-bottom: 0;
+  }
+
+  .hero {
+    margin-top: 0;
+  }
+
+  /* On a phone the composer is stuck to the bottom of the scrollport and must
+     stay a child of the hero's flex: here the block dissolves. */
+  .heroLead { display: contents; }
+
+  .headline {
+    font-size: 22px;
+    margin-bottom: 14px;
+  }
+
+  .actions {
+    /* On a phone it goes back to two plain columns of cards: the three stacks
+       dissolve (`.column { display: contents }`, below) and each card takes
+       its place in the grid, as before the masonry. */
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 16px;
+    /* After the composer's wrapper below: see .heroComposer. */
+    order: 1;
+  }
+
+  /* The desktop's three stacks do not exist here: the cards are direct
+     children of the two-column grid. */
+  .column { display: contents; }
+
+  /*
+   * The composer is pinned to the bottom of the scrollport and the tiles scroll
+   * above it, which is the phone layout Grok Imagine's home uses (its form sits
+   * in a `position: sticky; bottom: 0` wrapper). `order` puts it after the grid:
+   * a sticky box only sticks to the bottom once it is the last thing in flow,
+   * and this flex column is what owns that order. The padding keeps a strip of
+   * page between the top edge of the composer and the tile sliding under it.
+   */
+  .heroComposer {
+    display: block;
+    order: 2;
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    width: 100%;
+    padding-top: 10px;
+  }
+
+  .action {
+    min-height: 128px;
+    border-radius: 14px;
+  }
+
+  /* Two columns do not interlock: here all cards have the same height, so the
+     desktop's tall one goes back to normal. */
+  .actionTall {
+    aspect-ratio: 244 / 254;
+  }
+
+  .actionCover {
+    min-height: 128px;
+  }
+}
+
+/* Someone who asked for less motion gets none of the home's ambient movement:
+   the card zoom, the smooth scroll. (The title no longer rotates: nothing to
+   stop there.) */
+@media (prefers-reduced-motion: reduce) {
+  .action {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .home {
+    scroll-behavior: auto;
+  }
+}

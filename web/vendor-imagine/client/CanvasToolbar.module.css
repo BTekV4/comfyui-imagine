@@ -1,0 +1,82 @@
+/* The canvas bar, measured on Grok Imagine's page (2026-11-15): pills 36px
+   high, fully round, #1b1b1b with a hairline ring and a soft drop, 4px
+   inside, 28px round buttons 2px apart, the tool in use on white at 8%. */
+.dock {
+  position: absolute;
+  left: calc(var(--imagine-chat-w, 360px) + 12px);
+  right: 12px;
+  bottom: 12px;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap-reverse;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.balance { width: 118px; flex: 0 1 118px; }
+
+.pill {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgb(27 27 27);
+  box-shadow: 0 0 0 0.5px rgb(255 255 255 / 0.08), 0 2px 8px rgb(0 0 0 / 0.18);
+  color: rgb(255 255 255 / 0.75);
+  pointer-events: auto;
+}
+
+.tool,
+.zoomValue {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 150ms, color 150ms;
+}
+
+.tool { width: 28px; }
+.tool svg { width: 18px; height: 18px; }
+.tool:hover:not(:disabled),
+.zoomValue:hover { background: rgb(255 255 255 / 0.06); color: #fff; }
+.tool[data-on] { background: rgb(255 255 255 / 0.08); color: #fff; }
+.tool:disabled { opacity: 0.3; cursor: default; }
+
+.zoomValue {
+  min-width: 46px;
+  padding: 0 4px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rule {
+  flex: none;
+  width: 1px;
+  height: 24px;
+  margin: 0 2px;
+  background: rgb(255 255 255 / 0.06);
+}
+
+@media (max-width: 900px) {
+  .balance { display: none; }
+}
+
+/* Stacked (the chat a band on top): the bar has the whole width. */
+@media (max-width: 640px) {
+  .dock { left: 12px; right: 12px; bottom: 12px; }
+}

@@ -1,0 +1,443 @@
+/*
+ * PublishPanel — the Instagram sheet over the Imagine canvas.
+ *
+ * The sheet itself is the floating panel the music-video form uses too
+ * (floating-panel.module.css). There is no global border-box on this page:
+ * every box that mixes width with padding or a border sets box-sizing itself.
+ */
+.panel {
+  composes: panel from './floating-panel.module.css';
+  gap: 14px;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+
+.header {
+  composes: header from './floating-panel.module.css';
+}
+
+.headings {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--imagine-ink);
+}
+
+.subtitle {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--imagine-muted);
+}
+
+.closeBtn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: -4px -4px 0 0;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: transparent;
+  color: var(--imagine-muted);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.closeBtn:hover {
+  background: var(--imagine-hover);
+  color: var(--imagine-ink);
+}
+
+/* ── Media preview ──────────────────────────────────────────────────── */
+
+/* No bed behind the still: a portrait render letterboxed on #111 put a black
+   slab across the top of the panel, which reads as chrome in the light theme
+   rather than as the picture being published. */
+.thumbnailWrap {
+  display: flex;
+  justify-content: center;
+}
+
+.thumbnail {
+  display: block;
+  max-width: 100%;
+  max-height: 190px;
+  border-radius: 12px;
+  object-fit: contain;
+}
+
+/*
+ * The carousel strip. These three classes were referenced by the component
+ * but never defined, so each image rendered unstyled at its natural size and
+ * buried the panel's own controls.
+ */
+.carouselThumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.carouselThumb {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 8px;
+  background: var(--imagine-media-bed);
+  object-fit: cover;
+}
+
+.carouselMore {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: 1px dashed var(--imagine-line);
+  border-radius: 8px;
+  color: var(--imagine-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ── Fields ─────────────────────────────────────────────────────────── */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* The two segmented controls sit side by side: each is a binary choice and
+   stacking them pushed the caption below the fold on a short window. */
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--imagine-muted);
+}
+
+.hint {
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--imagine-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.aiToggle {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--imagine-muted);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.aiToggle:hover:not(:disabled) {
+  background: var(--imagine-hover);
+}
+
+.aiToggle[data-on] {
+  border-color: color-mix(in srgb, var(--imagine-ink) 45%, transparent);
+  color: var(--imagine-ink);
+}
+
+.aiBox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.aiToggle[data-on] .aiBox {
+  border-color: transparent;
+  background: var(--imagine-ink);
+  color: var(--imagine-ink-fg);
+}
+
+.aiToggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.analyzing {
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--imagine-ink);
+}
+
+/* One track holding two segments, rather than two loose outlined buttons. */
+.typeSelector {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-chip);
+}
+
+.typeBtn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: transparent;
+  color: var(--imagine-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.typeBtn:hover:not(:disabled):not([data-on]) {
+  color: var(--imagine-ink);
+}
+
+.typeBtn[data-on] {
+  background: var(--imagine-surface);
+  color: var(--imagine-ink);
+  font-weight: 600;
+  box-shadow: 0 1px 3px var(--imagine-scrim);
+}
+
+.typeBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Three ways to file a post do not fit two columns. */
+.three {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.editActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.editActions:has(> :only-child) {
+  grid-template-columns: 1fr;
+}
+
+.ghostBtn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: transparent;
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ghostBtn:hover:not(:disabled) {
+  background: var(--imagine-hover);
+}
+
+.ghostBtn[data-danger]:hover:not(:disabled) {
+  color: var(--imagine-danger);
+}
+
+.ghostBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.textarea,
+.input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 10px;
+  background: var(--imagine-chip);
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.textarea {
+  min-height: 62px;
+  resize: vertical;
+}
+
+.input {
+  height: 36px;
+}
+
+.textarea::placeholder {
+  color: var(--imagine-muted);
+}
+
+.textarea:focus,
+.input:focus {
+  outline: none;
+  border-color: var(--imagine-ink);
+}
+
+.textarea:disabled,
+.input:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* The hashtag box is a short list, not prose: it reads better as one line
+   per tag group and never needs the caption's height. */
+.tags {
+  min-height: 44px;
+  font-size: 12px;
+}
+
+/* ── Result ─────────────────────────────────────────────────────────── */
+
+.success,
+.error {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.success {
+  border-color: color-mix(in srgb, var(--imagine-success) 35%, transparent);
+  background: color-mix(in srgb, var(--imagine-success) 12%, transparent);
+  color: var(--imagine-success);
+}
+
+.error {
+  border-color: color-mix(in srgb, var(--imagine-danger) 35%, transparent);
+  background: color-mix(in srgb, var(--imagine-danger) 12%, transparent);
+  color: var(--imagine-danger);
+}
+
+.warning {
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--imagine-warn) 40%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--imagine-warn) 12%, transparent);
+  color: var(--imagine-warn-label);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.link {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── Publish ────────────────────────────────────────────────────────── */
+
+.publishBtn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 38px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-ink);
+  color: var(--imagine-ink-fg);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: opacity 0.12s ease;
+}
+
+.publishBtn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.publishBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Keyboard focus: the ring every panel shares (`.focusRing` in imagine-shared). */
+.closeBtn { composes: focusRing from './imagine-shared.module.css'; }
+.aiToggle { composes: focusRing from './imagine-shared.module.css'; }
+.typeBtn { composes: focusRing from './imagine-shared.module.css'; }
+.ghostBtn { composes: focusRing from './imagine-shared.module.css'; }
+.publishBtn { composes: focusRing from './imagine-shared.module.css'; }
+.link { composes: focusRing from './imagine-shared.module.css'; }
+.carouselThumb { composes: focusRing from './imagine-shared.module.css'; }
+.carouselMore { composes: focusRing from './imagine-shared.module.css'; }
+.thumbnail { composes: focusRing from './imagine-shared.module.css'; }

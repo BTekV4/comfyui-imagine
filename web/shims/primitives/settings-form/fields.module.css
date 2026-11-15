@@ -1,0 +1,119 @@
+/* Settings form fields: label, control, override badge, and hint. */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 0;
+}
+
+.field + .field {
+  border-top: 0.5px solid var(--imagine-line-2);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--imagine-ink);
+}
+
+.labelGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.labelGroup > .label {
+  flex: 0 1 auto;
+}
+
+.badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reset {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--imagine-muted);
+  cursor: pointer;
+}
+
+.reset:hover:not(:disabled) {
+  color: var(--imagine-ink);
+}
+
+.reset:disabled {
+  cursor: default;
+}
+
+.input {
+  height: 34px;
+  padding: 0 12px;
+  border: 0.5px solid var(--imagine-line-4);
+  border-radius: var(--imagine-radius-md);
+  background: var(--imagine-chip);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--imagine-ink);
+}
+
+.input:focus-visible {
+  outline: none;
+  border-color: var(--imagine-accent);
+}
+
+.input:disabled {
+  color: var(--imagine-faint);
+  cursor: default;
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--imagine-danger);
+}
+
+.invalid {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--imagine-danger);
+}
+
+.hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--imagine-faint);
+}
+
+/* The "overridden" mark: a gray capsule, a neutral fact with no status meaning. */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  padding: 1px 8px;
+  background: var(--imagine-bg);
+  color: var(--imagine-muted);
+  font-size: 11px;
+  line-height: 17px;
+  font-weight: 500;
+  white-space: nowrap;
+}

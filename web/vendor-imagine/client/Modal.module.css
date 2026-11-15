@@ -1,0 +1,79 @@
+/* The studio's dialogs over the canvas (Modal.tsx): the frame, its head and
+   the footer every dialog ends with — a hint and its buttons. */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 0.6);
+}
+
+.dialog {
+  box-sizing: border-box;
+  width: min(760px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 18px;
+  background: var(--imagine-surface);
+  color: var(--imagine-ink);
+}
+
+/* Focused on open so the keyboard is inside it; the focus itself draws nothing. */
+.dialog:focus {
+  outline: none;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.title { font-size: 16px; font-weight: 600; }
+
+.close {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  background: transparent;
+  color: var(--imagine-muted);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.close:hover { background: var(--imagine-hover); color: var(--imagine-ink); }
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+/* A footer under a picture keeps some air from it. */
+.spaced {
+  margin-top: 14px;
+}
+
+.hint { flex: 1; min-width: 180px; font-size: 13px; color: var(--imagine-muted); }
+
+.secondary,
+.primary {
+  height: 38px;
+  padding: 0 16px;
+  border-radius: var(--imagine-radius-pill);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.secondary { border: 1px solid var(--imagine-line); background: var(--imagine-chip); color: var(--imagine-ink); }
+.primary { border: none; background: var(--imagine-ink); color: var(--imagine-ink-fg); font-weight: 600; }
+.primary:disabled { opacity: 0.4; cursor: default; }

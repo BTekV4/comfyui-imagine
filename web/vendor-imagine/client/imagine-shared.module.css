@@ -1,0 +1,138 @@
+/*
+ * The few classes several parts of the studio draw with: the round icon
+ * button, the note that stands in for a song's picture, the centred notes of
+ * an empty or failed board, the "show more" pill, a name cut with an
+ * ellipsis and a small grey label. A component that only
+ * draws them uses this module directly; one that styles them further in its
+ * own context composes them into a local class (2026-10-25, when
+ * ImaginePage.module.css was split by component).
+ */
+
+/* A name on one line, cut with an ellipsis, in a flex row that gives it the rest. */
+.ellipsis {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A small grey label in a row (a story's state, a comment's kind); the
+   module that uses it colours it per value. */
+.chipLabel {
+  padding: 1px 7px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-chip);
+  color: var(--imagine-muted);
+  font-size: 10.5px;
+  letter-spacing: 0.3px;
+}
+
+/*
+ * Focus ring for keyboard navigation, composed by the panels' controls: the
+ * shared `--imagine-focus` token, falling back to the element's own colour.
+ * Only `:focus-visible` is styled, so a mouse click leaves no ring behind.
+ * Five modules had their own copy of this block.
+ */
+.focusRing:focus-visible {
+  outline: 2px solid var(--imagine-focus, currentColor);
+  outline-offset: 2px;
+}
+
+/* 36, like the upload button, the model select and the send: the bar had
+   three different heights in it and nothing sat on one line. */
+.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.iconBtn:hover,
+.iconBtn:focus-visible {
+  background: var(--imagine-hover);
+}
+
+/* A pressed control says so: see the note on :active in ImaginePage.module.css. */
+.iconBtn:active {
+  scale: 0.97;
+}
+
+.audioThumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: var(--imagine-chip);
+  color: var(--imagine-ink);
+  /* Big enough to read as the tile's picture, not a badge (asked 2026-09-10). */
+  font-size: 72px;
+}
+
+.note,
+.error {
+  margin: 48px auto;
+  max-width: 420px;
+  text-align: center;
+  color: var(--imagine-muted);
+  font-size: 14px;
+}
+
+.error {
+  color: var(--imagine-danger);
+}
+
+/* "Show more" for the history board. Parked at the top centre: the two bottom
+   corners already hold the zoom HUD and the canvas tools, and the chat floats
+   over the board's left. The board draws a page at a time; the gallery is
+   hundreds deep. */
+.historyMore {
+  position: absolute;
+  left: 50%;
+  top: 16px;
+  transform: translateX(-50%);
+  z-index: 10;
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-surface);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: var(--imagine-shadow);
+}
+
+.historyMore:hover {
+  background: var(--imagine-hover);
+}
+
+/* The `scale` property, not `transform`: this pill carries a translate that
+   centres it, and a `transform` here would replace it — it jumped half its
+   width out from under the cursor on mousedown, so no click was ever fired. */
+.historyMore:active {
+  scale: 0.97;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .iconBtn {
+    animation: none !important;
+    transition: none !important;
+  }
+}

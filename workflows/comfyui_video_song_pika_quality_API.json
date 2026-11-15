@@ -1,0 +1,483 @@
+{
+ "1684": {
+  "inputs": {
+   "filename_prefix": "video/Pika_song_quality",
+   "format": "auto",
+   "codec": "auto",
+   "video": [
+    "1682:130",
+    0
+   ]
+  },
+  "class_type": "SaveVideo",
+  "_meta": {
+   "title": "Save Video"
+  }
+ },
+ "1682:114": {
+  "inputs": {
+   "image": "2.png",
+   "upload": "image"
+  },
+  "class_type": "LoadImage",
+  "_meta": {
+   "title": "Load Image"
+  }
+ },
+ "1682:128": {
+  "inputs": {
+   "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+   "type": "minimax",
+   "device": "default"
+  },
+  "class_type": "CLIPLoader",
+  "_meta": {
+   "title": "Load CLIP"
+  }
+ },
+ "1682:115": {
+  "inputs": {
+   "aspect_ratio": "9:16 (Portrait Widescreen)",
+   "megapixels": 0.9,
+   "multiple": 32
+  },
+  "class_type": "ResolutionSelector",
+  "_meta": {
+   "title": "Resolution Selector"
+  }
+ },
+ "1682:119": {
+  "inputs": {
+   "vae_name": "minimax_h3_video_vae_int8_convrot.safetensors"
+  },
+  "class_type": "VAELoader",
+  "_meta": {
+   "title": "Load VAE"
+  }
+ },
+ "1682:132": {
+  "inputs": {
+   "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+   "values.a": [
+    "1682:133",
+    0
+   ]
+  },
+  "class_type": "ComfyMathExpression",
+  "_meta": {
+   "title": "Math Expression"
+  }
+ },
+ "1682:127": {
+  "inputs": {
+   "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+   "weight_dtype": "default"
+  },
+  "class_type": "UNETLoader",
+  "_meta": {
+   "title": "Load Diffusion Model"
+  }
+ },
+ "1682:120": {
+  "inputs": {
+   "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+  },
+  "class_type": "VAELoader",
+  "_meta": {
+   "title": "Load VAE"
+  }
+ },
+ "1682:133": {
+  "inputs": {
+   "value": 10
+  },
+  "class_type": "PrimitiveFloat",
+  "_meta": {
+   "title": "Float"
+  }
+ },
+ "1682:131": {
+  "class_type": "MiniMaxH3ReferenceToVideo",
+  "_meta": {
+   "title": "MiniMax H3 Reference to Video"
+  },
+  "inputs": {
+   "clip": [
+    "1682:128",
+    0
+   ],
+   "vae": [
+    "1682:119",
+    0
+   ],
+   "audio_vae": [
+    "1682:120",
+    0
+   ],
+   "prompt": "",
+   "width": [
+    "1682:115",
+    0
+   ],
+   "height": [
+    "1682:115",
+    1
+   ],
+   "length": [
+    "1682:132",
+    1
+   ],
+   "ref_image_size": "max",
+   "ref_images.ref_image_0": [
+    "1682:114",
+    0
+   ],
+   "ref_audios.ref_audio_0": [
+    "1682:401",
+    0
+   ]
+  }
+ },
+ "1682:129": {
+  "inputs": {
+   "noise_seed": 64129814542585
+  },
+  "class_type": "RandomNoise",
+  "_meta": {
+   "title": "RandomNoise"
+  }
+ },
+ "1682:135": {
+  "class_type": "KSamplerSelect",
+  "inputs": {
+   "sampler_name": "lcm"
+  }
+ },
+ "1682:126": {
+  "inputs": {
+   "model": [
+    "pika:lora",
+    0
+   ],
+   "conditioning": [
+    "1682:502",
+    0
+   ]
+  },
+  "class_type": "BasicGuider",
+  "_meta": {
+   "title": "Basic Guider"
+  }
+ },
+ "1682:125": {
+  "inputs": {
+   "noise": [
+    "1682:129",
+    0
+   ],
+   "guider": [
+    "1682:126",
+    0
+   ],
+   "sampler": [
+    "1682:135",
+    0
+   ],
+   "sigmas": [
+    "pika:sigmas",
+    0
+   ],
+   "latent_image": [
+    "1682:601",
+    0
+   ]
+  },
+  "class_type": "SamplerCustomAdvanced",
+  "_meta": {
+   "title": "SamplerCustomAdvanced"
+  }
+ },
+ "1682:122": {
+  "inputs": {
+   "samples": [
+    "1682:125",
+    0
+   ],
+   "vae": [
+    "1682:119",
+    0
+   ]
+  },
+  "class_type": "VAEDecode",
+  "_meta": {
+   "title": "VAE Decode"
+  }
+ },
+ "1682:121": {
+  "inputs": {
+   "samples": [
+    "1682:125",
+    0
+   ],
+   "vae": [
+    "1682:120",
+    0
+   ]
+  },
+  "class_type": "VAEDecodeAudio",
+  "_meta": {
+   "title": "VAE Decode Audio"
+  }
+ },
+ "1682:130": {
+  "inputs": {
+   "fps": 24,
+   "bit_depth": 8,
+   "images": [
+    "1682:503",
+    0
+   ],
+   "audio": [
+    "1682:503",
+    1
+   ]
+  },
+  "class_type": "CreateVideo",
+  "_meta": {
+   "title": "Create Video"
+  }
+ },
+ "1682:200": {
+  "inputs": {
+   "lora_name": "h3-realism-people-t2v-i2v-r2v.safetensors",
+   "strength_model": 0.0,
+   "model": [
+    "1682:211",
+    0
+   ]
+  },
+  "class_type": "LoraLoaderModelOnly",
+  "_meta": {
+   "title": "Realism LoRA (people)"
+  }
+ },
+ "1682:400": {
+  "inputs": {
+   "audio": "song.mp3"
+  },
+  "class_type": "LoadAudio",
+  "_meta": {
+   "title": "Canzone del videoclip"
+  }
+ },
+ "1682:401": {
+  "inputs": {
+   "audio": [
+    "1682:400",
+    0
+   ],
+   "start_index": 0.0,
+   "duration": 10.5
+  },
+  "class_type": "TrimAudioDuration",
+  "_meta": {
+   "title": "I secondi di questa clip"
+  }
+ },
+ "1682:501": {
+  "class_type": "MiniMaxH3MotionContextLoadLatent",
+  "inputs": {
+   "latent_path": "h3_context",
+   "clip_index": 0
+  }
+ },
+ "1682:502": {
+  "class_type": "MiniMaxH3MotionContext",
+  "inputs": {
+   "conditioning": [
+    "1682:402",
+    0
+   ],
+   "vae": [
+    "1682:119",
+    0
+   ],
+   "latent": [
+    "1682:131",
+    1
+   ],
+   "context_length": "22",
+   "audio_context_length": 24,
+   "context_latent": [
+    "1682:501",
+    0
+   ]
+  }
+ },
+ "1682:503": {
+  "class_type": "MiniMaxH3MotionContextTrim",
+  "inputs": {
+   "images": [
+    "1682:122",
+    0
+   ],
+   "trim_frames": [
+    "1682:502",
+    1
+   ],
+   "audio": [
+    "1682:121",
+    0
+   ],
+   "fps": 24.0,
+   "match_tail": true
+  }
+ },
+ "1682:500": {
+  "class_type": "MiniMaxH3MotionContextSaveLatent",
+  "inputs": {
+   "latent": [
+    "1682:125",
+    0
+   ],
+   "filename_prefix": "h3_context/clip",
+   "clip_index": 1
+  }
+ },
+ "1682:402": {
+  "class_type": "MiniMaxH3AddGuide",
+  "inputs": {
+   "positive": [
+    "1682:131",
+    0
+   ],
+   "latent": [
+    "1682:131",
+    1
+   ],
+   "audio_vae": [
+    "1682:120",
+    0
+   ],
+   "audio": [
+    "1682:401",
+    0
+   ],
+   "frame_idx": 0
+  },
+  "_meta": {
+   "title": "Add Guide for MiniMax H3 (canzone sulla linea del tempo)"
+  }
+ },
+ "1682:210": {
+  "class_type": "MiniMaxChunkFeedForward",
+  "inputs": {
+   "model": [
+    "1682:127",
+    0
+   ],
+   "chunks": 4,
+   "seq_threshold": 2048
+  },
+  "_meta": {
+   "title": "KJ chunk feedforward (VRAM, identical output)"
+  }
+ },
+ "1682:211": {
+  "class_type": "MiniMaxLowVRAMAttention",
+  "inputs": {
+   "model": [
+    "1682:212",
+    0
+   ],
+   "head_chunks": 4
+  },
+  "_meta": {
+   "title": "KJ low-VRAM attention (identical output)"
+  }
+ },
+ "1682:600": {
+  "class_type": "MiniMaxH3LatentLabAudioEncode",
+  "inputs": {
+   "audio_vae": [
+    "1682:120",
+    0
+   ],
+   "audio": [
+    "1682:602",
+    0
+   ],
+   "fit_mode": "crop_or_pad_silence",
+   "target_av": [
+    "1682:131",
+    1
+   ]
+  },
+  "_meta": {
+   "title": "LatentLab Audio Encode (voce)"
+  }
+ },
+ "1682:601": {
+  "class_type": "MiniMaxH3LatentLabLipSyncSetup",
+  "inputs": {
+   "av_latent": [
+    "1682:131",
+    1
+   ],
+   "audio_latent": [
+    "1682:600",
+    0
+   ],
+   "fit_mode": "crop_pad",
+   "alignment": "end",
+   "video_denoise": 1.0,
+   "audio_denoise": 0.0
+  },
+  "_meta": {
+   "title": "LatentLab LipSync Setup (audio protetto)"
+  }
+ },
+ "1682:602": {
+  "class_type": "TrimAudioDuration",
+  "inputs": {
+   "audio": [
+    "1682:400",
+    0
+   ],
+   "start_index": 0.0,
+   "duration": 10.5
+  },
+  "_meta": {
+   "title": "Fetta con preroll (per il latente audio)"
+  }
+ },
+ "1682:212": {
+  "class_type": "MiniMaxH3MemoryEfficientSageAttentionPatch",
+  "inputs": {
+   "model": [
+    "1682:210",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "MiniMax H3 Mem Eff Sage Attention Patch"
+  }
+ },
+ "pika:lora": {
+  "class_type": "LoraLoaderModelOnly",
+  "inputs": {
+   "model": [
+    "1682:200",
+    0
+   ],
+   "lora_name": "pika_h3_flex_ref2va_v1_bf16.safetensors",
+   "strength_model": 1.0
+  }
+ },
+ "pika:sigmas": {
+  "class_type": "ManualSigmas",
+  "inputs": {
+   "sigmas": "1.0, 0.972973, 0.923077, 0.8, 0.571429, 0.333333, 0.0"
+  }
+ }
+}

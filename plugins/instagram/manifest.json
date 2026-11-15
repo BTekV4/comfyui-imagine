@@ -1,0 +1,260 @@
+{
+  "id": "instagram",
+  "name": "Instagram",
+  "version": "1.0.0",
+  "api": 1,
+  "description": {
+    "en": "Publishes the gallery on Instagram: the queue, the stories, the comment replies and the captions. It is the publisher that used to be inside the studio.",
+    "it": "Pubblica la galleria su Instagram: la coda, le storie, le risposte ai commenti e le didascalie. È il publisher che prima stava dentro lo studio."
+  },
+  "icon": "📷",
+  "entry": "index.mjs",
+  "settings": [
+    {
+      "key": "scheduler",
+      "kind": "toggle",
+      "label": {
+        "en": "Automatic publishing",
+        "it": "Pubblicazione automatica"
+      },
+      "default": false,
+      "help": {
+        "en": "Publishes the queued posts and stories at their time and runs the comment pass. Leave it off if another system publishes the same queue.",
+        "it": "Pubblica da solo i post e le storie in coda all'ora prevista e passa sui commenti. Tienila spenta se un altro sistema pubblica la stessa coda."
+      }
+    },
+    {
+      "key": "model",
+      "kind": "text",
+      "label": {
+        "en": "Model for captions and replies",
+        "it": "Modello per didascalie e risposte"
+      },
+      "placeholder": "omniroute/…",
+      "help": {
+        "en": "Empty means the model the studio's page names. Written as provider/model.",
+        "it": "Vuoto vuol dire il modello che la pagina dello studio nomina. Si scrive provider/modello."
+      }
+    },
+    {
+      "key": "language",
+      "kind": "select",
+      "label": {
+        "en": "Language of the notices",
+        "it": "Lingua degli avvisi"
+      },
+      "default": "it",
+      "options": [
+        {
+          "value": "it",
+          "label": {
+            "en": "Italian",
+            "it": "Italiano"
+          }
+        },
+        {
+          "value": "en",
+          "label": {
+            "en": "English",
+            "it": "Inglese"
+          }
+        }
+      ],
+      "help": {
+        "en": "The language of what the scheduler writes on its own: the Telegram notices, the progress and the errors of a scheduled publication, the comment pass's notes. The pages and the buttons answer in the language of whoever is using them.",
+        "it": "La lingua di quello che lo scheduler scrive da solo: gli avvisi su Telegram, l'avanzamento e gli errori di una pubblicazione programmata, le note del passaggio sui commenti. Le pagine e i pulsanti rispondono nella lingua di chi li usa."
+      }
+    },
+    {
+      "key": "storiesFrom",
+      "kind": "text",
+      "label": {
+        "en": "First story day",
+        "it": "Primo giorno delle storie"
+      },
+      "placeholder": "YYYY-MM-DD",
+      "help": {
+        "en": "No story is scheduled before this day (YYYY-MM-DD), for an account whose earlier days belong to another publisher. Empty means no limit.",
+        "it": "Nessuna storia viene programmata prima di questo giorno (AAAA-MM-GG), per un account i cui giorni precedenti sono di un altro publisher. Vuoto vuol dire nessun limite."
+      }
+    },
+    {
+      "key": "commentHours",
+      "kind": "text",
+      "label": {
+        "en": "Comment pass hours",
+        "it": "Ore del passaggio sui commenti"
+      },
+      "default": "8, 14, 20",
+      "placeholder": "8, 14, 20",
+      "help": {
+        "en": "The local hours (0-23) at which the comments are read, liked and answered, separated by commas. Empty means 8, 14, 20.",
+        "it": "Le ore locali (0-23) in cui si leggono, si mettono like e si risponde ai commenti, separate da virgole. Vuoto vuol dire 8, 14, 20."
+      }
+    },
+    {
+      "key": "fixedHashtags",
+      "kind": "text",
+      "label": {
+        "en": "Fixed hashtags",
+        "it": "Hashtag fissi"
+      },
+      "default": "#krea2",
+      "placeholder": "#krea2",
+      "help": {
+        "en": "The hashtags every post starts with, separated by spaces. The others, up to five in all, come from the picture. Empty means none.",
+        "it": "Gli hashtag con cui comincia ogni post, separati da spazi. Gli altri, fino a cinque in tutto, vengono dalla foto. Vuoto vuol dire nessuno."
+      }
+    },
+    {
+      "key": "reelHashtags",
+      "kind": "text",
+      "label": {
+        "en": "Extra fixed hashtags for reels",
+        "it": "Hashtag fissi in più per i reel"
+      },
+      "default": "#minimaxh3",
+      "placeholder": "#minimaxh3",
+      "help": {
+        "en": "Added after the fixed hashtags, on reels only. Empty means none.",
+        "it": "Si aggiungono dopo gli hashtag fissi, solo sui reel. Vuoto vuol dire nessuno."
+      }
+    },
+    {
+      "key": "franchiseHashtags",
+      "kind": "text",
+      "label": {
+        "en": "Franchise hashtags",
+        "it": "Hashtag dei franchise"
+      },
+      "placeholder": "naruto: #Naruto #NarutoShippuden; sailor moon: #SailorMoon #SailorMoonCosplay",
+      "help": {
+        "en": "keyword: #First #Second, separated by ';'. When a keyword appears in the project, the prompt or what the picture shows, its two tags go first; the first match wins. Empty means none.",
+        "it": "parola: #Primo #Secondo, separati da ';'. Quando la parola compare nel progetto, nel prompt o in quello che si vede, i suoi due tag vanno per primi; vale la prima trovata. Vuoto vuol dire nessuno."
+      }
+    },
+    {
+      "key": "instagramDir",
+      "kind": "text",
+      "label": {
+        "en": "Instagram folder",
+        "it": "Cartella Instagram"
+      },
+      "placeholder": "/data/instagram",
+      "help": {
+        "en": "The project: config/ with the tokens, media/, state/. Empty means <data>/instagram.",
+        "it": "Il progetto: config/ con i token, media/, state/. Vuoto vuol dire <dati>/instagram."
+      }
+    },
+    {
+      "key": "scriptsDir",
+      "kind": "text",
+      "label": {
+        "en": "Scripts folder",
+        "it": "Cartella degli script"
+      },
+      "placeholder": "/data/instagram/scripts",
+      "help": {
+        "en": "The Python publisher and comment manager. Empty means <instagram>/scripts.",
+        "it": "I publisher Python e il comment manager. Vuoto vuol dire <instagram>/scripts."
+      }
+    },
+    {
+      "key": "stateDir",
+      "kind": "text",
+      "label": {
+        "en": "State folder",
+        "it": "Cartella dello stato"
+      },
+      "placeholder": "/data/social",
+      "help": {
+        "en": "The queues and the comment record. Empty means <data>/social. Moving it means losing the queue: it is the record.",
+        "it": "Le code e il registro dei commenti. Vuoto vuol dire <dati>/social. Spostarla vuol dire perdere la coda: è il registro."
+      }
+    },
+    {
+      "key": "watermark",
+      "kind": "toggle",
+      "label": {
+        "en": "Watermark on published files",
+        "it": "Marchio sui file pubblicati"
+      },
+      "default": true,
+      "help": {
+        "en": "Writes the mark in the bottom-right corner of every photo, reel, carousel piece and story before uploading it. The file in the gallery is untouched.",
+        "it": "Scrive il marchio in basso a destra su ogni foto, reel, immagine del carosello e storia prima di caricarla. Il file in galleria resta com'è."
+      }
+    },
+    {
+      "key": "watermarkText",
+      "kind": "text",
+      "label": {
+        "en": "What the mark says",
+        "it": "Testo del marchio"
+      },
+      "placeholder": "@account",
+      "help": {
+        "en": "Empty means no mark, even with the switch on.",
+        "it": "Vuoto vuol dire nessun marchio, anche con l'interruttore acceso."
+      }
+    }
+  ],
+  "actions": [
+    {
+      "key": "verify-meta",
+      "label": {
+        "en": "Check on Meta",
+        "it": "Verifica su Meta"
+      },
+      "method": "GET",
+      "path": "/plugin/instagram/social/facebook-token/check"
+    },
+    {
+      "key": "save-token",
+      "label": {
+        "en": "Save the Instagram token",
+        "it": "Salva il token Instagram"
+      },
+      "method": "POST",
+      "path": "/plugin/instagram/social/token",
+      "fields": [
+        {
+          "key": "accessToken",
+          "kind": "password",
+          "label": {
+            "en": "Instagram token",
+            "it": "Token Instagram"
+          },
+          "placeholder": "il token a lunga durata"
+        }
+      ]
+    },
+    {
+      "key": "save-comments",
+      "label": {
+        "en": "Save the comment tokens",
+        "it": "Salva i token dei commenti"
+      },
+      "method": "POST",
+      "path": "/plugin/instagram/social/facebook-token",
+      "fields": [
+        {
+          "key": "pageAccessToken",
+          "kind": "password",
+          "label": {
+            "en": "Page token (replies)",
+            "it": "Token della pagina (risposte)"
+          }
+        },
+        {
+          "key": "userAccessToken",
+          "kind": "password",
+          "label": {
+            "en": "User token",
+            "it": "Token utente"
+          }
+        }
+      ]
+    }
+  ]
+}

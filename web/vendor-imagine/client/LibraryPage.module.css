@@ -1,0 +1,172 @@
+/* "Library": tabs and search on top, then a grid per date group. */
+.page {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 24px 24px 48px;
+  overflow: auto;
+  height: 100%;
+}
+
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0 14px;
+  background: var(--imagine-bg);
+}
+
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  background: transparent;
+  color: var(--imagine-muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.tab:hover { color: var(--imagine-ink); }
+.tab[data-on] { background: var(--imagine-chip-on); color: var(--imagine-ink); }
+.count { font-size: 12px; color: var(--imagine-muted); font-variant-numeric: tabular-nums; }
+
+.search {
+  flex: 1;
+  min-width: 180px;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 14px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  background: var(--imagine-chip);
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.search:focus-visible { outline: 2px solid var(--imagine-focus, currentColor); outline-offset: 1px; }
+
+.upload {
+  height: 36px;
+  padding: 0 16px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  background: var(--imagine-ink);
+  color: var(--imagine-ink-fg);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.empty { margin: 40px 0; text-align: center; color: var(--imagine-muted); }
+
+.group + .group { margin-top: 28px; }
+
+.groupTitle {
+  margin: 8px 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--imagine-ink);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 18px;
+}
+
+.card { position: relative; display: grid; gap: 8px; min-width: 0; }
+
+.thumb {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  padding: 0;
+  border: 1px solid var(--imagine-line);
+  border-radius: 14px;
+  background: var(--imagine-media-bed);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.thumb:hover { border-color: var(--imagine-ink); }
+
+/* Absolute so a tall still cannot grow the card past its ratio. */
+.still {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.audio {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-size: 34px;
+  color: var(--imagine-muted);
+}
+
+.badge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 2px 7px;
+  border-radius: var(--imagine-radius-pill);
+  background: rgb(0 0 0 / 0.65);
+  color: #fff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.meta { display: grid; gap: 2px; min-width: 0; padding: 0 2px; }
+
+.name,
+.sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.name { font-size: 14px; color: var(--imagine-ink); }
+.sub { font-size: 12.5px; color: var(--imagine-muted); }
+
+.download {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--imagine-radius-pill);
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+
+.card:hover .download,
+.download:focus-visible { opacity: 1; }
+
+@media (max-width: 700px) {
+  .page { padding: 12px 16px 48px; }
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+}

@@ -1,0 +1,63 @@
+{
+  "id": "example-webhook",
+  "name": "Example webhook",
+  "version": "1.0.0",
+  "api": 1,
+  "description": {
+    "en": "Forwards the studio's notices to an address of yours. The smallest useful plugin, and the one to copy when you write your own.",
+    "it": "Manda gli avvisi dello studio a un indirizzo tuo. Il plugin utile più piccolo, e quello da copiare quando ne scrivi uno."
+  },
+  "icon": "🔗",
+  "entry": "index.mjs",
+  "settings": [
+    {
+      "key": "url",
+      "kind": "text",
+      "label": {
+        "en": "Address",
+        "it": "Indirizzo"
+      },
+      "placeholder": "https://example.test/hook",
+      "help": {
+        "en": "Where a POST goes, as JSON: {\"text\": \"…\"}.",
+        "it": "Dove arriva un POST, in JSON: {\"text\": \"…\"}."
+      }
+    },
+    {
+      "key": "enabled",
+      "kind": "toggle",
+      "label": {
+        "en": "Forward the notices",
+        "it": "Manda gli avvisi"
+      },
+      "default": true,
+      "help": {
+        "en": "Off means the plugin loads and answers, but sends nothing.",
+        "it": "Spento vuol dire che il plugin si carica e risponde, ma non manda niente."
+      }
+    },
+    {
+      "key": "secret",
+      "kind": "password",
+      "label": {
+        "en": "Secret",
+        "it": "Segreto"
+      },
+      "help": {
+        "en": "Sent as the x-webhook-secret header, so the receiving end can tell it is you. Never sent back to the page.",
+        "it": "Mandato nell'header x-webhook-secret, così chi riceve sa che sei tu. Non torna mai alla pagina."
+      }
+    }
+  ],
+  "actions": [
+    {
+      "key": "test",
+      "label": {
+        "en": "Send a test",
+        "it": "Invia una prova"
+      },
+      "method": "POST",
+      "path": "/plugin/example-webhook/test"
+    }
+  ]
+}

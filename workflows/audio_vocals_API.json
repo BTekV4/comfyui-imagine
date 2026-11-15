@@ -1,0 +1,17 @@
+{
+  "1": {
+    "inputs": { "audio": "song.mp3" },
+    "class_type": "LoadAudio",
+    "_meta": { "title": "Load Audio" }
+  },
+  "3": {
+    "inputs": { "audio": ["1", 0], "model": "MELBAND/MelBandRoformer_fp16.safetensors" },
+    "class_type": "VocalRemovalNode",
+    "_meta": { "title": "Vocal Removal" }
+  },
+  "9": {
+    "inputs": { "audio": ["3", 0], "filename_prefix": "audio/vocals", "quality": "V0" },
+    "class_type": "SaveAudioMP3",
+    "_meta": { "title": "Save Vocals" }
+  }
+}

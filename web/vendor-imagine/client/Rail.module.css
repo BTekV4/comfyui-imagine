@@ -1,0 +1,567 @@
+/*
+ * The studio's left rail (Rail.tsx). Collapsed and drawer states are set on
+ * the page (`data-rail-collapsed`, `data-rail-drawer` on [data-imagine-page]),
+ * so the rules for them read those attributes; `--imagine-rail` is the
+ * dragged width, set there too.
+ */
+
+.rail {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  width: var(--imagine-rail);
+  height: 100%;
+  background: var(--imagine-surface);
+  border-right: 1px solid var(--imagine-line);
+}
+
+[data-imagine-page][data-rail-collapsed] .rail {
+  width: var(--imagine-rail-collapsed);
+}
+
+/* Collapsed rail: drop the expanded-state paddings and center every icon
+   so the 44px strip reads as one aligned column. */
+[data-imagine-page][data-rail-collapsed] .railHead {
+  justify-content: center;
+  padding: 0;
+}
+/* Collapsed: the top button is the expand control, so it always shows the
+   panel (expand) icon rather than the Imagine mark. */
+.railExpandSwap { display: none; }
+[data-imagine-page][data-rail-collapsed] .railHead button .railExpandSwap { display: inline-flex; }
+[data-imagine-page][data-rail-collapsed] .railHead button > svg:first-child { display: none; }
+
+[data-imagine-page][data-rail-collapsed] .sectionHead {
+  justify-content: center;
+  padding: 0;
+}
+
+/* Collapsed rail: the projects themselves are gone, not just their names.
+   A 44px strip cannot show a title, and a column of identical folder icons
+   names nothing.
+   What is left is what one can act on blind: expand, search, new generation,
+   new project. */
+[data-imagine-page][data-rail-collapsed] .projectList {
+  display: none;
+}
+
+/* The recent projects stay, stacked, as on Grok's collapsed sidebar: a face
+   names a project where a folder icon cannot. */
+[data-imagine-page][data-rail-collapsed] .history {
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.railHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--imagine-header);
+  /* Same 10px gutter as .nav/.section/.railFoot: with the 8px each row adds
+     inside it, every glyph in the rail starts at x=18 and every trailing
+     control ends 10px from the edge. */
+  padding: 0 10px;
+}
+
+.iconBtn {
+  composes: iconBtn from './imagine-shared.module.css';
+}
+
+/* Expanded, the trailing control is a 28px circle (the sidebar's own
+   logo-row size) so it lines up with the project menus and the "+" below;
+   collapsed, this same element is the brand/expand button and keeps the
+   36px rail square. */
+[data-imagine-page]:not([data-rail-collapsed]) .railHead .iconBtn {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+[data-imagine-page][data-rail-collapsed] .brandLabel {
+  display: none;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 10px;
+}
+
+.railFoot {
+  /* .section above is flex:1, so this foot stays pinned to the rail bottom,
+     separated from the scrolling project list. */
+  flex: none;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--imagine-line);
+}
+
+/* Every entry in the rail is the same row: 36px tall, 8px inset, an 8px gap
+   between glyph and label, 8px radius.
+   Instagram used to have its own (28px, 6/8 padding, 13px text) and read as
+   a stray. */
+.navBtn,
+.projectBtn,
+.queueLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  /* The search row is a <label>: buttons get border-box from the UA sheet,
+     it does not, and width:100% plus the 16px of padding hung it past the
+     gutter. min-width:0 keeps the input from growing the row either. */
+  box-sizing: border-box;
+  min-width: 0;
+  height: 36px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.navBtn:hover,
+.projectBtn:hover,
+.queueLabel:hover,
+.navBtn[data-active],
+.queueLabel[data-active],
+.projectRow[data-active] {
+  background: var(--imagine-hover);
+}
+
+.navBtn:focus-visible {
+  background: var(--imagine-hover);
+}
+
+.projectRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 10px;
+}
+
+.projectRow .projectBtn {
+  flex: 1;
+  min-width: 0;
+}
+
+.projectRow .projectBtn svg {
+  flex: none;
+}
+
+.projectRow .projectBtn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.moreBtn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.moreBtn:hover {
+  background: var(--imagine-chip);
+}
+
+/* Time since last use: it gives its place to the
+   menu button on hover, and both stay on a device that cannot hover. */
+.projectTime {
+  flex: none;
+  padding: 0 8px 0 4px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--imagine-faint);
+  white-space: nowrap;
+}
+
+.renameField {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  margin: 0 4px 0 10px;
+  padding: 0 8px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 8px;
+  background: var(--imagine-bg);
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+}
+
+.projectMenu {
+  position: absolute;
+  top: 34px;
+  right: 4px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  min-width: 148px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--imagine-surface);
+  box-shadow: 0 10px 28px var(--imagine-scrim);
+}
+
+.projectMenu button {
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.projectMenu button:hover {
+  background: var(--imagine-hover);
+}
+
+.projectMenu button[data-danger] {
+  color: var(--imagine-danger);
+}
+
+[data-imagine-page][data-rail-collapsed] .navBtn span,
+[data-imagine-page][data-rail-collapsed] .sectionHead span,
+[data-imagine-page][data-rail-collapsed] .searchField {
+  display: none;
+}
+
+/* Collapsed, every entry is a 36px square centred in the 36px column a 4px
+   gutter leaves in the 44px strip — the expanded 8px inset would push each
+   glyph off centre, and the expanded 10px gutter would not fit the square. */
+[data-imagine-page][data-rail-collapsed] .navBtn,
+[data-imagine-page][data-rail-collapsed] .queueLabel {
+  justify-content: center;
+  width: 36px;
+  padding: 0;
+}
+[data-imagine-page][data-rail-collapsed] .nav,
+[data-imagine-page][data-rail-collapsed] .section {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+[data-imagine-page][data-rail-collapsed] .railFoot {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.searchField {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  margin-top: 12px;
+  padding: 0 10px 12px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 36px;
+  /* No right padding: the 28px control inside ends on the section gutter,
+     where the head toggle and the project menus end too. */
+  padding: 0 0 0 8px;
+  color: var(--imagine-muted);
+  font-size: 13px;
+}
+
+[data-imagine-page]:not([data-rail-collapsed]) .sectionHead .iconBtn {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+}
+
+.sectionHeadBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sectionHeadBtn:hover,
+.sectionHeadBtn[data-active] {
+  color: var(--imagine-ink);
+}
+
+.sectionHeadBtn[data-active] {
+  font-weight: 550;
+}
+
+.projectList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.history {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px 0 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+}
+
+/* ── The way into the publication page ──────────────────────────────────
+   A seat inside the nav group, not a band of its own: the separator and the
+   8px band it used to carry opened a gap under "new generation" that read
+   as a missing row. Geometry comes from the shared .navBtn rule. */
+.queue {
+  padding: 0;
+}
+
+.queueLabel {
+  flex: none;
+  color: var(--imagine-ink);
+}
+
+.queueLabel[data-active] {
+  background: var(--imagine-chip-on);
+  font-weight: 600;
+}
+
+.queueLabel > svg {
+  flex: none;
+}
+
+/* The name yields before the badge does: a count of what has not gone out is
+   the part worth keeping when the rail is narrow. */
+.queueName {
+  composes: ellipsis from './imagine-shared.module.css';
+}
+
+.queueCount {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-ink);
+  color: var(--imagine-ink-fg);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+[data-imagine-page][data-rail-collapsed] .queueName,
+[data-imagine-page][data-rail-collapsed] .queueCount {
+  display: none;
+}
+
+/* Collapsed, the entry is its icon and nothing else: the square comes from
+   the shared collapsed rule above, so only the band needs zeroing. Without
+   an explicit square the flex row kept the label's padding and squeezed the
+   glyph to 4px — a dot in the strip, measured on 2026-09-06. */
+[data-imagine-page][data-rail-collapsed] .queue {
+  padding: 0;
+}
+
+/* The rail's "show the rest" row: quieter than a project, same left edge. */
+.railMore {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  height: 32px;
+  padding: 0 8px 0 34px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--imagine-muted);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.railMore:hover {
+  background: var(--imagine-hover);
+  color: var(--imagine-ink);
+}
+
+.railMore:focus-visible {
+  outline: 2px solid var(--imagine-focus, currentColor);
+  outline-offset: -2px;
+}
+
+[data-imagine-page][data-rail-collapsed] .railMore {
+  display: none;
+}
+
+/* The rail's foot, as Grok's: the latest projects as 34px thumbnails and
+   "All media" closing the row. */
+.recentRow {
+  display: flex;
+  gap: 3px;
+  padding: 0 8px;
+}
+
+.recentThumb,
+.recentAll {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: var(--imagine-media-bed);
+  color: var(--imagine-muted);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.audioThumb {
+  composes: audioThumb from './imagine-shared.module.css';
+}
+
+.recentThumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.recentThumb:hover img { opacity: 0.85; }
+.recentThumb .audioThumb { font-size: 18px; }
+.recentThumb[data-active] { outline: 2px solid var(--imagine-ink); outline-offset: -2px; }
+.recentAll { background: var(--imagine-raised); }
+.recentAll:hover,
+.recentAll[data-active] { background: var(--imagine-raised-hover); color: var(--imagine-ink); }
+
+[data-imagine-page][data-rail-collapsed] .recentRow { display: none; }
+
+/* The collapsed rail's one way into the media: Grok's stacked deck. */
+.mediaStack {
+  position: relative;
+  display: none;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  align-self: center;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: var(--imagine-raised);
+  cursor: pointer;
+}
+
+[data-imagine-page][data-rail-collapsed] .mediaStack { display: block; }
+.mediaStack:focus-visible { outline: 2px solid var(--imagine-ink); outline-offset: 2px; }
+
+.mediaStackBack,
+.mediaStackFront {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.mediaStackBack { z-index: 0; transform: rotate(12deg); }
+.mediaStackFront { z-index: 1; transform: scale(0.95); box-shadow: 0 1px 3px rgb(0 0 0 / 0.5); }
+
+.navBtn:active {
+  scale: 0.97;
+}
+
+@media (hover: hover) {
+  .projectRow:not(:hover):not(:focus-within) .projectTime + .moreBtn:not([aria-expanded="true"]) {
+    display: none;
+  }
+  .projectRow:hover .projectTime,
+  .projectRow:focus-within .projectTime,
+  .projectRow:has(.moreBtn[aria-expanded="true"]) .projectTime {
+    display: none;
+  }
+}
+
+/*
+ * Below 900px the three side-by-side columns stop fitting: the rail is 256px
+ * and the chat 360px, so at 768px the canvas was left with 152px — narrower
+ * than a single tile. The RAIL is what goes: it holds real width, and behind
+ * the home button it costs the stage nothing.
+ */
+@media (max-width: 900px) {
+  .rail {
+    display: none;
+  }
+
+  /*
+   * Hiding the rail here took the project list, search, History, the Projects
+   * view and the chat with it, and the toggle had nothing left to act on.
+   * Slide it back in over the stage instead: `data-rail-collapsed` still
+   * governs the wide layout, this governs the narrow one.
+   */
+  [data-imagine-page][data-rail-drawer] .rail {
+    position: absolute;
+    z-index: 30;
+    top: 0;
+    left: 0;
+    display: flex;
+    width: min(var(--imagine-rail), 86vw);
+    height: 100%;
+    box-shadow: 0 0 0 100vmax rgb(0 0 0 / 45%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navBtn {
+    animation: none !important;
+    transition: none !important;
+  }
+}

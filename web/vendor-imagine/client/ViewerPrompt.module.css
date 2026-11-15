@@ -1,0 +1,91 @@
+/* The bar under the view, as Grok's post composer: one rounded box, the
+   prompt the photo was made with offered above to reuse. */
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-sizing: border-box;
+  width: min(840px, 100%);
+  margin: 12px auto 0;
+  padding: 8px 8px 8px 18px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 28px;
+  background: var(--imagine-surface);
+}
+
+.used {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.usedText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--imagine-muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usedButton {
+  flex: none;
+  height: 26px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  background: rgb(255 255 255 / 0.1);
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.usedButton:hover { background: rgb(255 255 255 / 0.18); }
+
+.row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.field {
+  flex: 1;
+  min-width: 0;
+  max-height: 96px;
+  padding: 9px 0;
+  border: none;
+  background: transparent;
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.4;
+  resize: none;
+  outline: none;
+  field-sizing: content;
+}
+
+.field::placeholder { color: var(--imagine-muted); }
+
+.send {
+  flex: none;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  background: var(--imagine-ink);
+  color: var(--imagine-ink-fg);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.send[data-round] { width: 36px; padding: 0; display: grid; place-items: center; }
+.send:disabled { opacity: 0.35; cursor: default; }
+
+.ref { flex: none; padding-bottom: 2px; }

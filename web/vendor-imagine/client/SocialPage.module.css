@@ -1,0 +1,876 @@
+/*
+ * The publication page. It reads in Imagine's own tokens (--imagine-*, defined
+ * on .page) so it follows the theme like every other surface here, and it sets
+ * box-sizing itself: this page has no global border-box.
+ *
+ * One colour per state, the same everywhere (frame of the thumbnail, badge,
+ * dot, count): scheduled blue, publishing amber, published green, failed red,
+ * draft grey. Until 2026-11-13 "scheduled" was white and "published" green on
+ * a 2 px bar, and the two read the same.
+ */
+.page {
+  --st-scheduled: var(--imagine-accent);
+  --st-publishing: var(--imagine-warn);
+  --st-published: var(--imagine-success);
+  --st-error: var(--imagine-danger);
+  --st-draft: var(--imagine-faint);
+
+  box-sizing: border-box;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: auto;
+  padding: 0 24px 28px;
+  color: var(--imagine-ink);
+  container-type: inline-size;
+}
+
+.toolbar *,
+.monthLayout *,
+.weekBoard *,
+.list *,
+.empty {
+  box-sizing: border-box;
+}
+
+.page [data-status='scheduled'] { --st: var(--st-scheduled); }
+.page [data-status='publishing'] { --st: var(--st-publishing); }
+.page [data-status='published'] { --st: var(--st-published); }
+.page [data-status='error'] { --st: var(--st-error); }
+.page [data-status='draft'] { --st: var(--st-draft); }
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.title {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.2px;
+}
+
+/* The page scrolls as a whole: nothing in it may shrink to fit the window,
+   or the week was cut off at the bottom with its own clipped edge. */
+.header,
+.toolbar,
+.monthLayout,
+.weekBoard,
+.section {
+  flex: none;
+}
+
+/* The calendar's own bar: where you are, what is in it, how to look at it. */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+
+/* ── Counts (and legend) ────────────────────────────────────────────── */
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.toolbar .pills {
+  flex: 1;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 3px 10px 3px 8px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  color: var(--imagine-muted);
+  font-size: 12px;
+}
+
+.pill strong {
+  color: var(--imagine-ink);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.pillDot {
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--st, var(--imagine-dot));
+}
+
+.monthNav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.navBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: transparent;
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.navBtn:hover {
+  background: var(--imagine-hover);
+}
+
+.monthName {
+  min-width: 150px;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 650;
+  text-transform: capitalize;
+}
+
+.todayBtn {
+  height: 30px;
+  margin-left: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--imagine-line-2);
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: transparent;
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.todayBtn:hover {
+  background: var(--imagine-hover);
+}
+
+.modeSwitch {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-chip);
+}
+
+.modeBtn {
+  height: 26px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: transparent;
+  color: var(--imagine-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modeBtn:hover:not([data-on]) {
+  color: var(--imagine-ink);
+}
+
+.modeBtn[data-on] {
+  background: var(--imagine-surface);
+  color: var(--imagine-ink);
+  font-weight: 600;
+}
+
+/* ── Month ──────────────────────────────────────────────────────────── */
+
+/* The month and the listed day side by side when there is room; the day
+   goes under the month when there is not. */
+.monthLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+@container (min-width: 1000px) {
+  .monthLayout {
+    grid-template-columns: minmax(0, 1fr) 330px;
+  }
+
+  .dayPanel {
+    position: sticky;
+    top: 0;
+    max-height: calc(100vh - 140px);
+  }
+}
+
+/* One framed board with hairlines between the days, not 42 separate cards:
+   the gapped boxes read as a grid of empty tiles rather than as a month. */
+.board {
+  border: 1px solid var(--imagine-line);
+  border-radius: 12px;
+  background: var(--imagine-surface);
+  overflow: hidden;
+}
+
+.weekHead,
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.weekHead {
+  border-bottom: 1px solid var(--imagine-line);
+}
+
+.weekName {
+  padding: 8px 8px 7px;
+  color: var(--imagine-muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.5px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  min-height: 112px;
+  padding: 6px;
+  border-top: 1px solid var(--imagine-line);
+  border-left: 1px solid var(--imagine-line);
+  cursor: pointer;
+  outline: none;
+  transition: background 0.12s ease;
+}
+
+.grid > .day:nth-child(-n + 7) {
+  border-top: none;
+}
+
+.grid > .day:nth-child(7n + 1) {
+  border-left: none;
+}
+
+.day:hover {
+  background: var(--imagine-hover);
+}
+
+/* Saturday and Sunday sit a shade back, so the working week reads first. */
+.day[data-weekend] {
+  background: color-mix(in srgb, var(--imagine-chip) 40%, transparent);
+}
+
+.day[data-weekend]:hover {
+  background: var(--imagine-hover);
+}
+
+/* The listed day: a ring inside the cell, so the hairlines stay put. */
+.day[data-picked] {
+  background: color-mix(in srgb, var(--imagine-accent) 9%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--imagine-accent) 70%, transparent);
+}
+
+.day:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--imagine-focus);
+}
+
+/* The leading and trailing days belong to other months: present for
+   continuity, recessed so the month still reads as a block. */
+.day[data-outside] > * {
+  opacity: 0.35;
+}
+
+.dayNum {
+  align-self: flex-start;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  color: var(--imagine-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 22px;
+  text-align: center;
+}
+
+/* A day already gone is not where anything can be scheduled. */
+.day[data-past]:not([data-today]) .dayNum {
+  color: var(--imagine-faint);
+  font-weight: 500;
+}
+
+/* Today is a filled marker on its number, not a ring around the whole cell:
+   the ring competed with the posts inside it. */
+.day[data-today] .dayNum {
+  background: var(--imagine-ink);
+  color: var(--imagine-ink-fg);
+  font-weight: 700;
+}
+
+/* One post in the month: its picture and its hour. The caption is read in
+   the day's list; clipped to a dozen letters here it only made noise. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 2px;
+  border-radius: 7px;
+}
+
+.rowThumb {
+  width: 26px;
+  height: 26px;
+}
+
+.rowTime {
+  overflow: hidden;
+  color: var(--imagine-ink);
+  font-size: 12px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.day[data-past]:not([data-today]) .rowTime {
+  color: var(--imagine-muted);
+  font-weight: 450;
+}
+
+.row[data-status='error'] .rowTime {
+  color: var(--st-error);
+}
+
+.more {
+  padding: 1px 4px;
+  color: var(--imagine-muted);
+  font-size: 11px;
+  font-weight: 550;
+}
+
+/* The phone's version of the rows: a dot per post. */
+.dots {
+  display: none;
+  justify-content: center;
+  gap: 3px;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--st);
+}
+
+/* ── The listed day ─────────────────────────────────────────────────── */
+
+.dayPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 12px;
+  background: var(--imagine-surface);
+  overflow: auto;
+}
+
+.dayPanelHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.dayPanelWeekday {
+  color: var(--imagine-muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.dayPanelDate {
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.todayTag {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-ink);
+  color: var(--imagine-ink-fg);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.dayList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dayEmpty {
+  padding: 22px 8px;
+  color: var(--imagine-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ── Week ───────────────────────────────────────────────────────────── */
+
+/* Seven columns of posts in the order of the clock. The hour grid it
+   replaced was 24 rows, empty but for the few hours anything goes out. */
+.weekBoard {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border: 1px solid var(--imagine-line);
+  border-radius: 12px;
+  background: var(--imagine-surface);
+  overflow: hidden;
+}
+
+.weekCol {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-left: 1px solid var(--imagine-line);
+}
+
+.weekCol:first-child {
+  border-left: none;
+}
+
+.weekCol[data-today] {
+  background: color-mix(in srgb, var(--imagine-ink) 4%, transparent);
+}
+
+.weekColHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 6px;
+  border: none;
+  border-bottom: 1px solid var(--imagine-line);
+  background: transparent;
+  color: var(--imagine-muted);
+  font: inherit;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.weekColHead:hover {
+  background: var(--imagine-hover);
+}
+
+.weekColHead strong {
+  color: var(--imagine-ink);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.weekCol[data-past]:not([data-today]) .weekColHead strong {
+  color: var(--imagine-faint);
+}
+
+.weekCol[data-today] .weekColHead strong {
+  padding: 0 7px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-ink);
+  color: var(--imagine-ink-fg);
+}
+
+.weekColCount {
+  padding: 0 6px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-chip);
+  color: var(--imagine-muted);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.weekColList {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-height: 140px;
+  padding: 6px;
+}
+
+.weekColEmpty {
+  padding: 16px 0;
+  color: var(--imagine-faint);
+  text-align: center;
+}
+
+.moreBtn {
+  padding: 6px;
+  border: 1px dashed var(--imagine-line-2);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--imagine-muted);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.moreBtn:hover {
+  background: var(--imagine-hover);
+  color: var(--imagine-ink);
+}
+
+/* ── One post ───────────────────────────────────────────────────────── */
+
+/* The picture with its state on the frame: the colour reads even where
+   there is no room for the word. */
+.thumb {
+  position: relative;
+  flex: 0 0 auto;
+  display: block;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--imagine-media-bed);
+  box-shadow: 0 0 0 2px var(--st, transparent);
+}
+
+.thumbImg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.reelMark {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  color: var(--imagine-on-media);
+  font-size: 8px;
+  line-height: 1;
+  text-shadow: 0 0 3px rgb(0 0 0 / 0.9);
+}
+
+.card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 10px;
+  background: var(--imagine-chip);
+  color: var(--imagine-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.card:hover {
+  border-color: var(--imagine-line-3);
+  background: var(--imagine-raised-hover);
+}
+
+.cardThumb {
+  width: 52px;
+  height: 52px;
+  margin: 2px;
+}
+
+.cardText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cardTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.cardTime {
+  font-size: 14px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.badge {
+  padding: 1px 7px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: color-mix(in srgb, var(--st) 18%, transparent);
+  color: var(--st);
+  font-size: 10.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+/* Two lines of the caption: enough to tell posts apart. */
+.cardCaption {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 12.5px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+.cardMeta {
+  color: var(--imagine-muted);
+  font-size: 11px;
+}
+
+/* In a week column the card stacks: the picture on top, wide. */
+.card[data-compact] {
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+}
+
+.card[data-compact] .cardThumb {
+  width: calc(100% - 4px);
+  height: auto;
+  aspect-ratio: 1;
+}
+
+.card[data-compact] .cardTime {
+  font-size: 13px;
+}
+
+.card[data-compact] .cardCaption {
+  font-size: 11.5px;
+}
+
+/* ── Lists below the calendar ───────────────────────────────────────── */
+
+.section {
+  composes: section from './social-shared.module.css';
+}
+
+.sectionTitle {
+  composes: sectionTitle from './social-shared.module.css';
+}
+
+.list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+}
+
+.failedRow {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px;
+  border: 1px solid color-mix(in srgb, var(--imagine-danger) 28%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--imagine-danger) 7%, transparent);
+}
+
+.failedRow .card {
+  background: transparent;
+}
+
+.failedWhy {
+  overflow-wrap: anywhere;
+  color: var(--imagine-danger);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+/* Muted, not red: an attempt still to come is not itself a failure. */
+.failedRetry {
+  color: var(--imagine-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px dashed var(--imagine-line);
+  border-radius: 12px;
+  color: var(--imagine-muted);
+  font-size: 12.5px;
+}
+
+/* ── Narrow ─────────────────────────────────────────────────────────── */
+
+/* A column too narrow for picture and hour: the month keeps its seven
+   columns but each day shows a dot per post, and the list under the month
+   says the rest. */
+@container (max-width: 760px) {
+  .day {
+    align-items: center;
+    gap: 4px;
+    min-height: 54px;
+    padding: 5px 2px;
+  }
+
+  .day[data-weekend] {
+    background: transparent;
+  }
+
+  .dayNum {
+    align-self: center;
+  }
+
+  .row,
+  .more {
+    display: none;
+  }
+
+  .dots {
+    display: flex;
+  }
+
+  .weekName {
+    padding: 7px 0;
+    font-size: 10px;
+    letter-spacing: 0;
+  }
+
+  .monthName {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .monthNav {
+    width: 100%;
+  }
+
+  .toolbar .pills {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .modeSwitch {
+    margin-left: 0;
+  }
+
+  /* The week becomes a list of days, one under the other. */
+  .weekBoard {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .weekCol {
+    border-top: 1px solid var(--imagine-line);
+    border-left: none;
+  }
+
+  .weekCol:first-child {
+    border-top: none;
+  }
+
+  .weekCol[data-empty] .weekColList {
+    display: none;
+  }
+
+  .weekColHead {
+    justify-content: flex-start;
+    padding: 9px 12px;
+  }
+
+  .weekColList {
+    min-height: 0;
+  }
+
+  .card[data-compact] {
+    flex-direction: row;
+  }
+
+  .card[data-compact] .cardThumb {
+    width: 52px;
+    height: 52px;
+    aspect-ratio: auto;
+  }
+
+}
+
+/* The two views of the account, in the header beside its name: the calendar
+   of what goes out, and what comes back. Same shape as the month/week
+   switch below it, one level up. */
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-chip);
+}
+
+.tab {
+  padding: 4px 12px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: transparent;
+  color: var(--imagine-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tab:hover:not([data-on]) {
+  color: var(--imagine-ink);
+}
+
+.tab[data-on] {
+  background: var(--imagine-surface);
+  color: var(--imagine-ink);
+  font-weight: 600;
+}
+
+/* Keyboard focus: the ring every panel shares (`.focusRing` in imagine-shared). */
+.tab { composes: focusRing from './imagine-shared.module.css'; }
+.modeBtn { composes: focusRing from './imagine-shared.module.css'; }
+.navBtn { composes: focusRing from './imagine-shared.module.css'; }
+.todayBtn { composes: focusRing from './imagine-shared.module.css'; }
+.pill { composes: focusRing from './imagine-shared.module.css'; }
+.card { composes: focusRing from './imagine-shared.module.css'; }
+.weekColHead { composes: focusRing from './imagine-shared.module.css'; }
+.moreBtn { composes: focusRing from './imagine-shared.module.css'; }

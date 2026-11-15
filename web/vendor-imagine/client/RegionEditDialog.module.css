@@ -1,0 +1,142 @@
+/* "Precise edit": the photo with the zone drawn on it, and the line below. */
+.lead {
+  margin: 0 0 12px;
+  font-size: 13.5px;
+  color: var(--imagine-muted);
+}
+
+.stage {
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--imagine-media-bed);
+  overflow: hidden;
+}
+
+/* Sized by the picture, so fractions of this box are fractions of the photo. */
+.frame {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  touch-action: none;
+  user-select: none;
+}
+
+.picture {
+  display: block;
+  max-width: 100%;
+  max-height: 58vh;
+  pointer-events: none;
+}
+
+.zone {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #4f8cff;
+  background: rgb(79 140 255 / 0.12);
+  cursor: move;
+}
+
+.dim {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: rgb(0 0 0 / 0.45);
+  pointer-events: none;
+}
+
+.corner {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #4f8cff;
+  border-radius: 3px;
+  background: #fff;
+}
+
+.corner[data-corner='nw'] { left: -8px; top: -8px; cursor: nwse-resize; }
+.corner[data-corner='ne'] { right: -8px; top: -8px; cursor: nesw-resize; }
+.corner[data-corner='sw'] { left: -8px; bottom: -8px; cursor: nesw-resize; }
+.corner[data-corner='se'] { right: -8px; bottom: -8px; cursor: nwse-resize; }
+
+.ask {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.field {
+  box-sizing: border-box;
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  background: var(--imagine-chip);
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 14.5px;
+}
+
+.field:focus-visible { outline: 2px solid var(--imagine-focus, currentColor); outline-offset: 1px; }
+
+.frame[data-interactive] { cursor: crosshair; }
+
+/* The brush layer: over the photo, translucent, and only live in brush mode. */
+.paint {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.paint[data-active] { pointer-events: auto; cursor: crosshair; }
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.modes {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+}
+
+.mode {
+  height: 30px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  background: transparent;
+  color: var(--imagine-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mode:hover { color: var(--imagine-ink); }
+.mode[data-on] { background: var(--imagine-ink); color: var(--imagine-ink-fg); }
+
+.toolbar > .mode { border: 1px solid var(--imagine-line); }
+
+.size {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--imagine-muted);
+}
+
+.size input { width: 120px; accent-color: var(--imagine-ink); }
+
+/* "Crop": the ratio chips above the photo. */
+.ratios { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }

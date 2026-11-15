@@ -1,0 +1,50 @@
+{
+  "id": "telegram",
+  "name": "Telegram",
+  "version": "1.0.0",
+  "api": 1,
+  "description": {
+    "en": "Sends the studio's notices to a Telegram chat: scheduled posts and stories that went out or failed, how each post did after 24 hours, a token about to expire, and anything a plugin wants the owner to know.",
+    "it": "Manda gli avvisi dello studio a una chat Telegram: post e storie programmati usciti o falliti, com'è andato ogni post dopo 24 ore, il token in scadenza, e quello che un plugin vuole far sapere al padrone di casa."
+  },
+  "icon": "✈️",
+  "entry": "index.mjs",
+  "settings": [
+    {
+      "key": "botToken",
+      "kind": "password",
+      "label": {
+        "en": "Bot token",
+        "it": "Token del bot"
+      },
+      "help": {
+        "en": "From @BotFather. Kept in this plugin's config.json, readable only by the studio's user.",
+        "it": "Quello di @BotFather. Resta nel config.json di questo plugin, leggibile solo dall'utente dello studio."
+      }
+    },
+    {
+      "key": "chatId",
+      "kind": "text",
+      "label": {
+        "en": "Chat for the alerts",
+        "it": "Chat per gli avvisi"
+      },
+      "placeholder": "123456789",
+      "help": {
+        "en": "Where the notices go. A private chat id is the one the bot sees when you write to it first.",
+        "it": "Dove arrivano gli avvisi. L'id di una chat privata è quello che il bot vede quando gli scrivi per primo."
+      }
+    }
+  ],
+  "actions": [
+    {
+      "key": "test",
+      "label": {
+        "en": "Send a test",
+        "it": "Invia una prova"
+      },
+      "method": "POST",
+      "path": "/plugin/telegram/test"
+    }
+  ]
+}

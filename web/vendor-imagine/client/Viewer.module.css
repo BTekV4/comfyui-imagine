@@ -1,0 +1,209 @@
+/* The file opened over the studio (Viewer.tsx), laid out as Grok Imagine's
+   post page (2026-11-15): «back», the zoom and the column switch along the
+   top; the file and the edit bar in the middle; the post's column on the
+   right, top to bottom. */
+
+.viewer {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-rows: 56px minmax(0, 1fr);
+  grid-template-areas:
+    "bar panel"
+    "stage panel";
+  height: 100%;
+  background: var(--imagine-viewer-bg);
+  color: var(--imagine-on-media);
+}
+
+.viewer[data-folded] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "bar"
+    "stage";
+}
+
+/* ── Top: back on the left, the zoom over the middle, the column switch ─── */
+.bar {
+  position: relative;
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  padding: 0 16px;
+}
+
+.round {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: rgb(255 255 255 / 0.8);
+  cursor: pointer;
+  transition: background-color 150ms, color 150ms;
+}
+
+.round:hover { background: rgb(255 255 255 / 0.08); color: #fff; }
+.round svg { width: 18px; height: 18px; }
+
+.zoom {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 2px;
+  transform: translate(-50%, -50%);
+}
+
+.zoomStep,
+.zoomValue {
+  height: 28px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  background: transparent;
+  color: rgb(255 255 255 / 0.8);
+  font: inherit;
+  cursor: pointer;
+}
+
+.zoomStep { width: 28px; font-size: 18px; line-height: 1; }
+.zoomStep:hover:not(:disabled),
+.zoomValue:hover { background: rgb(255 255 255 / 0.08); color: #fff; }
+.zoomStep:disabled { opacity: 0.35; cursor: default; }
+.zoomValue { min-width: 52px; padding: 0 4px; font-size: 13px; font-variant-numeric: tabular-nums; }
+
+/* ── The file, as large as the stage allows ───────────────────────────────── */
+.viewerStage {
+  grid-area: stage;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 0 24px 16px;
+  overflow: hidden;
+}
+
+/* The box the file is fitted into. Zoomed, the file grows past it and is
+   dragged around inside; fitted, it never moves. */
+.viewerFrame {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.viewerFrame[data-zoomed] { cursor: grab; }
+.viewerFrame[data-zoomed]:active { cursor: grabbing; }
+.viewerFrame[data-picking] { cursor: pointer; }
+
+.viewerMedia {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transform-origin: center;
+  transition: transform 120ms ease-out;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* A clip has no intrinsic size until its metadata arrives: give it the box,
+   so a squeezed stage never draws it as a sliver. */
+video.viewerMedia {
+  width: 100%;
+  height: 100%;
+}
+
+.viewerFrame[data-zoomed] .viewerMedia { transition: none; }
+
+/* «Modifica precisa»: the strokes over the photo, white and see-through,
+   painted with Grok's round brush pointer. */
+.paint {
+  position: absolute;
+  z-index: 3;
+  opacity: 0.45;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.viewerAudio { width: min(720px, 100%); }
+
+.viewerScrub {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  width: min(720px, 100%);
+  color: var(--imagine-on-media);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.viewerSeek {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--imagine-on-media);
+}
+
+/* The edit bar, as Grok's composer under the post. */
+.viewerPrompt {
+  flex: none;
+  width: min(840px, 100%);
+}
+
+/* ── On a phone: the column goes under the file ──────────────────────────── */
+@media (max-width: 640px) {
+  .viewer,
+  .viewer[data-folded] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 52px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "bar"
+      "stage"
+      "panel";
+  }
+
+  .bar { padding: 0 10px; }
+  .zoom { display: none; }
+  .viewerStage { padding: 0 10px 6px; }
+}
+
+/* «Disegna»: the sketch in its own colours over the photo, and Grok's
+   undo / redo / clear at the top right of the stage. */
+.sketch {
+  position: absolute;
+  z-index: 3;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.sketchTools {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 4;
+  display: flex;
+  gap: 4px;
+}
+
+.sketchTools .round:disabled { opacity: 0.35; cursor: default; }

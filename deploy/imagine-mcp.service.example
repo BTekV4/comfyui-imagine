@@ -1,0 +1,20 @@
+[Unit]
+Description=Imagine MCP server (Imagine's tools for LLM clients, Streamable HTTP on :3097/mcp)
+After=network-online.target imagine.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/imagine/mcp
+# Where Imagine answers, and the address the links handed to the model use
+Environment=IMAGINE_URL=http://127.0.0.1:3090
+Environment=IMAGINE_PUBLIC_URL=http://127.0.0.1:3090
+Environment=MCP_PORT=3097
+# A file holding the bearer token clients must send (create it with: openssl rand -hex 24)
+Environment=MCP_TOKEN_FILE=/opt/imagine/mcp-token
+ExecStart=/usr/bin/node --enable-source-maps /opt/imagine/mcp/imagine-mcp.mjs
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

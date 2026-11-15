@@ -1,0 +1,32 @@
+node_modules/
+dist/
+*.log
+*.map
+
+# Segreti e dati di deployment: mai nel repo
+.env
+.env.*
+imagine.env
+config.yaml
+data/
+password.json
+cookie-secret
+*.pem
+*.key
+
+# Copie di backup fatte a mano o dal deploy (file.bak-<data>): mai nel repo,
+# e deploy.sh non deve copiarle nei plugin pubblicati
+*.bak-*
+
+# Grafi di backup / prove locali
+workflows/*.bak*
+workflows/*.before-restore-*
+workflows/test-*/
+
+# La persona vera non viaggia: solo l esempio
+persona/*.json
+!persona/example.json
+
+# Bundles of the TypeScript plugins: built by `npm run build:plugins` (and deploy)
+plugins/*/index.mjs
+!plugins/telegram/index.mjs

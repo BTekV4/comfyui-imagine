@@ -1,0 +1,129 @@
+/* The story queue. Same tokens and same row shape as the comments, so the
+   three views of the account read as one page. */
+
+.section {
+  composes: section from './social-shared.module.css';
+}
+
+.header {
+  composes: header from './social-shared.module.css';
+}
+
+.sectionTitle {
+  composes: sectionTitle from './social-shared.module.css';
+}
+
+.note {
+  color: var(--imagine-muted);
+  font-size: 11.5px;
+}
+
+.list {
+  composes: list from './social-shared.module.css';
+}
+
+.row {
+  composes: row from './social-shared.module.css';
+}
+
+.row[data-status='error'] {
+  border-color: color-mix(in srgb, var(--imagine-danger) 40%, transparent);
+}
+
+.head {
+  composes: head from './social-shared.module.css';
+}
+
+.status {
+  composes: chipLabel from './imagine-shared.module.css';
+}
+
+.status[data-status='published'] {
+  background: color-mix(in srgb, var(--imagine-success) 16%, transparent);
+  color: var(--imagine-success);
+}
+
+.status[data-status='error'] {
+  background: color-mix(in srgb, var(--imagine-danger) 16%, transparent);
+  color: var(--imagine-danger);
+}
+
+.when {
+  color: var(--imagine-ink);
+  font-size: 12.5px;
+  font-weight: 620;
+}
+
+.link {
+  margin-left: auto;
+  color: var(--imagine-muted);
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.link:hover {
+  color: var(--imagine-ink);
+}
+
+.source {
+  margin: 0;
+  color: var(--imagine-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.ghostBtn {
+  padding: 3px 10px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: none;
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.ghostBtn:hover:not(:disabled) {
+  background: var(--imagine-hover);
+}
+
+.ghostBtn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.ghostBtn[data-danger] {
+  color: var(--imagine-danger);
+}
+
+.date {
+  padding: 3px 8px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 9px;
+  background: var(--imagine-media-bed);
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 11.5px;
+}
+
+.error {
+  composes: error from './social-shared.module.css';
+}
+
+.empty {
+  composes: empty from './social-shared.module.css';
+}
+
+/* Keyboard focus: the ring every panel shares (`.focusRing` in imagine-shared). */
+.ghostBtn { composes: focusRing from './imagine-shared.module.css'; }
+.link { composes: focusRing from './imagine-shared.module.css'; }
+.date { composes: focusRing from './imagine-shared.module.css'; }

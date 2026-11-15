@@ -1,0 +1,17 @@
+/* Trim's player and its two handles (ClipDialogs.tsx); the frame and the
+   footer are the Modal's. */
+
+.player {
+  display: block;
+  width: 100%;
+  max-height: 55vh;
+  border-radius: 12px;
+  background: var(--imagine-media-bed);
+  object-fit: contain;
+}
+
+.rows { display: grid; gap: 10px; margin: 14px 0; }
+.row { display: grid; gap: 4px; }
+.row input { width: 100%; accent-color: var(--imagine-ink); }
+.label { font-size: 13px; color: var(--imagine-muted); }
+.label b { color: var(--imagine-ink); font-variant-numeric: tabular-nums; font-weight: 600; }

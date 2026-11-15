@@ -1,0 +1,192 @@
+/* Text boxes on the canvas, as Grok's: bare text, a white frame and side
+   handles when selected, a dark bar above. --note-inv keeps the frame and the
+   handles their screen size when zoomed out (Grok's --atlas-inv-zoom). */
+.note {
+  position: absolute;
+  box-sizing: border-box;
+  padding: 2px 4px;
+  color: var(--imagine-ink);
+  line-height: 1.35;
+  cursor: default;
+  user-select: none;
+}
+
+.note[data-editing] { cursor: text; }
+
+.text {
+  margin: 0;
+  min-height: 1.35em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.field {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0;
+  border: none;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: inherit;
+  field-sizing: content;
+}
+
+.field::placeholder { color: var(--imagine-muted); }
+
+.frame {
+  position: absolute;
+  inset: calc(-1px * var(--note-inv, 1));
+  border: calc(2px * var(--note-inv, 1)) solid #fff;
+  pointer-events: none;
+}
+
+.handle {
+  position: absolute;
+  top: 50%;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  border: 2px solid #fff;
+  background: #000;
+  cursor: ew-resize;
+  transform: scale(var(--note-inv, 1));
+  touch-action: none;
+}
+
+.handle[data-side='left'] { left: -5px; }
+.handle[data-side='right'] { right: -5px; }
+
+.bar {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 12px;
+  background: var(--imagine-chip);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
+  color: var(--imagine-ink-soft);
+  font-size: 13px;
+  line-height: 1;
+  text-align: left;
+  transform-origin: bottom center;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.group { position: relative; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.btn:hover { background: rgb(255 255 255 / 0.08); }
+.btn[data-on] { background: #363636; }
+
+.sizeValue { font-variant-numeric: tabular-nums; min-width: 16px; text-align: center; }
+.caret { font-size: 9px; color: var(--imagine-muted); }
+
+.rule { width: 1px; height: 16px; margin: 0 2px; background: rgb(255 255 255 / 0.1); }
+
+.dot {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--imagine-radius-pill);
+  border: 1px solid rgb(255 255 255 / 0.2);
+}
+
+.pop {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 2;
+  max-height: 256px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 12px;
+  background: var(--imagine-chip);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.45);
+}
+
+.popItem {
+  display: block;
+  width: 100%;
+  min-width: 64px;
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  cursor: pointer;
+}
+
+.popItem:hover { background: rgb(255 255 255 / 0.08); }
+.popItem[data-on] { background: #363636; }
+
+.popRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.popRow:hover { background: rgb(255 255 255 / 0.08); }
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(5, 28px);
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.swatch {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.swatch:hover,
+.swatch[data-on] { background: #363636; }

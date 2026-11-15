@@ -1,0 +1,25 @@
+{
+  "id": "openjutsu",
+  "name": "Openjutsu",
+  "version": "1.0.0",
+  "api": 1,
+  "description": {
+    "en": "Openjutsu inside the studio: a page in the rail, behind Imagine's login. The app runs on its own (Next.js, built with basePath /apps/openjutsu); the plugin passes it through.",
+    "it": "Openjutsu dentro lo studio: una pagina nella barra, dietro il login di Imagine. L'app gira per conto suo (Next.js, compilata con basePath /apps/openjutsu); il plugin la fa passare."
+  },
+  "icon": "🥷",
+  "entry": "index.mjs",
+  "settings": [
+    {
+      "key": "url",
+      "kind": "text",
+      "label": { "en": "Openjutsu address", "it": "Indirizzo di Openjutsu" },
+      "placeholder": "http://127.0.0.1:3000",
+      "default": "http://127.0.0.1:3000",
+      "help": {
+        "en": "Where the app answers, seen from the studio's server. It must be built for the path /apps/openjutsu.",
+        "it": "Dove risponde l'app, vista dal server dello studio. Deve essere compilata per il percorso /apps/openjutsu."
+      }
+    }
+  ]
+}

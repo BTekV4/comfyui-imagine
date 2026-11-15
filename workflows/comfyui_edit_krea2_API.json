@@ -1,0 +1,213 @@
+{
+ "76": {
+  "inputs": {
+   "image": "edit_input.jpg",
+   "upload": "image"
+  },
+  "class_type": "LoadImage"
+ },
+ "400": {
+  "inputs": {
+   "image": [
+    "76",
+    0
+   ],
+   "upscale_method": "lanczos",
+   "megapixels": 1.9,
+   "resolution_steps": 16
+  },
+  "class_type": "ImageScaleToTotalPixels"
+ },
+ "401": {
+  "inputs": {
+   "image": [
+    "400",
+    0
+   ]
+  },
+  "class_type": "GetImageSize"
+ },
+ "127": {
+  "inputs": {
+   "vae_name": "qwen_image_vae.safetensors"
+  },
+  "class_type": "VAELoader"
+ },
+ "130": {
+  "inputs": {
+   "pixels": [
+    "400",
+    0
+   ],
+   "vae": [
+    "127",
+    0
+   ]
+  },
+  "class_type": "VAEEncode"
+ },
+ "126": {
+  "inputs": {
+   "unet_name": "krea2_turbo_int8_convrot.safetensors",
+   "weight_dtype": "default"
+  },
+  "class_type": "UNETLoader"
+ },
+ "133": {
+  "inputs": {
+   "clip_name": "qwen3vl_4b_int8_convrot.safetensors",
+   "type": "krea2",
+   "device": "default"
+  },
+  "class_type": "CLIPLoader"
+ },
+ "500": {
+  "inputs": {
+   "value": "A person standing alone in the photograph, natural light."
+  },
+  "class_type": "PrimitiveStringMultiline"
+ },
+ "302": {
+  "inputs": {
+   "model": [
+    "126",
+    0
+   ],
+   "lora_name": "krea2/krea2_identity_edit_v1_2.safetensors",
+   "strength_model": 1.0
+  },
+  "class_type": "LoraLoaderModelOnly"
+ },
+ "303": {
+  "inputs": {
+   "model": [
+    "302",
+    0
+   ],
+   "source_latent": [
+    "130",
+    0
+   ],
+   "ref_boost": 1.0,
+   "ref_boost_a": 1.0,
+   "fit_mode": "fit"
+  },
+  "class_type": "Krea2EditModelPatch"
+ },
+ "304": {
+  "inputs": {
+   "clip": [
+    "133",
+    0
+   ],
+   "prompt": [
+    "500",
+    0
+   ],
+   "image": [
+    "400",
+    0
+   ],
+   "grounding_px": 1024,
+   "system_prompt": ""
+  },
+  "class_type": "Krea2EditGroundedEncode"
+ },
+ "305": {
+  "inputs": {
+   "clip": [
+    "133",
+    0
+   ],
+   "image": [
+    "400",
+    0
+   ],
+   "prompt": "",
+   "grounding_px": 1024,
+   "system_prompt": ""
+  },
+  "class_type": "Krea2EditGroundedEncode"
+ },
+ "306": {
+  "inputs": {
+   "width": [
+    "401",
+    0
+   ],
+   "height": [
+    "401",
+    1
+   ],
+   "batch_size": 1
+  },
+  "class_type": "EmptySD3LatentImage"
+ },
+ "307": {
+  "inputs": {
+   "model": [
+    "303",
+    0
+   ],
+   "positive": [
+    "304",
+    0
+   ],
+   "negative": [
+    "305",
+    0
+   ],
+   "latent_image": [
+    "306",
+    0
+   ],
+   "seed": 123456789,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "euler",
+   "scheduler": "simple",
+   "denoise": 1.0
+  },
+  "class_type": "KSampler"
+ },
+ "308": {
+  "inputs": {
+   "samples": [
+    "307",
+    0
+   ],
+   "vae": [
+    "127",
+    0
+   ]
+  },
+  "class_type": "VAEDecode"
+ },
+ "94": {
+  "class_type": "Image Save",
+  "_meta": {
+   "title": "Save Image (WebP lossless)"
+  },
+  "inputs": {
+   "images": [
+    "308",
+    0
+   ],
+   "output_path": "[time(%Y-%m-%d)]",
+   "filename_prefix": "Krea2_Edit_Replace",
+   "filename_delimiter": "_",
+   "filename_number_padding": 4,
+   "filename_number_start": "false",
+   "extension": "webp",
+   "dpi": 300,
+   "quality": 100,
+   "optimize_image": "true",
+   "lossless_webp": "true",
+   "overwrite_mode": "false",
+   "show_history": "false",
+   "show_history_by_prefix": "true",
+   "embed_workflow": "false",
+   "show_previews": "true"
+  }
+ }
+}

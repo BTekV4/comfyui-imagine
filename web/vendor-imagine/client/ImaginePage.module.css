@@ -1,0 +1,164 @@
+/*
+ * The studio's shell (ImaginePage.tsx): the page, its stage and the project's
+ * studio, the drop hint and the floating panels' seat.
+ *
+ * Until 2026-10-25 this one file (3192 lines) styled every piece of the page.
+ * Each piece has its own module now — Rail, ChatColumn, Composer, Board, Tile,
+ * SelectionTools, Viewer, HomeView, ProjectsGrid, StageHeader, JobProgress —
+ * and what several of them draw is in imagine-shared.module.css. A piece that
+ * styles itself for a state of the page reads the page's data attributes
+ * (`[data-imagine-page]`, `[data-imagine-studio]`), never another module's
+ * classes.
+ *
+ * A pressed control says so: every button that used to have no :active state
+ * scales to 0.97 — the `scale` property, not `transform`, since several carry
+ * a translate that a `transform` would replace.
+ */
+
+/* The studio's shell. Its layout tokens (rail, header, radii, the viewer's
+   grounds, the header icons) are global now, in `web/tokens.css`. */
+.page {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  font-family: var(--imagine-font-text);
+  background: var(--imagine-bg);
+  color: var(--imagine-ink);
+  overflow: hidden;
+}
+
+/* The board's column inside the studio. The History board's filter bar takes its
+   own height at the top and the board (or the list) fills what is left; every other
+   project draws the bar nowhere and the board fills the column as before. */
+.stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.studio {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* "Hide canvas": the chat across the studio (ChatColumn.module.css). */
+.studio[data-canvas-hidden] .stage { display: none; }
+
+.dropHint {
+  position: absolute;
+  inset: 12px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  border: 2px dashed var(--imagine-ink);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--imagine-surface) 85%, var(--imagine-ink));
+  color: var(--imagine-ink);
+  font-size: 16px;
+  font-weight: 500;
+  opacity: 0.95;
+  animation: dropPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes dropPulse {
+  0%, 100% { border-color: var(--imagine-ink); }
+  50% { border-color: var(--imagine-muted); }
+}
+
+/* The quality badge on a tile and in the viewer (imagine-bits QualityBadge). */
+.hd {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 2px 7px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: rgb(0 0 0 / 0.62);
+  color: var(--imagine-on-media);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* A filter that kept nothing says so, in the middle of the seat the board
+   would have filled, and offers the way back to everything. */
+.historyEmpty {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  background: var(--imagine-bg);
+}
+
+.historyMore {
+  composes: historyMore from './imagine-shared.module.css';
+}
+
+/* The pill the board uses to ask for more, back in the flow: centred under the
+   sentence instead of pinned to the top of the seat. */
+.historyEmpty .historyMore {
+  position: static;
+  transform: none;
+}
+
+/* The music-video form and the Instagram panel float over the top right. */
+.publishOverlay {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 20;
+  animation: publishSlideIn 0.2s ease-out;
+}
+
+@keyframes publishSlideIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Centred in the room the board has, which above the phone breakpoint is what
+   the floating chat column leaves. */
+@media (min-width: 641px) {
+  .historyEmpty {
+    padding-left: calc(var(--imagine-chat-w, 0px) + 24px);
+  }
+}
+
+/* A phone stacks chat and canvas, with the composer bar at the foot of the
+   screen as grok.com/imagine has it: the canvas above, the chat band below
+   (ChatColumn.module.css), both in flow so neither covers the other. */
+@media (max-width: 640px) {
+  .studio {
+    flex-direction: column;
+  }
+
+  .stage {
+    order: 1;
+  }
+
+  /* Under the canvas, not over it: the composer sits at the foot of the screen. */
+  .studio [data-imagine-chat] {
+    order: 2;
+  }
+}
+
+/* Someone who asked for less motion gets none of the studio's ambient
+   movement; each module turns off its own (the headline, the cards, the
+   tiles), and the drop hint's pulse is this one's. */
+@media (prefers-reduced-motion: reduce) {
+  .dropHint {
+    animation: none !important;
+    transition: none !important;
+  }
+}

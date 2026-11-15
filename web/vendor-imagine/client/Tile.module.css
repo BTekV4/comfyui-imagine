@@ -1,0 +1,477 @@
+/* The board's tiles: a file, and a job still making one (Tile.tsx). */
+
+.tile {
+  position: absolute;
+  /* A stacking context of its own: without it a clip's scrubber and badges
+     (z-index 3-5 inside the tile) competed with the other tiles and showed
+     through a picture laid on top of the clip (2026-10-17). */
+  z-index: 0;
+  display: block;
+  overflow: visible;
+  background: transparent;
+  touch-action: none;
+}
+
+/* The one being worked on comes up, tools and all, over its neighbours. */
+.tile.picked { z-index: 2; }
+
+.frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* Grok's asset node: square corners, a 1px edge and a large soft shadow. */
+  background: var(--imagine-media-bed);
+  outline: 1px solid rgb(255 255 255 / 0.06);
+  outline-offset: -1px;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+.tile.picked .frame {
+  outline: 2px solid var(--imagine-on-media);
+  outline-offset: 0;
+  box-shadow: 0 0 0 1px var(--imagine-line-3);
+}
+
+.tile.dragging {
+  z-index: 3;
+  cursor: grabbing;
+}
+
+/* The tile is focusable (role=button) so a keyboard user can open it with
+   Enter/Space; give that focus a ring distinct from the picked outline. */
+.tile:focus-visible .frame {
+  outline: 2px solid var(--imagine-ink);
+  outline-offset: 2px;
+}
+
+/* Resize corners, as Grok's: 10px squares, black with a white rim, live under
+   the pointer. */
+.handle {
+  position: absolute;
+  z-index: 3;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  background: var(--imagine-bg);
+  border: 2px solid var(--imagine-on-media);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.handle[data-c='nw'] { top: -5px; left: -5px; cursor: nwse-resize; transform-origin: center; }
+.handle[data-c='ne'] { top: -5px; right: -5px; cursor: nesw-resize; transform-origin: center; }
+.handle[data-c='sw'] { bottom: -5px; left: -5px; cursor: nesw-resize; transform-origin: center; }
+.handle[data-c='se'] { bottom: -5px; right: -5px; cursor: nwse-resize; transform-origin: center; }
+
+.mediaHit {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: var(--imagine-media-bed);
+  pointer-events: none;
+}
+
+.media {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.toolbarFloat {
+  position: absolute;
+  left: 0;
+  /*
+   * Anchored by its TOP, under the tile. With `bottom: -44px` the bar's bottom
+   * edge was pinned and a second wrapped row could only grow upwards, back over
+   * the tile: on a clip that put it on top of the play button. Anchoring the top
+   * keeps the one-row position identical and sends every extra row downwards,
+   * which is also the direction `transform-origin: top left` scales it.
+   */
+  top: calc(100% + 8px);
+  z-index: 4;
+  /* The icon bar and the mini prompt under it; each draws its own box. */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: max-content;
+}
+
+.pending {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 16px;
+  background: var(--imagine-chip);
+  color: var(--imagine-muted);
+}
+
+.pendingLabel {
+  font-size: 12px;
+}
+
+.audioMark {
+  composes: audioThumb from './imagine-shared.module.css';
+}
+
+/* The track's transport, laid over the bottom of its square. */
+.reelBar {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--imagine-ink);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: auto;
+}
+
+.reelPlay {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-hover);
+  color: inherit;
+  cursor: pointer;
+  flex: none;
+}
+
+.reelSeek {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--imagine-ink);
+  cursor: pointer;
+}
+
+/* ── A clip, as Grok's canvas draws it (2026-11-15) ─────────────────────── */
+.resBadge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--imagine-radius-pill);
+  background: rgb(0 0 0 / 0.4);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+  user-select: none;
+  transition: opacity 200ms;
+}
+
+.resBadge[data-hidden] { opacity: 0; }
+
+.posterPlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.posterPlay > svg,
+.clipButton {
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.4);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  color: #fff;
+}
+
+.posterPlay > svg { padding: 8px; }
+
+.clipBar {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 12px 16px;
+  background: linear-gradient(to top, rgb(0 0 0 / 0.6), transparent);
+  pointer-events: auto;
+}
+
+.clipButton {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  cursor: pointer;
+  transition: background-color 150ms;
+}
+
+.clipButton:hover { background: rgb(0 0 0 / 0.7); }
+
+.clipClock {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--imagine-radius-pill);
+  background: rgb(0 0 0 / 0.4);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.clipSpacer { flex: 1; }
+
+/* The seek line on the very edge: 3px, 8px under the pointer. */
+.clipSeek {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 4;
+  display: flex;
+  align-items: flex-end;
+  padding: 12px 8px 6px;
+  cursor: pointer;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.clipTrack {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  overflow: hidden;
+  border-radius: var(--imagine-radius-pill);
+  background: rgb(255 255 255 / 0.2);
+  transition: height 150ms;
+}
+
+.clipSeek:hover .clipTrack { height: 8px; }
+
+.clipFill {
+  height: 100%;
+  border-radius: var(--imagine-radius-pill);
+  background: rgb(255 255 255 / 0.9);
+  transition: width 100ms;
+}
+
+.audioPad {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: var(--imagine-chip);
+}
+
+.audioPad audio {
+  width: 100%;
+}
+
+.pendingPrompt {
+  font-size: 13px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+}
+
+.pendingPreview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.75;
+}
+
+.shotBadge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  padding: 2px 8px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  color: var(--imagine-on-media);
+  background: rgb(0 0 0 / 55%);
+  pointer-events: none;
+}
+
+.pendingStage {
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+/* Stop a live job, on its pending tile: the queue is served one prompt at a
+   time and a start the user regrets otherwise blocks everything behind it.
+   The chat's row for the job has the same button (ChatColumn). */
+.pendingStop {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 2px 10px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-surface);
+  color: var(--imagine-danger);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pendingStop:hover {
+  background: var(--imagine-hover);
+}
+
+.upscaling {
+  /* Over the media, not in place of it: the file being enlarged stays visible
+     for the whole run, which is all SeedVR2 gives us to look at. */
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgb(0 0 0 / 55%);
+  color: var(--imagine-on-media);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.upscalingLabel {
+  display: flex;
+  align-items: baseline;
+}
+
+/* The time left, after the percentage: the same number the ComfyUI terminal
+   shows next to its bar. */
+.upscalingEta {
+  opacity: 0.85;
+}
+
+/* The tile's selection bar: one row of icons (Grok-like), and the mini prompt. */
+.iconBar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: max-content;
+  padding: 4px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 12px;
+  background: var(--imagine-surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+}
+
+.iconTool {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--imagine-ink);
+  cursor: pointer;
+}
+
+.iconTool:hover:not(:disabled) { background: var(--imagine-hover); }
+.iconTool:disabled { opacity: 0.4; cursor: default; }
+.iconTool[data-danger] { color: var(--imagine-danger); }
+
+.iconSep {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: var(--imagine-line);
+}
+
+.askBar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 260px;
+  margin-top: 6px;
+  padding: 3px 3px 3px 10px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  background: var(--imagine-surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+}
+
+.askInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.askInput::placeholder { color: var(--imagine-muted); }
+
+.askSend {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  background: var(--imagine-ink);
+  color: var(--imagine-ink-fg);
+  cursor: pointer;
+}
+
+.askSend:disabled { opacity: 0.4; }
+
+/* On a narrow screen the bar ran off the left edge: anchored to the tile, it
+   wraps inside that width. Same threshold as the drawer rail. */
+@media (max-width: 900px) {
+  .toolbarFloat {
+    max-width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile,
+  .frame {
+    animation: none !important;
+    transition: none !important;
+  }
+}

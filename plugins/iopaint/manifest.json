@@ -1,0 +1,25 @@
+{
+  "id": "iopaint",
+  "name": "IOPaint",
+  "version": "1.0.0",
+  "api": 1,
+  "description": {
+    "en": "IOPaint inside the studio: «Remove object» on photos, and IOPaint's own page in the rail, behind Imagine's login. The app runs on its own; the plugin passes it through.",
+    "it": "IOPaint dentro lo studio: «Rimuovi oggetto» sulle foto, e la pagina di IOPaint nella barra, dietro il login di Imagine. L'app gira per conto suo; il plugin la fa passare."
+  },
+  "icon": "🩹",
+  "entry": "index.mjs",
+  "settings": [
+    {
+      "key": "url",
+      "kind": "text",
+      "label": { "en": "IOPaint address", "it": "Indirizzo di IOPaint" },
+      "placeholder": "http://127.0.0.1:8080",
+      "default": "http://127.0.0.1:8080",
+      "help": {
+        "en": "Where IOPaint answers, seen from the studio's server. «Remove object» calls its /api/v1/inpaint; the page needs its frontend patched for the path /apps/iopaint.",
+        "it": "Dove risponde IOPaint, visto dal server dello studio. «Rimuovi oggetto» chiama il suo /api/v1/inpaint; la pagina richiede il frontend modificato per il percorso /apps/iopaint."
+      }
+    }
+  ]
+}

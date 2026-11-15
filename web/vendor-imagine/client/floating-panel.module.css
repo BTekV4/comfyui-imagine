@@ -1,0 +1,31 @@
+/*
+ * The sheet that floats over the top-right of the studio: the music-video
+ * form (MusicClipPanel) and the Instagram panel (PublishPanel) are the same
+ * box with different contents. Each module composes these and sets its own
+ * gap. There is no global border-box on this page: every box that mixes width
+ * with padding or a border sets box-sizing itself.
+ */
+.panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  padding: 16px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-card, 16px);
+  background: var(--imagine-surface);
+  box-shadow: 0 12px 32px var(--imagine-scrim);
+  color: var(--imagine-ink);
+  font-family: var(--imagine-font-text, var(--imagine-font));
+  font-size: 13px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}

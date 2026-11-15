@@ -1,0 +1,195 @@
+{
+  "9": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "input.png"
+    },
+    "_meta": {
+      "title": "1 · Foto da illuminare (ingresso)"
+    }
+  },
+  "relight_canvas": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "image": [
+        "9",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "megapixels": 3.0,
+      "resolution_steps": 16
+    },
+    "_meta": {
+      "title": "2 · La foto a 3 MP (tela e riferimento)"
+    }
+  },
+  "relight_size": {
+    "class_type": "GetImageSize",
+    "inputs": {
+      "image": [
+        "relight_canvas",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "3 · Misura della tela (dalla foto)"
+    }
+  },
+  "relight_latent": {
+    "class_type": "EmptyFlux2LatentImage",
+    "inputs": {
+      "width": [
+        "relight_size",
+        0
+      ],
+      "height": [
+        "relight_size",
+        1
+      ],
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "4 · Tela latente alla misura della foto"
+    }
+  },
+  "10": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "flux3-image-klein-int8-convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "FLUX 3 Image Klein (int8 convrot)"
+    }
+  },
+  "11": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_4b_nvfp4.safetensors",
+      "type": "flux3",
+      "device": "default"
+    },
+    "_meta": {
+      "title": "Text encoder FLUX 3 (Qwen3-VL 4B nvfp4)"
+    }
+  },
+  "12": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    },
+    "_meta": {
+      "title": "VAE FLUX 2"
+    }
+  },
+  "500": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "11",
+        0
+      ],
+      "text": "Relight this photograph. Keep the person, face, identity, expression, pose, hair, clothing, framing and setting exactly as they are; change only the lighting and the colour of the light. Light the new photo as a dark horror scene: a single narrow cold white spotlight shines straight down from directly above, with a visible beam of light cutting through dusty air above the head; it lights the top of the hair, forehead, cheekbones, nose and shoulders, leaves deep shadows in the eye sockets and under the nose and chin, and the background falls to black. Cold, desaturated blue-grey colour grade."
+    },
+    "_meta": {
+      "title": "5 · Testo del look (PIN: promptNodeId 500, campo text)"
+    }
+  },
+  "14": {
+    "class_type": "ConditioningZeroOut",
+    "inputs": {
+      "conditioning": [
+        "500",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Negative vuoto"
+    }
+  },
+  "15": {
+    "class_type": "ReferenceMultiLatent",
+    "inputs": {
+      "positive": [
+        "500",
+        0
+      ],
+      "negative": [
+        "14",
+        0
+      ],
+      "vae": [
+        "12",
+        0
+      ],
+      "resolution": "resize",
+      "resolution.megapixels": 3.0,
+      "images.image0": [
+        "relight_canvas",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "6 · La foto come riferimento FLUX (una sola immagine, 3 MP)"
+    }
+  },
+  "19": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "10",
+        0
+      ],
+      "seed": 1099940091021379,
+      "steps": 16,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "positive": [
+        "15",
+        0
+      ],
+      "negative": [
+        "15",
+        1
+      ],
+      "latent_image": [
+        "relight_latent",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "7 · KSampler relight (PIN: seedNodeId 19, campo seed)"
+    }
+  },
+  "20": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "19",
+        0
+      ],
+      "vae": [
+        "12",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Decodifica"
+    }
+  },
+  "21": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "20",
+        0
+      ],
+      "filename_prefix": "relight/relight"
+    },
+    "_meta": {
+      "title": "8 · Salva (prefisso relight/relight)"
+    }
+  }
+}

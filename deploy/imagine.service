@@ -1,0 +1,25 @@
+# Imagine — systemd unit template.
+#
+#   cp deploy/imagine.service /etc/systemd/system/imagine.service
+#   systemctl daemon-reload
+#   systemctl enable --now imagine
+#
+# The paths assume the app in /opt/imagine with its data next to it; change them
+# to wherever you put it. The unit runs the built server, not the sources.
+
+[Unit]
+Description=Imagine studio
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/imagine
+# Provider keys (OPENAI_API_KEY and whatever config.yaml names). Optional.
+EnvironmentFile=-/opt/imagine/imagine.env
+ExecStart=/usr/bin/node --enable-source-maps /opt/imagine/dist/server.mjs
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

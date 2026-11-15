@@ -1,0 +1,553 @@
+/* The composer (Composer.tsx): on the home, under the headline; docked, at the
+   foot of the project's chat column. */
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  /* There is no global border-box on this page, so `width: 100%` plus the
+     padding and border made the box 22px wider than the hero: the composer
+     hung 11px past the card grid on both sides, and the two edges no longer
+     lined up. Docked, those same 22px pushed it out of the chat column. */
+  box-sizing: border-box;
+  width: 100%;
+  /* Symmetric: 12 on the left against 8 on the right put every row a notch off
+     centre inside its own box. */
+  padding: 8px 12px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-composer);
+  background: var(--imagine-surface);
+}
+
+/*
+ * Undocked, the composer is a block of its own width rather than the hero's:
+ * at 1180px the prompt field ran 1109px wide with the mode chips and the
+ * ladders pushed to the far right edge, and a field that long reads as a form
+ * rather than as the one control the page is about. The card grid keeps the
+ * hero's width and the hero's `align-items: center` centres this block over it,
+ * which is how Grok Imagine's home holds a ~740px composer over a wider tile
+ * field. Narrow screens are unaffected: `max-width` only caps.
+ */
+.composer:not(.docked) {
+  max-width: 760px;
+}
+
+.composer.docked {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  /* Docked inside the glass chat column: a solid surface here would paint an
+     opaque slab over the bottom of the panel and break the see-through look, so
+     the composer becomes glass too and lets the canvas read behind it. */
+  background: color-mix(in srgb, var(--imagine-surface) 40%, transparent);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  backdrop-filter: blur(12px) saturate(120%);
+}
+
+.prompt {
+  /* Same content-box trap as .composer: `width: 100%` plus 8px of padding each
+     side made the field 16px wider than the box, so it hung past the toolbar's
+     right edge. And with no horizontal padding at all the typed line starts
+     exactly where the first button does, which is what stops the composer
+     reading as two loose halves. */
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  max-height: 120px;
+  padding: 10px 0 6px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 16px;
+  letter-spacing: -0.2px;
+  resize: none;
+  outline: none;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* The lyrics field sits under the prompt in Music mode: the words that are
+   sung, kept apart from the sentence that describes the music. Slightly quieter
+   than the prompt so the prompt stays the primary field. */
+.lyrics {
+  min-height: 34px;
+  max-height: 96px;
+  border-top: 1px solid var(--imagine-line);
+  color: var(--imagine-muted);
+  font-size: 13px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  /* The text and the buttons do not touch: on Grok the gap is 9px, here it
+     was 4 and the row looked glued to the field (2026-11-03). */
+  padding: 8px 0 4px;
+}
+
+/* A row never breaks: reflowing between lines as the chat is dragged moved the
+   button out from under the pointer that was on it. On the home composer the
+   two rows sit side by side when there is room; docked they are stacked. */
+.toolbarRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.composer.docked .toolbar {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* Stacked, the row still grew past the column instead of squeezing its widest
+   child, so the model select never reached the floor that lets it shrink. */
+.composer.docked .toolbarRow {
+  max-width: 100%;
+  /* With the home's controls here too (2026-11-02), a chat dragged to its
+     minimum would keep them on one line and push them out: better that they
+     wrap. Above ~300px nothing wraps. */
+  flex-wrap: wrap;
+}
+
+/* Undocked the toolbar is one line, so the second row takes the space the first
+   one leaves: without this the row was only as wide as its buttons and the send
+   stopped in the middle of the composer instead of at its right edge. */
+.composer:not(.docked) .toolbar > .toolbarRow:last-child {
+  flex: 1 1 auto;
+}
+
+/* Only the model name gives: with every child shrinking together the send
+   button lost 8 of its 36 pixels before the select had given up any of its 64.
+   The model select is the row's one <select> (ImagineModelSelect). */
+.toolbarRow > * {
+  flex: none;
+}
+
+.toolbarRow > select {
+  flex: 1 1 auto;
+}
+
+.seg {
+  display: inline-flex;
+  align-items: center;
+  /* Declared 36 and rendered 40: content-box added the 2px padding on top, so
+     the one control in the bar that sets the rhythm was the one out of step. */
+  box-sizing: border-box;
+  /* 40 with 2 of padding and the 36 buttons inside: it was 36 overall, so the
+     buttons stuck 4px out of the pill and the group looked squashed
+     (measured on Grok on 2026-11-03: group 40, buttons 36). */
+  height: 40px;
+  padding: 2px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-chip);
+}
+
+/* The buttons inside the pill stay 36: the group is 40 with 2 of padding. */
+.seg button,
+.aspectBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.seg button[data-on],
+.aspectBtn {
+  padding: 0 10px;
+  background: var(--imagine-chip-on);
+  box-shadow: 0 0 0 1px var(--imagine-line);
+}
+
+/* The ratio chip is a single button, as tall as the groups (Grok: 40). */
+.aspectBtn { height: 40px; }
+
+/*
+ * As on Grok (2026-11-03): in the mode pill and in the recipe pill the off
+ * entry is grey, the on one white. Before, all were white and "Video" or
+ * "Speed" looked as chosen as "Image" or "Quality".
+ */
+.seg button { color: var(--imagine-dim); }
+.seg button[data-on] { color: var(--imagine-ink); }
+.seg button:hover:not([data-on]) { color: #d0d0d0; }
+
+/* The "…" of the other modes: a circle inside the two-mode pill. */
+.segMore {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.segDots {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.modeMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 30;
+  display: grid;
+  min-width: 210px;
+  padding: 6px;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 14px;
+  background: var(--imagine-chip);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.45);
+}
+
+.modeItem {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--imagine-ink-soft);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+/*
+ * The menu rows belong to the list, not to the pill: `.seg button` matched
+ * them here too (round, centred, 36 tall) and the menu looked like a centred
+ * column instead of a list like Grok's.
+ */
+.composer .modeItem {
+  justify-content: flex-start;
+  height: 32px;
+  border-radius: 9px;
+  text-align: left;
+}
+
+.modeItem:hover { background: rgb(255 255 255 / 0.07); }
+.modeItem[data-on] { background: rgb(255 255 255 / 0.1); }
+
+.composer .upload {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+}
+
+.send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-left: auto;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  /* Grok's blue circle (2026-11-03): the send button was white and blended
+     in with the pills that were on. */
+  background: var(--imagine-send);
+  color: #fff;
+  cursor: pointer;
+}
+
+.send:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.seg button:active,
+.aspectBtn:active,
+.send:active:not(:disabled) {
+  scale: 0.97;
+}
+
+.sourceBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px 4px;
+}
+
+.composer.docked .sourceBar {
+  align-items: flex-end;
+}
+
+.sourceStrip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  max-width: 60%;
+  scrollbar-width: thin;
+}
+
+.sourceChip {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.sourceDrop {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--imagine-hover);
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.sourceThumb {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--imagine-media-bed);
+}
+
+.composer.docked .sourceThumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  flex: none;
+}
+
+.sourceHint {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--imagine-muted);
+}
+
+.textButton {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: var(--imagine-hover);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.composerNote {
+  margin: 0;
+  padding: 4px 8px 0;
+  font-size: 12px;
+  color: var(--imagine-danger);
+}
+
+.hiddenFile {
+  display: none;
+}
+
+/* The home composer's options chip and its panel (Grok-like: one seat). */
+.optWrap {
+  position: relative;
+}
+
+.optPanel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  gap: 12px;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  padding: 14px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 16px;
+  background: var(--imagine-surface);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.55);
+}
+
+/*
+ * In the chat the composer touches the column's left edge and sits at the
+ * bottom of the screen: a 340px panel anchored to the right of the pill ended
+ * up under the sidebar (and, opened downwards from the last panel, almost
+ * entirely off screen). Here it hooks onto the whole composer, takes its
+ * width and opens upwards (2026-11-03, with "Quality" and "Speed").
+ */
+.composer.docked {
+  position: relative;
+}
+
+.composer.docked .optWrap {
+  position: static;
+}
+
+.composer.docked .optPanel {
+  top: auto;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  width: auto;
+  max-width: none;
+}
+
+/*
+ * The same goes for the "…" of the other modes: opened downwards from the
+ * composer at the bottom of the chat, the menu went off screen and only the
+ * first entry showed (2026-11-03). It hooks onto the composer and opens upwards.
+ */
+.composer.docked .segMore {
+  position: static;
+}
+
+.composer.docked .modeMenu {
+  top: auto;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  min-width: 0;
+  max-height: 45vh;
+  overflow-y: auto;
+}
+
+/*
+ * On a phone the chat composer is not at the bottom of the screen (it sits
+ * under the canvas): there the menu opens downwards and fits entirely. Above
+ * 900px the composer is at the bottom and the menu goes up (see above).
+ */
+@media (max-width: 900px) {
+  .composer.docked .modeMenu {
+    top: calc(100% + 8px);
+    bottom: auto;
+    max-height: 55vh;
+  }
+}
+
+.optRow {
+  display: grid;
+  gap: 6px;
+}
+
+.optLabel {
+  font-size: 12px;
+  color: var(--imagine-muted);
+}
+
+.optPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.optPill {
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  background: var(--imagine-chip);
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.optPill:hover { background: var(--imagine-hover); }
+
+/* The ratios of the format panel, like Grok's rows: small rectangle, ratio,
+   everyday name, a check on the chosen one. */
+.aspectItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--imagine-ink-soft);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.aspectItem:hover { background: rgb(255 255 255 / 0.07); }
+.aspectItem[data-on] { background: rgb(255 255 255 / 0.1); }
+.aspectRatio { min-width: 34px; text-align: left; font-variant-numeric: tabular-nums; }
+.aspectName { flex: 1; text-align: left; color: var(--imagine-dim); font-size: 13px; }
+.aspectItem svg:last-child { color: var(--imagine-ink); }
+
+.optPill[data-on] {
+  background: var(--imagine-ink);
+  color: var(--imagine-ink-fg);
+  border-color: var(--imagine-ink);
+}
+
+@media (max-width: 900px) {
+  .composer {
+    padding: 8px;
+  }
+}
+
+/* On a phone the home composer is pinned to the foot of the screen: opened
+   under its chip the options ran off the bottom and the left (2026-10-17).
+   They come up from the foot instead, the width of the screen. */
+@media (max-width: 640px) {
+  /*
+   * The toolbar measures 522px of content (attach, modes, recipe, options,
+   * send) and the composer on a phone has 327: the row broke out to the right
+   * inside the home's scrollport and the send button stayed off screen,
+   * reachable only by scrolling sideways (measured on 2026-11-05 at 390: send
+   * at x=482 in a 390 viewport). It wraps: the modes on the first row,
+   * recipe, ratio and send on the second.
+   */
+  .toolbarRow {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .optPanel {
+    position: fixed;
+    top: auto;
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    width: auto;
+    max-width: none;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .send {
+    animation: none !important;
+    transition: none !important;
+  }
+}

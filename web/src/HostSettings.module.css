@@ -1,0 +1,111 @@
+/* Layout of the "General" rows; colours and controls come from ImagineSettings.module.css. */
+.row {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0 0;
+}
+
+.label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--imagine-ink);
+}
+
+.input {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 520px;
+  padding: 8px 10px;
+  border: 1px solid var(--imagine-line-2);
+  border-radius: var(--imagine-radius-sm);
+  background: var(--imagine-surface);
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--imagine-focus);
+  outline-offset: 1px;
+}
+
+.toggleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 14px 0 0;
+  cursor: pointer;
+}
+
+.toggleRow input {
+  margin-top: 3px;
+  flex: none;
+}
+
+.toggleRow > span {
+  display: grid;
+  gap: 2px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.catalog {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 4px 16px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-md);
+}
+
+.catalogItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.catalogItem span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * One width for every control of these cards (2026-11-13): the provider and
+ * the key were 520 px, the model and the thinking level the whole card.
+ */
+.row > select,
+.row > input {
+  max-width: 520px;
+}
+
+/* The models in the composer's selector, by name. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  padding: 3px 10px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-chip);
+  font-size: 12px;
+  white-space: nowrap;
+}
