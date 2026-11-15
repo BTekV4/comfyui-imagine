@@ -90,7 +90,11 @@
    ],
    "ref_boost": 1.0,
    "ref_boost_a": 1.0,
-   "fit_mode": "fit"
+   "fit_mode": "fit",
+   "source_latent_b": [
+    "78",
+    0
+   ]
   },
   "class_type": "Krea2EditModelPatch"
  },
@@ -109,7 +113,11 @@
     0
    ],
    "grounding_px": 1024,
-   "system_prompt": ""
+   "system_prompt": "",
+   "image_b": [
+    "77",
+    0
+   ]
   },
   "class_type": "Krea2EditGroundedEncode"
  },
@@ -125,7 +133,11 @@
    ],
    "prompt": "",
    "grounding_px": 1024,
-   "system_prompt": ""
+   "system_prompt": "",
+   "image_b": [
+    "77",
+    0
+   ]
   },
   "class_type": "Krea2EditGroundedEncode"
  },
@@ -197,6 +209,32 @@
   "class_type": "ImagineSaveImage",
   "_meta": {
    "title": "Save Image (PNG)"
+  }
+ },
+ "77": {
+  "inputs": {
+   "image": "reference.png",
+   "upload": "image"
+  },
+  "class_type": "LoadImage",
+  "_meta": {
+   "title": "Reference image (optional)"
+  }
+ },
+ "78": {
+  "inputs": {
+   "pixels": [
+    "77",
+    0
+   ],
+   "vae": [
+    "127",
+    0
+   ]
+  },
+  "class_type": "VAEEncode",
+  "_meta": {
+   "title": "Encode reference"
   }
  }
 }

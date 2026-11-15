@@ -111,6 +111,9 @@ toolComfy:
     # Image to image (the "remix" action): an anchored Krea 2 edit.
     editImage:
       path: ./workflows/comfyui_edit_krea2_API.json
+      # The «+» reference photo: a second image Krea 2 reads; without one these two nodes are taken out.
+      refImageNodeId: "77"
+      refEncodeNodeId: "78"
       outputExt: png
       promptNodeId: "500"
       steps:
@@ -122,6 +125,9 @@ toolComfy:
     # `lastImageNodeId` node, and pixels outside it stay the source's own.
     editImageRegion:
       path: ./workflows/comfyui_edit_krea2_region_API.json
+      # The «+» reference photo: a second image Krea 2 reads; without one these two nodes are taken out.
+      refImageNodeId: "77"
+      refEncodeNodeId: "78"
       outputExt: png
       promptNodeId: "500"
       seedNodeId: "307"
