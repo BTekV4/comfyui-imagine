@@ -9,9 +9,10 @@
  */
 import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tokenDir } from './helpers/token-files.ts'
 
 const { readFacebookTokenState, saveFacebookTokens, checkFacebookToken } = await import('../plugins/instagram/src/token.ts')
 
@@ -47,10 +48,7 @@ function liveShape(overrides: Record<string, unknown> = {}): Record<string, unkn
 }
 
 async function dirWith(config: Record<string, unknown>): Promise<string> {
-  const dir = await mkdtemp(join(root, 'cfg-'))
-  await mkdir(dir, { recursive: true })
-  await writeFile(join(dir, 'facebook_comments_token.json'), `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 })
-  return dir
+  return tokenDir(root, 'facebook_comments_token.json', config)
 }
 
 test('the state is masked: no token, but page, account and days', async () => {

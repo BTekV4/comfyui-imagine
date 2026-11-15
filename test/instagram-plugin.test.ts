@@ -9,54 +9,31 @@
  */
 import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { promisify } from 'node:util'
-import { fakePluginHost } from './helpers/plugin-host.ts'
-
-const { createPlugins } = await import('../server/src/plugins.ts')
+import type { fakePluginHost } from './helpers/plugin-host.ts'
+import { installPlugin, type Plugins } from './helpers/plugin-files.ts'
+import { builtPlugins, bundleOf } from './helpers/plugin-bundle.ts'
 
 const root = await mkdtemp(join(tmpdir(), 'imagine-instagram-plugin-'))
 after(async () => { await rm(root, { recursive: true, force: true }) })
 
-const OUT = join(root, 'build')
-const BUNDLE = join(OUT, 'instagram', 'index.mjs')
-
-/** Builds the plugins once into the temporary folder; every test waits for it. */
-const built = promisify(execFile)(process.execPath, ['scripts/build.mjs', 'plugins'], {
-  timeout: 60_000,
-  env: { ...process.env, PLUGINS_OUT: OUT },
-})
-// Observed here so a failed build is reported by the first test, not as an unhandled rejection.
-built.catch(() => undefined)
+/** The plugins built once for the whole run (helpers/plugin-bundle.ts); every test waits for it. */
+const built = builtPlugins()
+/** The Instagram bundle, once the build is done. */
+const bundlePath = async (): Promise<string> => bundleOf(await built, 'instagram')
 
 /** The plugin loaded into a data folder that holds just this plugin. */
 async function load(): Promise<{
-  plugins: Awaited<ReturnType<typeof createPlugins>>
+  plugins: Plugins
   dir: string
   routes: { path: string; kind: string }[]
   bus: ReturnType<typeof fakePluginHost>['bus']
 }> {
-  await built
-  const dir = await mkdtemp(join(root, 'data-'))
-  const folder = join(dir, 'instagram')
   // The loader wants the plugin's folder: the built bundle is copied there.
-  const { mkdir, copyFile } = await import('node:fs/promises')
-  await mkdir(folder, { recursive: true })
-  await copyFile(join('plugins', 'instagram', 'manifest.json'), join(folder, 'manifest.json'))
-  await copyFile(BUNDLE, join(folder, 'index.mjs'))
-  const fake = fakePluginHost({ mediaDir: dir, model: { provider: 'omniroute', model: 'test/model' } })
-  const { bus } = fake
-  const routes = fake.routes as unknown as { path: string; kind: string }[]
-  const plugins = await createPlugins({
-    dir,
-    host: fake.host,
-  })
-  await plugins.start()
-  return { plugins, dir, routes, bus }
+  return installPlugin(root, 'instagram', await bundlePath(), { model: { provider: 'omniroute', model: 'test/model' } })
 }
 
 test('the Instagram module loads as a plugin, with its routes and its status', async () => {
@@ -149,7 +126,7 @@ test('the plugin registers its scheduler as the plugin API tick, not a timer of 
   const view = (await plugins.list())[0]!
   assert.equal(view.loaded, true, `not loaded: ${String(view.error)}`)
   // With the scheduler off a tick does nothing, and must not throw.
-  const bundle = await import(`${pathToFileURL(BUNDLE).href}?tick=${String(Date.now())}`) as {
+  const bundle = await import(`${pathToFileURL(await bundlePath()).href}?tick=${String(Date.now())}`) as {
     default: (ctx: unknown) => { tick?: (now: Date) => unknown; routes?: readonly { path: string }[] }
   }
   const setup = bundle.default({

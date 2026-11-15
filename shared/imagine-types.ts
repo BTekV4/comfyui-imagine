@@ -94,8 +94,9 @@ export type ImagineAction = typeof IMAGINE_ACTIONS[number]
  *
  * `fast` is the graph as it ships, distilled to the few steps its LoRA was
  * trained at (the Pika recipe at four steps since 2026-11-05). `slow` is the
- * high-quality half: the second graph the workflow declares as `pathHigh`
- * (the official six-step Pika graph), and a workflow without one falls back to
+ * high-quality half: the entry's `highInputs` (the six-step Pika inputs on
+ * the same graph) or a second graph declared as `pathHigh`, and a workflow
+ * with neither falls back to
  * its own `steps.high`, the higher count it was saved with.
  *
  * The old recipe that swapped in the base weights and sampled at 24 steps is

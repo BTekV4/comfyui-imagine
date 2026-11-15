@@ -17,7 +17,7 @@ import {
   AUDIO_EXTENSIONS, bytesMatchExt, deleteGalleryItem, IMAGE_EXTENSIONS, kindOf, listGallery, MAX_CROP_BYTES, mimeOf,
   replaceGalleryImage, safeBasename, saveGalleryUploadStream, uploadExt, VIDEO_EXTENSIONS,
 } from './gallery.ts'
-import { writeJsonTagged } from './imagine-routes.ts'
+import { writeJsonTagged } from '../../src/route-kit.ts'
 import { forgetSight, lookSoon } from './imagine-sight.ts'
 import { parseZipNames, streamMediaZip } from './media-zip.ts'
 import { canThumb, forgetThumbs, thumbnailOf, thumbWidthFor } from './media-thumbs.ts'

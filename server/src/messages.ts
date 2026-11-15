@@ -140,6 +140,10 @@ export const MESSAGES = {
   'settings.minimum': { it: '{where} deve essere almeno {min}', en: '{where} must be at least {min}' },
   'settings.maximum': { it: '{where} deve essere al massimo {max}', en: '{where} must be at most {max}' },
   'settings.list': { it: '{where} deve essere una lista di testi non vuoti', en: '{where} must be a list of non-empty texts' },
+  'settings.inputList': {
+    it: '{where} deve essere una lista di voci nodeId, field e value (testo, numero, sì/no o collegamento [nodo, uscita])',
+    en: '{where} must be a list of nodeId, field and value entries (text, number, true/false or a [node, output] link)',
+  },
   'settings.object': { it: '{where} deve essere un oggetto', en: '{where} must be an object' },
   'settings.jsonFile': { it: '{where} deve essere un file .json', en: '{where} must be a .json file' },
   'settings.noLeadingDot': { it: '{where} non vuole il punto iniziale', en: '{where} must not start with a dot' },

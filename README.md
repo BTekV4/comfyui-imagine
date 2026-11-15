@@ -87,7 +87,7 @@ point at another graph — see [The workflows](#the-workflows).
 | Edit photo, precise edit (brush), reference image | **Krea 2 Turbo** + identity-edit LoRA | the three above + `krea2_identity_edit_v1_2` (LoRA) |
 | Compose a person with a reference (costume, setting) | **Qwen-Image 2.1** | `qwen_image_2.1_int8_convrot`, `qwen3vl_8b_int8_convrot`, `qwen_image_2.1_vae_bf16` |
 | Relight a photo | **FLUX.3 Klein** | `flux3-image-klein-int8-convrot` ([black-forest-labs](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy), gated), `qwen3vl_4b_int8_convrot` (the Krea 2 text encoder), `flux2-vae` |
-| Make video, loop, extend, video on a song, recreate video (chained scenes past 6 s) | **MiniMax H3** (fast and quality graphs) | `minimax_h3_fl2va` / `minimax_h3_ref2va` (int8), text encoder `qwen3vl_32b_minimax_h3_nvfp4_awq`, video and audio VAEs, Pika H3 Flex turbo LoRAs |
+| Make video, loop, extend, video on a song, recreate video (chained scenes past 6 s) | **MiniMax H3** (fast and quality recipes) | `minimax_h3_fl2va` / `minimax_h3_ref2va` (int8), text encoder `qwen3vl_32b_minimax_h3_nvfp4_awq`, video and audio VAEs, Pika H3 Flex turbo LoRAs |
 | Edit object in a video: change, remove, background, add; character swap (lip-sync on or off) | **MiniMax H3** + **SAM 3.1** + Qwen3-VL 8B (describer) | `minimax_h3_ref2va` + the DMAD 4-step LoRA ([Kijai/MiniMax-H3-experimental](https://huggingface.co/Kijai/MiniMax-H3-experimental)) at 6 steps, `sam3.1_multiplex_fp16` — the masked-edit recipe Openjutsu uses |
 | Regenerate detail (video at 1.5×) | **MiniMax H3** | latent upscaler 3D + `minimax_h3_open_regenerate_2k` LoRA |
 | Segments (objects in a photo) | **SAM 3.1** + the vision model | `sam3.1_multiplex_fp16`, node in [comfyui-nodes/comfyui-imagine](comfyui-nodes/comfyui-imagine) |
@@ -248,8 +248,9 @@ undescribed person.
 
 `workflows/` holds the graphs in ComfyUI's API format — the same JSON you get
 from "Save (API format)". `config.example.yaml` wires them to the actions,
-with the node ids that match the shipped files (the clip actions have a fast
-`path` and a quality `pathHigh` graph, which take the same pins).
+with the node ids that match the shipped files (each Pika clip graph carries a
+fast and a quality recipe: the entry's `highInputs` lists the inputs the
+quality one writes over the graph; a second graph as `pathHigh` also works).
 [workflows/README.md](workflows/README.md) lists every file, the
 config key it serves and what it does. They are examples from one machine: the
 model and LoRA names in them are the ones installed there, so adapt them to

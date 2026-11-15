@@ -88,10 +88,10 @@ export interface ImagineJob extends ImagineJobFields {
   readonly customFiles?: Readonly<Record<string, string>>
   /**
    * How the clip is rendered: `fast`, the graph the entry ships, or `slow`,
-   * the entry's second graph (`pathHigh`) when it declares one and the
-   * workflow's `steps.high` otherwise. The graph is chosen before the job is
-   * queued (`readJobRequest`); the runner only passes the value on, for the
-   * step count. The queue lives in memory only, so no job outlives a restart
+   * the entry's second graph (`pathHigh`) when it declares one, else the
+   * same graph with its `highInputs` and `steps.high`. The graph is chosen
+   * before the job is queued (`readJobRequest`); the runner only passes the
+   * value on, for the overrides and the step count. The queue lives in memory only, so no job outlives a restart
    * and no older spelling of this field has to be read.
    */
   readonly speed?: ImagineSpeed

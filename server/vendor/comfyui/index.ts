@@ -911,8 +911,12 @@ export class ComfyUi {
     this.stampMetaBatch(adapted, chainIdOf(graph))
     const body: Record<string, unknown> = { prompt: adapted }
     if (this.progress !== undefined) {
-      // Per-prompt preview override and targeted updates back to this client.
-      body.extra_data = { preview_method: 'none', client_id: this.progress.clientId }
+      /*
+       * Denoising previews for the pending tile, whatever ComfyUI was started
+       * with: `auto` takes TAESD when its decoder is installed, the cheap
+       * latent-to-RGB projection otherwise. Updates go back to this client.
+       */
+      body.extra_data = { preview_method: 'auto', client_id: this.progress.clientId }
     }
     const response = await this.request('/prompt', {
       method: 'POST',

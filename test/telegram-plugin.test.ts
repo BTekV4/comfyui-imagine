@@ -5,15 +5,16 @@
  * it from the same tree (`plugins/telegram/`) into a temporary folder, so what
  * is tested is the file the user copies.
  */
-import { after, beforeEach, test } from 'node:test'
+import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fakePluginHost } from './helpers/plugin-host.ts'
-
-const { createPlugins } = await import('../server/src/plugins.ts')
+import type { fakePluginHost } from './helpers/plugin-host.ts'
+import { fakeFetch } from './helpers/fake-fetch.ts'
+import { fakeRequest, fakeResponse } from './helpers/fake-http.ts'
+import { installPlugin, type Plugins } from './helpers/plugin-files.ts'
 
 const root = await mkdtemp(join(tmpdir(), 'imagine-telegram-'))
 after(async () => { await rm(root, { recursive: true, force: true }) })
@@ -22,10 +23,11 @@ const TOKEN = '123456789:AAFakeTokenForTestsOnly_0123456789abcde'
 const CHAT = '1234567890'
 
 /** The fake calls to Telegram, instead of the network. */
-let calls: { url: string; body: Record<string, unknown> }[] = []
-const realFetch = globalThis.fetch
-beforeEach(() => { calls = [] })
-after(() => { globalThis.fetch = realFetch })
+const network = fakeFetch((input, init) => ({
+  url: String(input),
+  body: typeof init?.body === 'string' ? JSON.parse(init.body) as Record<string, unknown> : {},
+}))
+const { calls } = network
 
 /** A Telegram answer. */
 function telegramSays(ok: boolean, payload: Record<string, unknown>): unknown {
@@ -34,53 +36,17 @@ function telegramSays(ok: boolean, payload: Record<string, unknown>): unknown {
 
 /** Answers like Telegram: ok, or refuses with a description. */
 function answerWith(handler: (body: Record<string, unknown>) => unknown): void {
-  globalThis.fetch = (async (input: string | URL, init?: { body?: string }) => {
-    const url = String(input)
-    const body = typeof init?.body === 'string' ? JSON.parse(init.body) as Record<string, unknown> : {}
-    calls.push({ url, body })
-    return handler(body)
-  }) as unknown as typeof fetch
+  network.answerWith(call => handler(call.body))
 }
 
-/** The plugin installed in a temporary folder, with its bus. */
+/** The plugin installed in a temporary folder, with its bus: the repository's own hand-written module. */
 async function install(): Promise<{
-  plugins: Awaited<ReturnType<typeof createPlugins>>
+  plugins: Plugins
   bus: ReturnType<typeof fakePluginHost>['bus']
   dir: string
   routes: { path: string; handler: (req: unknown, res: unknown) => unknown }[]
 }> {
-  const dir = await mkdtemp(join(root, 'data-'))
-  const folder = join(dir, 'telegram')
-  await mkdir(folder, { recursive: true })
-  for (const name of ['manifest.json', 'index.mjs']) {
-    await copyFile(join('plugins', 'telegram', name), join(folder, name))
-  }
-  const fake = fakePluginHost({ mediaDir: dir, notifyTimeoutMs: 1000 })
-  const { bus } = fake
-  const routes = fake.routes as unknown as { path: string; handler: (req: unknown, res: unknown) => unknown }[]
-  const plugins = await createPlugins({
-    dir,
-    host: fake.host,
-  })
-  await plugins.start()
-  return { plugins, bus, dir, routes }
-}
-
-/** A fake request for the plugin's route. */
-function fakeRequest(method = 'POST'): unknown {
-  return { method, resume: () => undefined }
-}
-
-/** A fake response that collects status and body. */
-function fakeResponse(): { statusCode: number; headers: Record<string, string>; body: string; setHeader: (name: string, value: string) => void; end: (body?: string) => void } {
-  const response = {
-    statusCode: 200,
-    headers: {} as Record<string, string>,
-    body: '',
-    setHeader(name: string, value: string) { response.headers[name] = value },
-    end(body?: string) { response.body = body ?? '' },
-  }
-  return response
+  return installPlugin(root, 'telegram', join('plugins', 'telegram', 'index.mjs'), { notifyTimeoutMs: 1000 })
 }
 
 test('without a token the status says what is missing, and the test action is a 400', async () => {

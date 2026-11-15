@@ -6,6 +6,7 @@
  */
 import { getJson } from './http.ts'
 import type { MediaKind } from '../../../shared/imagine-types.ts'
+import { ACTION_TABLE } from '../../../shared/imagine-action-table.ts'
 
 /** The run a file came out of, as the host recorded it. */
 export interface FileOrigin {
@@ -47,14 +48,16 @@ const WORDLESS_ACTIONS = new Set(['bg', 'upscale', 'voice', 'crop', 'duplicate',
 /**
  * Stand-in prompts a record can carry instead of words anyone typed.
  *
- * The first four are what the host writes for a wordless run (`UNPROMPTED` in
- * server/vendor/tool-comfy/job-request.ts: upscale, bg, voice, and
- * «character swap» for a promptless swapPerson), so they must follow that
- * table; the last three are what older records carry. Without
- * 'character swap' a promptless swap showed the host's placeholder as the
- * user's own request.
+ * The first are what the host writes for a wordless run (`untitled` in
+ * shared/imagine-action-table.ts: upscale, bg, voice, and «character swap»
+ * for a promptless swapPerson), read from the same table; the last three are
+ * what older records carry. Without 'character swap' a promptless swap
+ * showed the host's placeholder as the user's own request.
  */
-const PLACEHOLDER_PROMPTS = new Set(['bg', 'upscale', 'voice', 'character swap', 'Upscale', 'Togli lo sfondo', 'Copia'])
+const PLACEHOLDER_PROMPTS = new Set([
+  ...Object.values(ACTION_TABLE).flatMap(row => row.untitled === undefined ? [] : [row.untitled]),
+  'Upscale', 'Togli lo sfondo', 'Copia',
+])
 
 /**
  * The words the user asked with, when there were any.

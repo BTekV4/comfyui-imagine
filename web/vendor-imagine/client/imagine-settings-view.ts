@@ -237,6 +237,9 @@ export function workflowRows(
     const composedValue = composed[name]
     const overrideValue = override[name]
     const sample = overrideValue ?? composedValue
+    // A list of records (`highInputs`) has no one-line control: it is edited
+    // in config.yaml, and a "lines" box would show it empty.
+    if (Array.isArray(sample) && sample.some(entry => typeof entry !== 'string')) continue
     if (isPlainObject(sample)) {
       const members = [...new Set([...Object.keys(sample), ...Object.keys(isPlainObject(overrideValue) ? overrideValue : {})])].sort()
       for (const member of members) {

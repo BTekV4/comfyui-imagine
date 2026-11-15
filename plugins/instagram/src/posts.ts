@@ -7,7 +7,7 @@
 import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { message } from '../../../server/src/messages.ts'
-import { readObject, sendJson } from '../../../server/src/route-kit.ts'
+import { readObject, sendJson, writeJsonTagged } from '../../../server/src/route-kit.ts'
 import { carries, isDryRun, log, queueStore, resolveMediaPath, routeCollection } from './context.ts'
 import { notifyPublished, notifyPublishFailure } from './notify.ts'
 import { AI_LABEL_FLAG, CAROUSEL_PUBLISH_SCRIPT, execPython, mediaResultOf, PHOTO_PUBLISH_SCRIPT, REEL_PUBLISH_SCRIPT, refusalOf, TIMEOUTS, type ScriptResult } from './python.ts'
@@ -472,7 +472,9 @@ export async function handlePosts(req: IncomingMessage, res: ServerResponse, sub
   await routeCollection<Post>(req, res, subpath, '/posts', {
     notFound: message('social.postNotFound'),
     find: async id => list.find(post => post.id === id),
-    list: async () => { sendJson(res, 200, { ok: true, posts: [...list].reverse() }) },
+    // Tagged: the page re-reads the queue every 20 s and an unchanged one
+    // answers 304 with no body.
+    list: async () => { writeJsonTagged('social-posts', req, res, req.method, JSON.stringify({ ok: true, posts: [...list].reverse() })) },
     create: async () => {
       const input = readPostInput(await readObject(req))
       if (input.files.length === 0) return sendJson(res, 400, { error: message('social.fileRequired') })

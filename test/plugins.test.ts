@@ -11,8 +11,9 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fakePluginHost } from './helpers/plugin-host.ts'
+import { writePlugin } from './helpers/plugin-files.ts'
 
-const { createPlugins, PLUGIN_API_VERSION } = await import('../server/src/plugins.ts')
+const { createPlugins } = await import('../server/src/plugins.ts')
 
 const root = await mkdtemp(join(tmpdir(), 'imagine-plugins-'))
 after(async () => { await rm(root, { recursive: true, force: true }) })
@@ -34,29 +35,10 @@ async function system(tickMs?: number, statusTimeoutMs?: number): Promise<{
   return { plugins, dir, host }
 }
 
-/** Writes a plugin: manifest + module. */
-async function plugin(
-  dir: string,
-  id: string,
-  options: {
-    manifest?: Record<string, unknown>
-    module?: string
-    settings?: unknown[]
-  } = {},
-): Promise<string> {
+/** Writes a plugin into `<dir>/<id>`: manifest + module (helpers/plugin-files.ts). */
+async function plugin(dir: string, id: string, options: Parameters<typeof writePlugin>[2] = {}): Promise<string> {
   const folder = join(dir, id)
-  await mkdir(folder, { recursive: true })
-  const manifest = {
-    id,
-    name: id.toUpperCase(),
-    version: '1.0.0',
-    api: PLUGIN_API_VERSION,
-    entry: 'index.mjs',
-    ...options.settings === undefined ? {} : { settings: options.settings },
-    ...options.manifest ?? {},
-  }
-  await writeFile(join(folder, 'manifest.json'), JSON.stringify(manifest, null, 2))
-  await writeFile(join(folder, 'index.mjs'), options.module ?? 'export default function setup() { return {} }\n')
+  await writePlugin(folder, id, options)
   return folder
 }
 

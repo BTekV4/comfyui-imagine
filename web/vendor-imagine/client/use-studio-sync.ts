@@ -488,19 +488,12 @@ export function useStudioSync(ctx: StudioSyncContext) {
    * scheduler publishes on the host's clock, so a post can change state with
    * nobody touching the page.
    */
-  const postsSeenRef = useRef<string | undefined>(undefined)
   const reloadPosts = useCallback(async (): Promise<void> => {
     if (!social) return
     await fetchSocialPostsIfChanged()
       .then((list) => {
         // A 304: the host says nothing changed.
         if (list === undefined) return
-        // The same queue again is not a change: setting it re-rendered the
-        // whole studio every 20 seconds for nothing. Compared by content
-        // because the plugin route sends no ETag yet, so every read is a body.
-        const seen = JSON.stringify(list)
-        if (seen === postsSeenRef.current) return
-        postsSeenRef.current = seen
         setSocialPosts(list)
       })
       .catch(() => { /* the rail simply keeps the list it has */ })

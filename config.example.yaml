@@ -75,9 +75,10 @@ toolComfy:
   # One entry per action. `path` is an API-format graph (ComfyUI "Save (API
   # format)"); the other fields pin the node ids the studio writes on every
   # run. The ids below match the graphs shipped in ./workflows/: if you edit a
-  # graph or bring your own, update them. `pathHigh`, where present, is the
-  # graph used when the job asks for high quality (or slow speed); it must
-  # carry the same pins. See workflows/README.md for what each graph does.
+  # graph or bring your own, update them. `highInputs`, where present, lists
+  # the inputs written over the same graph when the job asks for high quality
+  # (or slow speed); `pathHigh` instead names a second graph for that recipe,
+  # with the same pins. See workflows/README.md for what each graph does.
   workflows:
     # ---------------------------------------------------------------- images
 
@@ -171,16 +172,26 @@ toolComfy:
       imageNodeId: "22"
 
     # ---------------------------------------------------------------- video
-    # The clip graphs below use MiniMax H3 with the Pika LoRA: the "fast" graph
-    # (4 steps) by default, the "quality" graph (6 steps) as `pathHigh`.
+    # The clip graphs below use MiniMax H3 with the Pika LoRA. Each Pika graph
+    # carries both recipes: as saved it is the fast one (turbo LoRA, 4 steps,
+    # euler); `highInputs` lists the inputs the quality recipe ("Velocita:
+    # Lenta" / "Qualita: Alta") writes over it (full LoRA, the 6-step sigma
+    # list of `pika:sigmas`, lcm). A value written as [node, output] rewires
+    # that input; the nodes a recipe leaves unread are dropped from its run.
+    # `pathHigh: <file>` (a second graph with the same pins) is still accepted
+    # in place of `highInputs`.
     # `realism` is the optional realism LoRA node: its strength and trigger
     # word are applied when a job asks for it.
 
     # Image to video. `lastImageNodeId` is the optional end frame: without one
     # the studio unlinks it.
     createVideo:
-      path: ./workflows/comfyui_video_i2v_pika_fast_API.json
-      pathHigh: ./workflows/comfyui_video_i2v_pika_quality_API.json
+      path: ./workflows/comfyui_video_i2v_pika_API.json
+      highInputs:
+        - { nodeId: "pika:lora", field: lora_name, value: pika_h3_flex_fl2va_v1_bf16.safetensors }
+        - { nodeId: "105:17", field: sampler_name, value: lcm }
+        - { nodeId: "105:14", field: sigmas, value: ["pika:sigmas", 0] }
+        - { nodeId: "105:143", field: shift_video, value: 12 }
       outputExt: mp4
       promptNodeId: "105:104"
       promptField: prompt
@@ -232,8 +243,12 @@ toolComfy:
     # The clip a "recreate" renders from its redrawn opening frame. Left out,
     # recreate uses createVideo; here it is the same graph, spelt out.
     recreateVideo:
-      path: ./workflows/comfyui_video_i2v_pika_fast_API.json
-      pathHigh: ./workflows/comfyui_video_i2v_pika_quality_API.json
+      path: ./workflows/comfyui_video_i2v_pika_API.json
+      highInputs:
+        - { nodeId: "pika:lora", field: lora_name, value: pika_h3_flex_fl2va_v1_bf16.safetensors }
+        - { nodeId: "105:17", field: sampler_name, value: lcm }
+        - { nodeId: "105:14", field: sigmas, value: ["pika:sigmas", 0] }
+        - { nodeId: "105:143", field: shift_video, value: 12 }
       outputExt: mp4
       promptNodeId: "105:104"
       promptField: prompt
@@ -259,8 +274,11 @@ toolComfy:
     # onto its start, so the clip comes back periodic; the photo is a
     # reference, not a pinned first frame.
     loopVideo:
-      path: ./workflows/comfyui_video_loop_pika_fast_API.json
-      pathHigh: ./workflows/comfyui_video_loop_pika_quality_API.json
+      path: ./workflows/comfyui_video_loop_pika_API.json
+      highInputs:
+        - { nodeId: "pika:lora", field: lora_name, value: pika_h3_flex_ref2va_v1_bf16.safetensors }
+        - { nodeId: "105:17", field: sampler_name, value: lcm }
+        - { nodeId: "105:14", field: sigmas, value: ["pika:sigmas", 0] }
       outputExt: mp4
       promptNodeId: "105:104"
       promptField: prompt
@@ -306,8 +324,13 @@ toolComfy:
     # Continue an existing clip (the "extend" action): the tail of the clip
     # goes into the video node.
     extendVideo:
-      path: ./workflows/comfyui_video_extend_pika_fast_API.json
-      pathHigh: ./workflows/comfyui_video_extend_pika_quality_API.json
+      path: ./workflows/comfyui_video_extend_pika_API.json
+      highInputs:
+        - { nodeId: "pika:lora", field: lora_name, value: pika_h3_flex_fl2va_v1_bf16.safetensors }
+        - { nodeId: "1682:135", field: sampler_name, value: lcm }
+        - { nodeId: "1682:125", field: sigmas, value: ["pika:sigmas", 0] }
+        # The quality recipe reads the LoRA chain without the 4-step shift.
+        - { nodeId: "pika:lora", field: model, value: ["1682:200", 0] }
       outputExt: mp4
       promptNodeId: "1682:131"
       promptField: prompt
@@ -360,8 +383,11 @@ toolComfy:
     # ({ probe: <script>, min, retries }) re-renders shots whose mouth does not
     # follow the song; it needs a probe script of your own, so it is left out.
     videoOnSong:
-      path: ./workflows/comfyui_video_song_pika_fast_API.json
-      pathHigh: ./workflows/comfyui_video_song_pika_quality_API.json
+      path: ./workflows/comfyui_video_song_pika_API.json
+      highInputs:
+        - { nodeId: "pika:lora", field: lora_name, value: pika_h3_flex_ref2va_v1_bf16.safetensors }
+        - { nodeId: "1682:135", field: sampler_name, value: lcm }
+        - { nodeId: "1682:125", field: sigmas, value: ["pika:sigmas", 0] }
       outputExt: mp4
       promptNodeId: "1682:131"
       promptField: prompt

@@ -290,10 +290,10 @@ function Composer({
             * The recipe, like Grok's double pill. "Speed" is the graph as it
             * is: Krea 2 at 8 steps, the clips with the Pika Turbo recipe at 4.
             * "Quality" raises the graph's steps for photos (Krea 2 at 16); for
-            * clips it picks the entry's SECOND graph (`pathHigh`: official
-            * Pika at 6 steps) — on distilled weights extra steps buy no
-            * detail (measured 2026-11-05), so the high recipe is another
-            * graph, not another number. The two hints must be realigned when
+            * clips it switches to the entry's high recipe (official Pika at
+            * 6 steps: its `highInputs`, or a `pathHigh` graph) — on distilled
+            * weights extra steps buy no detail (measured 2026-11-05), so the
+            * high recipe is another LoRA and sigma list, not another number. The two hints must be realigned when
             * config.yaml changes. One choice for both settings: `quality` for
             * photos, `speed` for videos, so a request cannot carry two
             * different recipes.

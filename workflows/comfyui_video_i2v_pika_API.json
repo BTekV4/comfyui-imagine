@@ -6,7 +6,17 @@
    "upload": "image"
   },
   "_meta": {
-   "title": "Load image (first = last frame)"
+   "title": "Load image (first frame)"
+  }
+ },
+ "9001": {
+  "class_type": "LoadImage",
+  "inputs": {
+   "image": "2.png",
+   "upload": "image"
+  },
+  "_meta": {
+   "title": "Load image (last frame)"
   }
  },
  "1682:115": {
@@ -23,7 +33,7 @@
  "105:6": {
   "class_type": "UNETLoader",
   "inputs": {
-   "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+   "unet_name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
    "weight_dtype": "default"
   },
   "_meta": {
@@ -47,10 +57,10 @@
  "105:143": {
   "class_type": "MiniMaxH3SigmaShift",
   "inputs": {
-   "shift_video": 12.0,
+   "shift_video": 6.0,
    "shift_audio": 3,
    "model": [
-    "300",
+    "1682:200",
     0
    ]
   },
@@ -88,7 +98,7 @@
   }
  },
  "105:104": {
-  "class_type": "MiniMaxH3ReferenceToVideo",
+  "class_type": "MiniMaxH3ImageToVideo",
   "inputs": {
    "prompt": "",
    "width": [
@@ -103,7 +113,6 @@
     "105:107",
     1
    ],
-   "ref_image_size": "match",
    "clip": [
     "105:13",
     0
@@ -112,17 +121,17 @@
     "105:11",
     0
    ],
-   "audio_vae": [
-    "105:24",
+   "first_frame": [
+    "1682:114",
     0
    ],
-   "ref_images.ref_image_0": [
-    "1682:114",
+   "last_frame": [
+    "9001",
     0
    ]
   },
   "_meta": {
-   "title": "Reference to Video (the photo as <Picture 1>)"
+   "title": "MiniMax H3 Image to Video"
   }
  },
  "105:111": {
@@ -224,6 +233,38 @@
    "title": "SamplerCustomAdvanced"
   }
  },
+ "105:10": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "105:14",
+    0
+   ],
+   "vae": [
+    "105:11",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "VAE decode"
+  }
+ },
+ "105:23": {
+  "class_type": "VAEDecodeAudio",
+  "inputs": {
+   "samples": [
+    "105:14",
+    0
+   ],
+   "vae": [
+    "105:24",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "VAE decode audio"
+  }
+ },
  "105:91": {
   "class_type": "CreateVideo",
   "inputs": {
@@ -232,12 +273,12 @@
    "color_space": "sRGB",
    "codec": "none",
    "images": [
-    "301",
+    "105:10",
     0
    ],
    "audio": [
-    "301",
-    1
+    "105:23",
+    0
    ]
   },
   "_meta": {
@@ -247,7 +288,7 @@
  "92": {
   "class_type": "SaveVideo",
   "inputs": {
-   "filename_prefix": "video/Pika_loop_fast",
+   "filename_prefix": "video/Pika_i2v",
    "format": "auto",
    "format.codec": "auto",
    "codec": "auto",
@@ -260,41 +301,6 @@
    "title": "Save video"
   }
  },
- "300": {
-  "class_type": "MiniMaxH3Loop",
-  "inputs": {
-   "model": [
-    "1682:200",
-    0
-   ],
-   "pad_clips": 1,
-   "views": 2
-  },
-  "_meta": {
-   "title": "MiniMax H3 Loop"
-  }
- },
- "301": {
-  "class_type": "MiniMaxH3LoopDecode",
-  "inputs": {
-   "samples": [
-    "105:14",
-    0
-   ],
-   "vae": [
-    "105:11",
-    0
-   ],
-   "audio_vae": [
-    "105:24",
-    0
-   ],
-   "pad_clips": 1
-  },
-  "_meta": {
-   "title": "MiniMax H3 Loop Decode"
-  }
- },
  "pika:lora": {
   "class_type": "LoraLoaderModelOnly",
   "inputs": {
@@ -302,8 +308,14 @@
     "105:143",
     0
    ],
-   "lora_name": "pika_h3_flex_turbo_4step_ref2va.safetensors",
+   "lora_name": "pika_h3_flex_turbo_4step_fl2va.safetensors",
    "strength_model": 1.0
+  }
+ },
+ "pika:sigmas": {
+  "class_type": "ManualSigmas",
+  "inputs": {
+   "sigmas": "1.0, 0.972973, 0.923077, 0.8, 0.571429, 0.333333, 0.0"
   }
  }
 }

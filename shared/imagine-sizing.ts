@@ -215,3 +215,42 @@ export function clampSeconds(mode: string, resolution: ImagineResolution, second
   if (ladder.includes(seconds)) return seconds
   return 10
 }
+
+/**
+ * The studio's still shapes, as width:height. An upscale lands on the
+ * nearest one: the menu promises that frame (web upscale-choices.ts) and the
+ * host crops the file to it (server snap-size.ts `fourKFrame`). Until
+ * 2026-11-15 each side kept its own copy of the shapes and of the rule.
+ */
+export const STUDIO_SHAPES: readonly (readonly [number, number])[] = [[9, 16], [16, 9], [2, 3], [3, 2], [3, 4], [4, 3], [1, 1]]
+
+/** Largest difference of shape (width/height ratio) that still counts as a studio shape. */
+export const SHAPE_SLACK = 0.02
+
+/**
+ * The studio shape a picture is, within {@link SHAPE_SLACK}.
+ * @param width - the picture's width.
+ * @param height - the picture's height.
+ * @returns the shape as `[w, h]`, or undefined when it matches none.
+ */
+export function nearestShape(width: number, height: number): readonly [number, number] | undefined {
+  const ratio = width / height
+  const nearest = STUDIO_SHAPES
+    .map(([w, h]) => ({ w, h, off: Math.abs(ratio / (w / h) - 1) }))
+    .sort((a, b) => a.off - b.off)[0]
+  return nearest === undefined || nearest.off > SHAPE_SLACK ? undefined : [nearest.w, nearest.h]
+}
+
+/**
+ * The frame of a shape at a given short side: the long side is
+ * short × max/min, rounded.
+ * @param w - the shape's width (any unit: a ratio or pixels).
+ * @param h - the shape's height.
+ * @param short - the short side to frame on.
+ * @returns the frame in pixels.
+ */
+export function frameOnShape(w: number, h: number, short: number): { width: number; height: number } {
+  return w <= h
+    ? { width: short, height: Math.round(short * h / w) }
+    : { width: Math.round(short * w / h), height: short }
+}

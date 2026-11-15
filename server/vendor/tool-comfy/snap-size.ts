@@ -13,11 +13,10 @@
 import { open, rename, unlink } from 'node:fs/promises'
 import { imageTypeOf, probePixels } from './gallery.ts'
 import { FASTSTART, ffmpegTo, h264Out } from './media-tools.ts'
+import { SHAPE_SLACK, frameOnShape, nearestShape } from '../../../shared/imagine-sizing.ts'
 
 /** Largest per-side difference treated as rounding. */
 const SIZE_SLACK = 0.05
-/** Largest difference of shape (width/height ratio) a rescale may hide. */
-const SHAPE_SLACK = 0.02
 
 /**
  * The H3 model's native canvas area, in units of 1024x1024 pixels: what one
@@ -132,9 +131,6 @@ async function snapTo(
   }
 }
 
-/** The studio's shapes, as width:height. */
-const SHAPES: readonly (readonly [number, number])[] = [[9, 16], [16, 9], [2, 3], [3, 2], [3, 4], [4, 3], [1, 1]]
-
 /**
  * The exact 4K frame for a still that is about 4K: short side 2160 and the
  * long side of the nearest studio shape — 2160x3840 for a 9:16 photo, 3840x2160
@@ -145,14 +141,9 @@ const SHAPES: readonly (readonly [number, number])[] = [[9, 16], [16, 9], [2, 3]
 export function fourKFrame(width: number, height: number, step = 2160): { width: number; height: number } | undefined {
   const short = Math.min(width, height)
   if (Math.abs(short / step - 1) > SIZE_SLACK) return undefined
-  const ratio = width / height
-  const shape = SHAPES
-    .map(([w, h]) => ({ w, h, off: Math.abs(ratio / (w / h) - 1) }))
-    .sort((a, b) => a.off - b.off)[0]
-  if (shape === undefined || shape.off > SHAPE_SLACK) return undefined
-  return shape.w <= shape.h
-    ? { width: step, height: Math.round(step * shape.h / shape.w) }
-    : { width: Math.round(step * shape.w / shape.h), height: step }
+  // The shapes and the shape slack are the ones the upscale menu promises (shared/imagine-sizing.ts).
+  const shape = nearestShape(width, height)
+  return shape === undefined ? undefined : frameOnShape(shape[0], shape[1], step)
 }
 
 /**

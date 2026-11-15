@@ -33,6 +33,11 @@ export type FieldSpec =
   /** A list of non-empty strings. */
   | { readonly kind: 'list' }
   | { readonly kind: 'object'; readonly members: Readonly<Record<string, FieldSpec>> }
+  /**
+   * A list of input overrides, `{ nodeId, field, value }` each: two non-empty
+   * strings and a string, finite number, boolean or link (`[nodeId, index]`).
+   */
+  | { readonly kind: 'inputs' }
 
 const TEXT = { kind: 'text' } as const satisfies FieldSpec
 
@@ -53,6 +58,12 @@ export const BASE_FIELDS: Readonly<Record<string, FieldSpec>> = {
    * which is what «Standard» and «Veloce» mean.
    */
   steps: { kind: 'object', members: { nodeId: TEXT, field: TEXT, high: { kind: 'number', min: 1, max: 200 } } },
+  /**
+   * The high recipe of a graph that carries both (2026-11-15): the inputs the
+   * same two settings write, a link value rewiring its input. It replaces a
+   * second file (`pathHigh`) when the two recipes differ only in a few inputs.
+   */
+  highInputs: { kind: 'inputs' },
 }
 
 /** The fields a clip workflow adds: format, length and the realism LoRA. */
@@ -341,7 +352,8 @@ export type ImagineWorkflows = { [R in WorkflowRow as R['run']]?: LoadedWorkflow
  * them (`video`, `loopVideo`, ...). An entry with `pathHigh` loads a second
  * one, with the same pins: «Velocita: Veloce» and «Qualita: Alta» pick the
  * graph instead of raising the steps, which buy no detail on distilled
- * weights.
+ * weights. An entry whose one graph carries both recipes (`highInputs`) has
+ * nothing here.
  */
 export type WorkflowGraphs = ImagineWorkflows & {
   readonly high?: Readonly<Record<string, LoadedWorkflow>>

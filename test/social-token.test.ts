@@ -9,9 +9,10 @@
  */
 import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, readdir, rm, writeFile, mkdir } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tokenDir } from './helpers/token-files.ts'
 
 const { readTokenState, saveAccessToken, checkAccessToken, EXPIRING_SOON_DAYS } = await import('../plugins/instagram/src/token.ts')
 
@@ -45,10 +46,7 @@ function liveShape(overrides: Record<string, unknown> = {}): Record<string, unkn
 
 /** A config folder with the token file already written. */
 async function dirWith(config: Record<string, unknown>): Promise<string> {
-  const dir = await mkdtemp(join(root, 'cfg-'))
-  await mkdir(dir, { recursive: true })
-  await writeFile(join(dir, 'api_token.json'), `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 })
-  return dir
+  return tokenDir(root, 'api_token.json', config)
 }
 
 test('the state is masked: no token, but account, id tail and days', async () => {

@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs'
 import { ComfyError } from '../comfyui/index.ts'
 import { customGraphFile, isCustomPath } from './custom-workflows.ts'
 import { finite, isPlainObject } from './guards.ts'
+import { isHighInputValue, type HighInput } from './high-inputs.ts'
 import type { WorkflowMap } from './imagine-settings.ts'
 import type { LoadedWorkflow, WorkflowConfig, WorkflowExtras } from './index.ts'
 import { ALL_WORKFLOW_FIELDS, WORKFLOW_ROWS, type FieldSpec, type WorkflowGraphs } from './workflow-fields.ts'
@@ -54,6 +55,18 @@ function loadedField(spec: FieldSpec, value: unknown): unknown {
         else if (member.kind === 'text') return undefined
       }
       return loaded
+    }
+    case 'inputs': {
+      // The overrides a run can write; one missing a half or with a value no
+      // input takes is dropped, as a half-written pin is.
+      const kept = Array.isArray(value)
+        ? value.filter((entry): entry is HighInput => isPlainObject(entry)
+          && typeof entry.nodeId === 'string' && entry.nodeId.length > 0
+          && typeof entry.field === 'string' && entry.field.length > 0
+          && isHighInputValue(entry.value))
+          .map(entry => ({ nodeId: entry.nodeId, field: entry.field, value: entry.value }))
+        : []
+      return kept.length > 0 ? kept : undefined
     }
   }
 }
@@ -178,13 +191,16 @@ export function loadWorkflows(workflows: WorkflowMap): {
    * The second graph of every entry that declares one (`pathHigh`): the same
    * action rendered with the high-quality recipe, with the same pins, so
    * «Velocità» and «Qualità: Alta» pick the graph instead of raising the
-   * steps. An entry without `pathHigh` has none: quality stays the usual graph.
+   * steps. An entry without `pathHigh` has none: quality stays the usual graph
+   * (raised by `steps.high` or rewritten by `highInputs`). The second graph
+   * already is the high recipe, so it never takes `highInputs`.
    */
   const high: Record<string, LoadedWorkflow> = {}
   for (const row of WORKFLOW_ROWS) {
     const entry = workflows[row.config] as (WorkflowConfig & WorkflowExtras) | undefined
     if (entry?.pathHigh === undefined || entry.pathHigh === '') continue
-    const loaded = loadWorkflow({ ...entry, path: entry.pathHigh })
+    const { highInputs: _overrides, ...pins } = entry
+    const loaded = loadWorkflow({ ...pins, path: entry.pathHigh })
     high[row.run] = loaded
     holders.push({ file: workflowFile(entry.pathHigh), loaded })
   }

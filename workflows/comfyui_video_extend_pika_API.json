@@ -1,7 +1,7 @@
 {
  "1684": {
   "inputs": {
-   "filename_prefix": "video/Pika_extend_quality",
+   "filename_prefix": "video/Pika_extend",
    "format": "auto",
    "codec": "auto",
    "video": [
@@ -127,7 +127,22 @@
  "1682:135": {
   "class_type": "KSamplerSelect",
   "inputs": {
-   "sampler_name": "lcm"
+   "sampler_name": "euler"
+  }
+ },
+ "1682:124": {
+  "inputs": {
+   "scheduler": "simple",
+   "steps": 4,
+   "denoise": 1,
+   "model": [
+    "pika:lora",
+    0
+   ]
+  },
+  "class_type": "BasicScheduler",
+  "_meta": {
+   "title": "BasicScheduler"
   }
  },
  "1682:126": {
@@ -161,7 +176,7 @@
     0
    ],
    "sigmas": [
-    "pika:sigmas",
+    "1682:124",
     0
    ],
    "latent_image": [
@@ -360,14 +375,25 @@
    "title": "MiniMax H3 Mem Eff Sage Attention Patch"
   }
  },
- "pika:lora": {
-  "class_type": "LoraLoaderModelOnly",
+ "pika:shift": {
+  "class_type": "MiniMaxH3SigmaShift",
   "inputs": {
    "model": [
     "1682:200",
     0
    ],
-   "lora_name": "pika_h3_flex_fl2va_v1_bf16.safetensors",
+   "shift_video": 6.0,
+   "shift_audio": 3.0
+  }
+ },
+ "pika:lora": {
+  "class_type": "LoraLoaderModelOnly",
+  "inputs": {
+   "model": [
+    "pika:shift",
+    0
+   ],
+   "lora_name": "pika_h3_flex_turbo_4step_fl2va.safetensors",
    "strength_model": 1.0
   }
  },

@@ -1,7 +1,7 @@
 {
  "1684": {
   "inputs": {
-   "filename_prefix": "video/Pika_extend_fast",
+   "filename_prefix": "video/Pika_song",
    "format": "auto",
    "codec": "auto",
    "video": [
@@ -12,6 +12,16 @@
   "class_type": "SaveVideo",
   "_meta": {
    "title": "Save Video"
+  }
+ },
+ "1682:114": {
+  "inputs": {
+   "image": "2.png",
+   "upload": "image"
+  },
+  "class_type": "LoadImage",
+  "_meta": {
+   "title": "Load Image"
   }
  },
  "1682:128": {
@@ -47,7 +57,7 @@
  },
  "1682:132": {
   "inputs": {
-   "expression": "(max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17) + 17",
+   "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
    "values.a": [
     "1682:133",
     0
@@ -60,7 +70,7 @@
  },
  "1682:127": {
   "inputs": {
-   "unet_name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+   "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
    "weight_dtype": "default"
   },
   "class_type": "UNETLoader",
@@ -87,7 +97,23 @@
   }
  },
  "1682:131": {
+  "class_type": "MiniMaxH3ReferenceToVideo",
+  "_meta": {
+   "title": "MiniMax H3 Reference to Video"
+  },
   "inputs": {
+   "clip": [
+    "1682:128",
+    0
+   ],
+   "vae": [
+    "1682:119",
+    0
+   ],
+   "audio_vae": [
+    "1682:120",
+    0
+   ],
    "prompt": "",
    "width": [
     "1682:115",
@@ -101,18 +127,15 @@
     "1682:132",
     1
    ],
-   "clip": [
-    "1682:128",
+   "ref_image_size": "max",
+   "ref_images.ref_image_0": [
+    "1682:114",
     0
    ],
-   "vae": [
-    "1682:119",
+   "ref_audios.ref_audio_0": [
+    "1682:401",
     0
    ]
-  },
-  "class_type": "MiniMaxH3ImageToVideo",
-  "_meta": {
-   "title": "MiniMax H3 Image to Video"
   }
  },
  "1682:129": {
@@ -152,7 +175,7 @@
     0
    ],
    "conditioning": [
-    "1682:304",
+    "1682:502",
     0
    ]
   },
@@ -180,8 +203,8 @@
     0
    ],
    "latent_image": [
-    "1682:131",
-    1
+    "1682:601",
+    0
    ]
   },
   "class_type": "SamplerCustomAdvanced",
@@ -226,12 +249,12 @@
    "fps": 24,
    "bit_depth": 8,
    "images": [
-    "1682:122",
+    "1682:503",
     0
    ],
    "audio": [
-    "1682:121",
-    0
+    "1682:503",
+    1
    ]
   },
   "class_type": "CreateVideo",
@@ -253,57 +276,90 @@
    "title": "Realism LoRA (people)"
   }
  },
- "1682:300": {
-  "class_type": "LoadVideo",
+ "1682:400": {
   "inputs": {
-   "file": "tail.mp4",
-   "upload": "video"
+   "audio": "song.mp3"
   },
+  "class_type": "LoadAudio",
   "_meta": {
-   "title": "Tail of the clip to continue"
+   "title": "Music video song"
   }
  },
- "1682:301": {
-  "class_type": "GetVideoComponents",
-  "inputs": {
-   "video": [
-    "1682:300",
-    0
-   ]
-  },
-  "_meta": {
-   "title": "Frames and audio of the tail"
-  }
- },
- "1682:302": {
-  "class_type": "GetImageRangeFromBatch",
-  "inputs": {
-   "start_index": -1,
-   "num_frames": 22,
-   "images": [
-    "1682:301",
-    0
-   ]
-  },
-  "_meta": {
-   "title": "Last 22 frames (17k+5)"
-  }
- },
- "1682:303": {
-  "class_type": "TrimAudioDuration",
+ "1682:401": {
   "inputs": {
    "audio": [
-    "1682:301",
-    1
+    "1682:400",
+    0
    ],
-   "start_index": -0.9167,
-   "duration": 0.9167
+   "start_index": 0.0,
+   "duration": 10.5
   },
+  "class_type": "TrimAudioDuration",
   "_meta": {
-   "title": "Audio of the same 22 frames"
+   "title": "Seconds of this clip"
   }
  },
- "1682:304": {
+ "1682:501": {
+  "class_type": "MiniMaxH3MotionContextLoadLatent",
+  "inputs": {
+   "latent_path": "h3_context",
+   "clip_index": 0
+  }
+ },
+ "1682:502": {
+  "class_type": "MiniMaxH3MotionContext",
+  "inputs": {
+   "conditioning": [
+    "1682:402",
+    0
+   ],
+   "vae": [
+    "1682:119",
+    0
+   ],
+   "latent": [
+    "1682:131",
+    1
+   ],
+   "context_length": "22",
+   "audio_context_length": 24,
+   "context_latent": [
+    "1682:501",
+    0
+   ]
+  }
+ },
+ "1682:503": {
+  "class_type": "MiniMaxH3MotionContextTrim",
+  "inputs": {
+   "images": [
+    "1682:122",
+    0
+   ],
+   "trim_frames": [
+    "1682:502",
+    1
+   ],
+   "audio": [
+    "1682:121",
+    0
+   ],
+   "fps": 24.0,
+   "match_tail": true
+  }
+ },
+ "1682:500": {
+  "class_type": "MiniMaxH3MotionContextSaveLatent",
+  "inputs": {
+   "latent": [
+    "1682:125",
+    0
+   ],
+   "filename_prefix": "h3_context/clip",
+   "clip_index": 1
+  }
+ },
+ "1682:402": {
   "class_type": "MiniMaxH3AddGuide",
   "inputs": {
    "positive": [
@@ -314,26 +370,18 @@
     "1682:131",
     1
    ],
-   "frame_idx": 0,
-   "vae": [
-    "1682:119",
-    0
-   ],
    "audio_vae": [
     "1682:120",
     0
    ],
-   "image": [
-    "1682:302",
+   "audio": [
+    "1682:401",
     0
    ],
-   "audio": [
-    "1682:303",
-    0
-   ]
+   "frame_idx": 0
   },
   "_meta": {
-   "title": "Motion and sound context"
+   "title": "Add Guide for MiniMax H3 (song on the timeline)"
   }
  },
  "1682:210": {
@@ -363,6 +411,61 @@
    "title": "KJ low-VRAM attention (identical output)"
   }
  },
+ "1682:600": {
+  "class_type": "MiniMaxH3LatentLabAudioEncode",
+  "inputs": {
+   "audio_vae": [
+    "1682:120",
+    0
+   ],
+   "audio": [
+    "1682:602",
+    0
+   ],
+   "fit_mode": "crop_or_pad_silence",
+   "target_av": [
+    "1682:131",
+    1
+   ]
+  },
+  "_meta": {
+   "title": "LatentLab Audio Encode (voice)"
+  }
+ },
+ "1682:601": {
+  "class_type": "MiniMaxH3LatentLabLipSyncSetup",
+  "inputs": {
+   "av_latent": [
+    "1682:131",
+    1
+   ],
+   "audio_latent": [
+    "1682:600",
+    0
+   ],
+   "fit_mode": "crop_pad",
+   "alignment": "end",
+   "video_denoise": 1.0,
+   "audio_denoise": 0.0
+  },
+  "_meta": {
+   "title": "LatentLab LipSync Setup (protected audio)"
+  }
+ },
+ "1682:602": {
+  "class_type": "TrimAudioDuration",
+  "inputs": {
+   "audio": [
+    "1682:400",
+    0
+   ],
+   "start_index": 0.0,
+   "duration": 10.5
+  },
+  "_meta": {
+   "title": "Slice with preroll (for the audio latent)"
+  }
+ },
  "1682:212": {
   "class_type": "MiniMaxH3MemoryEfficientSageAttentionPatch",
   "inputs": {
@@ -375,26 +478,21 @@
    "title": "MiniMax H3 Mem Eff Sage Attention Patch"
   }
  },
- "pika:shift": {
-  "class_type": "MiniMaxH3SigmaShift",
+ "pika:lora": {
+  "class_type": "LoraLoaderModelOnly",
   "inputs": {
    "model": [
     "1682:200",
     0
    ],
-   "shift_video": 6.0,
-   "shift_audio": 3.0
+   "lora_name": "pika_h3_flex_turbo_4step_ref2va.safetensors",
+   "strength_model": 1.0
   }
  },
- "pika:lora": {
-  "class_type": "LoraLoaderModelOnly",
+ "pika:sigmas": {
+  "class_type": "ManualSigmas",
   "inputs": {
-   "model": [
-    "pika:shift",
-    0
-   ],
-   "lora_name": "pika_h3_flex_turbo_4step_fl2va.safetensors",
-   "strength_model": 1.0
+   "sigmas": "1.0, 0.972973, 0.923077, 0.8, 0.571429, 0.333333, 0.0"
   }
  }
 }

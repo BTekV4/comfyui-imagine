@@ -38,6 +38,7 @@ import { loadPersona, setPersona } from './persona.ts'
 import { customGraphFile, customKey, loadCustomWorkflow, loadCustomWorkflowsSync } from './custom-workflows.ts'
 import { imagineHandler, type ImagineSettingsSurface } from './imagine-routes.ts'
 import { parseSize } from './snap-size.ts'
+import { applyHighInputs, type HighInput } from './high-inputs.ts'
 import { ensureComfyReady, type SetupHooks } from './comfy-setup.ts'
 import {
   BASE_FIELDS, OPTION_PINS, WORKFLOW_ROWS, type FieldSpec, type WorkflowEntries, type WorkflowGraphs,
@@ -94,6 +95,7 @@ export interface WorkflowConfig {
   /**
    * The graph of the «Qualita: Alta» recipe, with the same pins as `path`.
    * When present, Veloce and Qualita pick the graph instead of raising the steps.
+   * A graph that carries both recipes declares `highInputs` instead.
    */
   pathHigh?: string
   /**
@@ -181,6 +183,16 @@ export interface WorkflowExtras {
    * itself. A workflow without this pin ignores both settings.
    */
   steps?: { readonly nodeId: string; readonly field: string; readonly high: number }
+  /**
+   * The high recipe as input overrides on the same graph (2026-11-15), for a
+   * graph that carries both recipes: `quality: 'high'` or `speed: 'slow'`
+   * writes each `value` into `nodeId.field`, and a value that is a link
+   * (`["pika:sigmas", 0]`) rewires the input. Whatever the overrides leave
+   * unread is dropped from the run, and on the base recipe the nodes only the
+   * overrides link to are dropped too ({@link applyHighInputs}). Ignored on
+   * the `pathHigh` graph, which already is the high recipe.
+   */
+  highInputs?: readonly HighInput[]
   /**
    * Aspect label → the graph's format input. For an H3 clip it is the canvas
    * label; the lookbook takes it on its `ResolutionSelector`.
@@ -353,6 +365,9 @@ function checkOf(spec: FieldSpec): Check {
       return list(string())
     case 'object':
       return object(Object.fromEntries(Object.entries(spec.members).map(([name, member]) => [name, checkOf(member)])))
+    case 'inputs':
+      // The value is any input value; its shape is checked by the loader.
+      return list(object({ nodeId: string({ min: 1 }), field: string({ min: 1 }) }))
   }
 }
 
@@ -542,7 +557,7 @@ export interface RunOpts {
    * `parameterize` makes, never to the loaded graph.
    */
   fields?: Readonly<Record<string, unknown>>
-  /** The slow clip recipe: the `pathHigh` graph, or `steps.high` when there is none. */
+  /** The slow clip recipe: the `pathHigh` graph, else `highInputs` and `steps.high` on the same graph. */
   speed?: ImagineSpeed | undefined
   size?: string | undefined
   aspectRatio?: string | undefined
@@ -693,12 +708,20 @@ function parameterize(
    * anyway". The count is the workflow's own pin, so the base recipe stays
    * whatever the file was saved with and a deployment tunes it there.
    */
-  if (workflow.steps !== undefined && (opts.quality === 'high' || opts.speed === 'slow')) {
+  const highRecipe = opts.quality === 'high' || opts.speed === 'slow'
+  /*
+   * A graph that carries both recipes (the Pika clips since 2026-11-15): the
+   * high one is a list of input overrides, and each run drops the nodes the
+   * other recipe alone reads, so what is submitted is the graph of that
+   * recipe and nothing more.
+   */
+  applyHighInputs(graph, workflow.highInputs, highRecipe)
+  if (workflow.steps !== undefined && highRecipe) {
     /*
      * A high-quality graph does not necessarily have a steps node — Pika's
-     * 6-step one keeps them in the sigma list — and when `pathHigh` is present
-     * the graph is already the right one: here the count is raised only if the
-     * node really exists, instead of refusing the run.
+     * 6-step recipe keeps them in the sigma list — and when `pathHigh` is
+     * present the graph is already the right one: here the count is raised
+     * only if the node really exists, instead of refusing the run.
      */
     const node = graph[workflow.steps.nodeId]
     if (node !== undefined) node.inputs[workflow.steps.field] = workflow.steps.high

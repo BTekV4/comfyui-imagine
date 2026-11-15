@@ -6,6 +6,7 @@
  * Six route files carried their own copy of these until 2026-10-20, and
  * `tool-comfy` its own body reader and JSON writer until 2026-10-25.
  */
+import { createHash } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { message, translateMessage, type MessageKey } from './messages.ts'
 import { parse } from 'node:path'
@@ -403,4 +404,56 @@ export function galleryEditRoute(outputDir: string, edit: {
       else sendFailure(res, edit.failure.status, message(edit.failure.what), error)
     }
   }
+}
+
+/** The last body served under each tagged slot, with its tag. */
+const lastTags = new Map<string, { readonly body: string; readonly tag: string }>()
+
+/**
+ * A JSON answer that a client may revalidate instead of re-downloading.
+ *
+ * The gallery inventory and the shared studio are 456 KB and 1.1 MB on this
+ * deployment, and the page asks for both again after every finished job: with
+ * no validator, "nothing changed" cost the whole body each time. The tag is a
+ * hash of what the body says, so it only changes when the answer does; a client
+ * that sends it back gets a 304 with no body.
+ *
+ * The tag is kept beside the last body served under the same `slot`: an
+ * unchanged answer (the store hands back the very same string, the gallery an
+ * equal one) reuses it instead of hashing a megabyte on every GET.
+ * @param slot - which answer this is (`projects`, `gallery`).
+ * @param req - the request, for its `if-none-match`.
+ * @param res - the response.
+ * @param method - the HTTP method, for HEAD.
+ * @param body - the serialized answer.
+ * @returns nothing.
+ */
+export function writeJsonTagged(
+  slot: string,
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string | undefined,
+  body: string,
+): void {
+  const known = lastTags.get(slot)
+  const tag = known !== undefined && known.body === body
+    ? known.tag
+    : `"${createHash('sha1').update(body).digest('base64url').slice(0, 16)}"`
+  if (known?.tag !== tag) lastTags.set(slot, { body, tag })
+  const headers = {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'private, no-cache',
+    etag: tag,
+  }
+  if (req.headers['if-none-match'] === tag) {
+    res.writeHead(304, headers)
+    res.end()
+    return
+  }
+  res.writeHead(200, { ...headers, 'content-length': Buffer.byteLength(body) })
+  if (method === 'HEAD') {
+    res.end()
+    return
+  }
+  res.end(body)
 }

@@ -21,8 +21,9 @@ import { objectSwapUsesPhoto } from './object-swap-texts.ts'
 import { RELIGHT_LOOKS, relightLookOf, relightPromptOf, type RelightLook } from '../../../shared/relight-looks.ts'
 import { message } from '../../src/messages.ts'
 import type { Singer } from './music-prompt.ts'
+import { ACTION_TABLE, outputKindOf } from '../../../shared/imagine-action-table.ts'
 import {
-  DEFAULT_OBJECT_PLACEMENT, IMAGINE_OBJECT_MODES, IMAGINE_QUALITIES, IMAGINE_SPEEDS,
+  DEFAULT_OBJECT_PLACEMENT, IMAGINE_ACTIONS, IMAGINE_OBJECT_MODES, IMAGINE_QUALITIES, IMAGINE_SPEEDS,
   type ImagineAction, type ImagineObjectMode, type ImaginePlacement, type ImagineQuality,
   type ImagineRegion, type ImagineSpeed, type MediaKind, type ModelRoute,
 } from '../../../shared/imagine-types.ts'
@@ -149,8 +150,8 @@ export interface ImagineJobRequest {
   swapResolution?: SwapResolution
   /**
    * How the clip is rendered: `fast`, the distilled graph as it ships, or
-   * `slow`, the high-quality half — the second graph the entry declares as
-   * `pathHigh` (the official 6-step Pika graph), `steps.high` when it has none.
+   * `slow`, the high-quality half — the entry's `highInputs` (the 6-step Pika
+   * inputs) or its second graph `pathHigh`, `steps.high` when it has neither.
    * The old recipe that swapped in the base weights and sampled at 24 steps is
    * gone; the route refuses any other value before a job exists.
    */
@@ -285,33 +286,34 @@ function customGraph(workflows: WorkflowGraphs, id: string | undefined): LoadedW
  *
  * `remix` and `upscale` pick their graph and their tool from the source (a
  * zone edit, a clip), so they are resolved beside this table, not in it.
- * The two nested ternaries this replaced spelt the same mapping twice.
+ * The two nested ternaries this replaced spelt the same mapping twice. The
+ * output kind is the action's row in the shared table (imagine-action-table.ts).
  */
 export const ACTION_RUNS: Partial<Record<ImagineAction, {
   readonly workflow: keyof ImagineWorkflows
   readonly tool: string
   readonly output: 'video' | 'audio' | 'image'
 }>> = {
-  generate: { workflow: 'generate', tool: 'generate_image', output: 'image' },
-  video: { workflow: 'video', tool: 'create_video', output: 'video' },
-  loop: { workflow: 'loopVideo', tool: 'animated_background', output: 'video' },
-  extend: { workflow: 'extendVideo', tool: 'extend_video', output: 'video' },
-  bg: { workflow: 'removeBackground', tool: 'remove_background', output: 'image' },
-  voice: { workflow: 'changeVoice', tool: 'change_voice', output: 'audio' },
-  music: { workflow: 'generateMusic', tool: 'generate_music', output: 'audio' },
+  generate: { workflow: 'generate', tool: 'generate_image', output: outputKindOf('generate') },
+  video: { workflow: 'video', tool: 'create_video', output: outputKindOf('video') },
+  loop: { workflow: 'loopVideo', tool: 'animated_background', output: outputKindOf('loop') },
+  extend: { workflow: 'extendVideo', tool: 'extend_video', output: outputKindOf('extend') },
+  bg: { workflow: 'removeBackground', tool: 'remove_background', output: outputKindOf('bg') },
+  voice: { workflow: 'changeVoice', tool: 'change_voice', output: outputKindOf('voice') },
+  music: { workflow: 'generateMusic', tool: 'generate_music', output: outputKindOf('music') },
   /*
    * The scan half of «Ricrea video»: the same Krea 2 graph draws the opening
    * frame (the pin `recreateFrame` points at the scan's own file), so the graph
    * is the one the recreation already uses for its first frame.
    */
-  scanFrame: { workflow: 'recreateFrame', tool: 'recreate_frame', output: 'image' },
-  recreate: { workflow: 'recreateVideo', tool: 'recreate_video', output: 'video' },
+  scanFrame: { workflow: 'recreateFrame', tool: 'recreate_frame', output: outputKindOf('scanFrame') },
+  recreate: { workflow: 'recreateVideo', tool: 'recreate_video', output: outputKindOf('recreate') },
   /*
    * «Rigenera dettaglio»: the Open-H3 refiner redraws the clip at 1.5×. The
    * file comes out as `regenerate_detail-…mp4`, which is the prefix the
    * gallery reads the origin from (gallery.ts).
    */
-  regenerate: { workflow: 'regenerateDetail', tool: 'regenerate_detail', output: 'video' },
+  regenerate: { workflow: 'regenerateDetail', tool: 'regenerate_detail', output: outputKindOf('regenerate') },
   /*
    * «Object swap»: the object tracked in the clip is changed, removed, or its
    * background replaced, or an object added. This entry is a SINGLE one
@@ -320,35 +322,33 @@ export const ACTION_RUNS: Partial<Record<ImagineAction, {
    * clips), resolved by `readJobRequest`. The file comes out as
    * `object_swap-…mp4`, which is the prefix the gallery reads the origin from.
    */
-  objectSwap: { workflow: 'objectSwap', tool: 'object_swap', output: 'video' },
+  objectSwap: { workflow: 'objectSwap', tool: 'object_swap', output: outputKindOf('objectSwap') },
   /*
    * «Character swap»: the main person of the clip becomes the one in the
    * photo. Openjutsu's one-click graph does the windows, the prompt and the
    * seams by itself, so the whole clip goes in one run.
    */
-  swapPerson: { workflow: 'swapPerson', tool: 'swap_person', output: 'video' },
+  swapPerson: { workflow: 'swapPerson', tool: 'swap_person', output: outputKindOf('swapPerson') },
   /*
    * «Illumina la foto»: the photo relit with one of the light looks. The
    * look's text IS the prompt (written by `readJobRequest`), so the file comes
    * from an image and not from a sentence of the user's.
    */
-  relight: { workflow: 'relight', tool: 'relight', output: 'image' },
-  compose: { workflow: 'compose', tool: 'compose_refs', output: 'image' },
+  relight: { workflow: 'relight', tool: 'relight', output: outputKindOf('relight') },
+  compose: { workflow: 'compose', tool: 'compose_refs', output: outputKindOf('compose') },
+}
+
+/** What is said when an action's file is missing or of the wrong kind. */
+interface NeedMessages {
+  readonly missing: () => string
+  readonly wrong?: (kind: MediaKind | undefined) => string
 }
 
 /**
- * The file an action reads, by action: the kinds it accepts, what is said
- * when there is none, and what is said when there is one of the wrong kind
- * (the same sentence when not given).
- *
- * Five `if (X && sourceKind !== 'video') throw` and their siblings for stills
- * and tracks, until 2026-10-25.
+ * The sentences of {@link NEEDS}, by action.
+ * @returns the messages for every action that reads a file.
  */
-const NEEDS: Partial<Record<ImagineAction, {
-  readonly kinds: readonly MediaKind[]
-  readonly missing: () => string
-  readonly wrong?: (kind: MediaKind | undefined) => string
-}>> = (() => {
+function needMessages(): Partial<Record<ImagineAction, NeedMessages>> {
   /*
    * These four animate, edit or cut out a PHOTO. Handed a clip they reached
    * the graph as a video to load and came back as 'workflow has no LoadVideo
@@ -357,7 +357,6 @@ const NEEDS: Partial<Record<ImagineAction, {
    * (2026-09-09). Continuing a clip is `extend`, and it says so.
    */
   const photo = {
-    kinds: ['image'],
     missing: () => message('job.startImageRequired'),
     wrong: (kind: MediaKind | undefined) => kind === 'video'
       ? message('job.videoNeedsExtend')
@@ -367,26 +366,25 @@ const NEEDS: Partial<Record<ImagineAction, {
    * An object swap reads the clip that gets modified; its photo, when the
    * mode wants one, travels beside it in `reference`.
    */
-  const plate = { kinds: ['video'], missing: () => message('job.plateRequired') } as const
+  const plate = { missing: () => message('job.plateRequired') } as const
   /*
    * «Ricrea video» and its scan read ONE file: the reference clip. The opening
    * frame is drawn by the run with Krea 2 from the clip's own frames, so there
    * is no second file to ask for.
    */
-  const reference = { kinds: ['video'], missing: () => message('job.recreateVideoRequired') } as const
+  const reference = { missing: () => message('job.recreateVideoRequired') } as const
   /*
    * «Rigenera dettaglio» reads ONE clip and nothing else: the prompt is
    * optional (without it, the run fetches the one the clip was born from —
    * regenerate.ts), and the clip decides the canvas, not the composer.
    */
-  const refiner = { kinds: ['video'], missing: () => message('job.regenerateVideoRequired') } as const
+  const refiner = { missing: () => message('job.regenerateVideoRequired') } as const
   /*
    * «Illumina la foto» wants ONE photo. A video here is not «continue the
    * clip» (that is `extend`): it is simply the wrong file, and the message
    * says what is needed without sending the user to another action.
    */
   const picture = {
-    kinds: ['image'],
     missing: () => message('job.startImageRequired'),
     wrong: () => message('job.startImageRequired'),
   } as const
@@ -395,7 +393,7 @@ const NEEDS: Partial<Record<ImagineAction, {
     video: photo,
     loop: photo,
     bg: photo,
-    upscale: { kinds: ['image', 'video'], missing: () => message('job.startFileRequired'), wrong: () => message('job.sourceInvalid') },
+    upscale: { missing: () => message('job.startFileRequired'), wrong: () => message('job.sourceInvalid') },
     /*
      * The graph separates a sung track: a picture has nothing to convert, and
      * a clip has its soundtrack — what a user calls "this clip" is a video
@@ -403,7 +401,7 @@ const NEEDS: Partial<Record<ImagineAction, {
      * refusal of the thing they asked for. A clip is accepted, and the run
      * takes its audio out before the graph sees it.
      */
-    voice: { kinds: ['audio', 'video'], missing: () => message('job.trackRequired'), wrong: () => message('job.trackOrClipRequired') },
+    voice: { missing: () => message('job.trackRequired'), wrong: () => message('job.trackOrClipRequired') },
     recreate: reference,
     scanFrame: reference,
     regenerate: refiner,
@@ -419,14 +417,28 @@ const NEEDS: Partial<Record<ImagineAction, {
     /* Two photos: the person (source) and the reference, both already in the gallery. */
     compose: photo,
   }
-})()
+}
 
 /**
- * The name a run takes when nobody describes it: an upscale, a cut-out and a
- * voice change are named by their source, not by a prompt — there is nothing
- * for the user to describe.
+ * The file an action reads, by action: the kinds it accepts (the action's
+ * `accepts` in the shared table, imagine-action-table.ts), what is said when
+ * there is none, and what is said when there is one of the wrong kind (the
+ * same sentence when not given).
+ *
+ * Five `if (X && sourceKind !== 'video') throw` and their siblings for stills
+ * and tracks, until 2026-10-25.
  */
-const UNPROMPTED: Partial<Record<ImagineAction, string>> = { upscale: 'upscale', bg: 'bg', voice: 'voice', swapPerson: 'character swap' }
+const NEEDS: Partial<Record<ImagineAction, NeedMessages & { readonly kinds: readonly MediaKind[] }>> = (() => {
+  const messages = needMessages()
+  return Object.fromEntries(IMAGINE_ACTIONS.flatMap(action => {
+    const kinds = ACTION_TABLE[action].accepts
+    if (kinds === undefined) return []
+    const said = messages[action]
+    // A row that accepts a file with no sentence for it is a table mistake: fail at load, not at run.
+    if (said === undefined) throw new Error(`action ${action} accepts a file but has no message for it`)
+    return [[action, { kinds, ...said }]]
+  }))
+})()
 
 /**
  * Longest clip one recreation renders.
@@ -534,7 +546,8 @@ function objectSwapKey(mode: ImagineObjectMode | undefined, withPhoto: boolean):
 }
 
 /**
- * The second recipe of a mode, when the deployment declares one (`pathHigh`):
+ * The second recipe of a mode, when the deployment declares one (`pathHigh`,
+ * or `highInputs` on the same graph):
  * «Qualità: Alta» / «Velocità: Lenta» render the mode with that graph instead
  * of raising the step count of the one it ships, as every other clip action
  * does since 2026-11-05.
@@ -585,7 +598,7 @@ export async function routeRequest(
   }
   /*
    * The speed and the quality are not routed here: the graph they pick — the
-   * entry's second graph (`pathHigh`) when it declares one, else the same
+   * entry's second graph (`pathHigh`) or its `highInputs`, else the same
    * graph at its `steps.high` — is chosen by `readJobRequest`, with the
    * workflow it resolves for the job.
    */
@@ -726,8 +739,13 @@ function promptOf(request: ImagineJobRequest): { prompt: string; lightLook: Reli
    * real light and not an empty text.
    */
   const lightLook = action === 'relight' ? relightLookOf(request.light) ?? RELIGHT_LOOKS[0] : undefined
+  /*
+   * The name a run takes when nobody describes it (`untitled` in the shared
+   * table): an upscale, a cut-out and a voice change are named by their
+   * source, not by a prompt — there is nothing for the user to describe.
+   */
   const prompt = lightLook === undefined
-    ? request.prompt.trim() || (UNPROMPTED[action] ?? '')
+    ? request.prompt.trim() || (ACTION_TABLE[action].untitled ?? '')
     : relightPromptOf(lightLook)
   /*
    * A recreation, its scan and «Rigenera dettaglio» are described by their clip, and what the sampler is given is written from it:
@@ -1062,7 +1080,8 @@ async function workflowOf(
       : isCustom ? customGraph(workflows, request.customWorkflowId)
       /*
        * «Velocita: Veloce» and «Qualita: Alta» pick the GRAPH, when the entry
-       * declares a second one (`pathHigh` in the configuration), instead of
+       * declares a second one (`pathHigh`, or `highInputs` on the same graph),
+       * instead of
        * raising the steps of the same one: on distilled weights steps buy no
        * detail (measured 05/11/2026: Pika 6 and 8 steps indistinguishable, +72%
        * time; FastH3 8 -> 16 steps worse). Covers every video, which are the

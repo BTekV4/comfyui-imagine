@@ -380,8 +380,9 @@ async function writePaintedMask(bytes: Uint8Array, width: number, height: number
  * Take one queued job through its graph, from its turn to its terminal state.
  *
  * The graph runs exactly as it was loaded: which recipe a run wants is decided
- * before it is queued (`pathHigh` picks the second graph, `steps.high` the
- * higher count), so nothing is patched in memory here — the old slow switch
+ * before it is queued (`pathHigh` picks the second graph; `highInputs` and
+ * `steps.high` are written on the run's clone), so nothing is patched in
+ * memory here — the old slow switch
  * (base weights, 24 steps) cost half an hour a window.
  * @param ctx - plugin context.
  * @param workflow - the graph it was queued with.
@@ -1313,9 +1314,9 @@ function rendererFor(setup: RenderSetup): Render {
         ...job.action === 'custom' && effectivePrompt === '' ? {} : { prompt: effectivePrompt },
         seed,
         // «Qualità: Alta» / «Velocità: Lenta»: the graph was already chosen
-        // (`pathHigh` when the entry has one); here they raise the step count
-        // to `steps.high` when the graph that runs pins one. Absent, the
-        // file's own count.
+        // (`pathHigh` when the entry has one); here they write the entry's
+        // `highInputs` and raise the step count to `steps.high` when the
+        // graph that runs declares them. Absent, the file's own recipe.
         ...job.quality === undefined ? {} : { quality: job.quality },
         ...job.speed === undefined ? {} : { speed: job.speed },
         ...resolutionMax === undefined ? {} : { resolutionMax },

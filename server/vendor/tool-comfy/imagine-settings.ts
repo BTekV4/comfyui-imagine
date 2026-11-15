@@ -19,6 +19,7 @@ import { dataPath } from '../home-paths/index.ts'
 import { message } from '../../src/messages.ts'
 import type { Config } from './index.ts'
 import { isPlainObject } from './guards.ts'
+import { isHighInputValue } from './high-inputs.ts'
 import { ALL_WORKFLOW_FIELDS, RETIRED_WORKFLOW_FIELDS, WORKFLOW_KEYS, WORKFLOW_ROWS, type FieldSpec } from './workflow-fields.ts'
 import type { ImagineSettingOp } from '../../../shared/imagine-types.ts'
 
@@ -147,6 +148,12 @@ function specProblem(where: string, spec: FieldSpec, value: unknown): string | u
       }
       return undefined
     }
+    case 'inputs':
+      return Array.isArray(value) && value.every(entry => isPlainObject(entry)
+        && isText(entry.nodeId) && isText(entry.field) && isHighInputValue(entry.value)
+        && Object.keys(entry).every(key => key === 'nodeId' || key === 'field' || key === 'value'))
+        ? undefined
+        : message('settings.inputList', { where })
   }
 }
 

@@ -7,12 +7,14 @@
  * something that works is the worst thing to show whoever is configuring it.
  * The call is on demand, has a short timeout and writes nothing.
  */
-import { after, beforeEach, test } from 'node:test'
+import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fakeFetch } from './helpers/fake-fetch.ts'
+import { tokenDir } from './helpers/token-files.ts'
 
 const { checkFacebookTokens, CHECK_TIMEOUT_MS } = await import('../plugins/instagram/src/token-check.ts')
 
@@ -24,19 +26,12 @@ const PAGE = `${PREFIX}P${'p9'.repeat(60)}`
 const USER = `${PREFIX}U${'u7'.repeat(55)}`
 
 /** Fake calls, so the tests never reach Meta. */
-let calls: URL[] = []
-const realFetch = globalThis.fetch
+const network = fakeFetch(input => new URL(String(input)))
+const { calls } = network
 
 function answerWith(byToken: (token: string) => unknown): void {
-  globalThis.fetch = (async (input: string | URL) => {
-    const url = new URL(String(input))
-    calls.push(url)
-    return { status: 200, json: async () => byToken(url.searchParams.get('input_token') ?? '') }
-  }) as unknown as typeof fetch
+  network.answerWith(url => ({ status: 200, json: async () => byToken(url.searchParams.get('input_token') ?? '') }))
 }
-
-beforeEach(() => { calls = [] })
-after(() => { globalThis.fetch = realFetch })
 
 /** A valid debug_token, in the shape Meta returns. */
 function debugInfo(overrides: Record<string, unknown> = {}): unknown {
@@ -56,9 +51,7 @@ function debugInfo(overrides: Record<string, unknown> = {}): unknown {
 }
 
 async function dirWith(tokens: Record<string, string>): Promise<string> {
-  const dir = await mkdtemp(join(root, 'cfg-'))
-  await mkdir(dir, { recursive: true })
-  const shape = {
+  return tokenDir(root, 'facebook_comments_token.json', {
     type: 'facebook_user_and_page_for_ig_comments',
     api_base: 'https://graph.facebook.com',
     obtained: '2026-08-22T06:17:15.235825+00:00',
@@ -67,9 +60,7 @@ async function dirWith(tokens: Record<string, string>): Promise<string> {
     ig_username: 'example_account',
     user_token_expires_at: 1792563431,
     ...tokens,
-  }
-  await writeFile(join(dir, 'facebook_comments_token.json'), `${JSON.stringify(shape, null, 2)}\n`, { mode: 0o600 })
-  return dir
+  })
 }
 
 test('two valid tokens: expires_at 0 becomes null, the data-access expiry stays a date, verdict valid', async () => {

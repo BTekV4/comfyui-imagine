@@ -41,9 +41,9 @@ export interface ComposerState {
   readonly lipSync: boolean
   /*
    * "Speed", for the clips: `fast` is the graph as it ships (the 4-step Pika
-   * recipe since 2026-11-05), `slow` the second graph the workflow declares as
-   * `pathHigh` — the official 6-step Pika graph (2026-11-03, the pill Grok has
-   * next to the composer).
+   * recipe since 2026-11-05), `slow` the high recipe the workflow declares
+   * (`highInputs` on the same graph, or a `pathHigh` graph) — the official
+   * 6-step Pika recipe (2026-11-03, the pill Grok has next to the composer).
    */
   readonly speed: ImagineSpeed
   /*

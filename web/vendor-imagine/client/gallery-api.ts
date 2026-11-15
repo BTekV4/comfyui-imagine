@@ -683,10 +683,8 @@ export async function fetchSocialPosts(): Promise<readonly SocialPost[]> {
  * The publication queue, for the rail's timer: undefined when the host
  * answered 304 (nothing changed since the last read).
  *
- * The timer reads the whole queue every 20 s for the life of the page. The
- * other heavy reads already revalidate; this one does as soon as the plugin
- * route sends an ETag. Until it does, every answer is a full body, exactly as
- * with `fetchSocialPosts`.
+ * The timer asks every 20 s for the life of the page; the plugin route tags
+ * its answer, so an unchanged queue costs a 304 with no body.
  * @returns the posts, or undefined when unchanged.
  */
 export async function fetchSocialPostsIfChanged(): Promise<readonly SocialPost[] | undefined> {

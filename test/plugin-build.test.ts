@@ -4,35 +4,28 @@
  * builtins only, no relative imports that would not resolve there.
  *
  * The bundle is written to a temporary folder (`PLUGINS_OUT`), so running the
- * tests never rewrites files in the working tree.
+ * tests never rewrites files in the working tree. The build is shared with the
+ * other test files that need a bundle (helpers/plugin-bundle.ts).
  */
-import { after, test } from 'node:test'
+import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFile } from 'node:child_process'
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { readFile, stat } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
-import { promisify } from 'node:util'
+import { builtPlugins, bundleOf } from './helpers/plugin-bundle.ts'
 
-const run = promisify(execFile)
-const out = await mkdtemp(join(tmpdir(), 'imagine-plugins-'))
-const bundle = join(out, 'instagram', 'index.mjs')
-
-after(async () => { await rm(out, { recursive: true, force: true }) })
+const built = builtPlugins()
+/** The Instagram bundle, once the build is done. */
+const bundlePath = async (): Promise<string> => bundleOf(await built, 'instagram')
 
 test('build:plugins builds the Instagram plugin bundle', async () => {
-  const { stdout } = await run(process.execPath, ['scripts/build.mjs', 'plugins'], {
-    timeout: 60_000,
-    env: { ...process.env, PLUGINS_OUT: out },
-  })
+  const { stdout } = await built
   assert.match(stdout, /plugin instagram: index\.mjs/)
-  const info = await stat(bundle)
+  const info = await stat(await bundlePath())
   assert.ok(info.size > 20_000, `bundle too small: ${String(info.size)} bytes`)
 })
 
 test('the bundle imports only Node builtins: the rest is inlined', async () => {
-  const text = await readFile(bundle, 'utf8')
+  const text = await readFile(await bundlePath(), 'utf8')
   const specifiers = [...text.matchAll(/(?:^|[;\s])import\s*(?:[^'"]*?from\s*)?["']([^"']+)["']/g)].map(match => match[1] ?? '')
   assert.ok(specifiers.length > 0, 'the bundle has its builtin imports')
   for (const specifier of specifiers) {
@@ -41,6 +34,6 @@ test('the bundle imports only Node builtins: the rest is inlined', async () => {
 })
 
 test('the bundle exports setup, as the contract requires', async () => {
-  const module = await import(pathToFileURL(bundle).href) as { default?: unknown }
+  const module = await import(pathToFileURL(await bundlePath()).href) as { default?: unknown }
   assert.equal(typeof module.default, 'function')
 })

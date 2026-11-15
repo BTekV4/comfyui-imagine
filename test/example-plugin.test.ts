@@ -8,88 +8,48 @@
  * The network is replaced: a test that really sends a POST to some address is
  * not a test, it is trouble.
  */
-import { after, beforeEach, test } from 'node:test'
+import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFile } from 'node:child_process'
-import { copyFile, mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { promisify } from 'node:util'
-import { fakePluginHost } from './helpers/plugin-host.ts'
-
-const run = promisify(execFile)
-const { createPlugins } = await import('../server/src/plugins.ts')
+import { fakeFetch } from './helpers/fake-fetch.ts'
+import { fakeRequest, fakeResponse } from './helpers/fake-http.ts'
+import { installPlugin, type Plugins } from './helpers/plugin-files.ts'
+import { builtPlugins, bundleOf } from './helpers/plugin-bundle.ts'
+import type { fakePluginHost } from './helpers/plugin-host.ts'
 
 const root = await mkdtemp(join(tmpdir(), 'imagine-example-plugin-'))
 after(async () => { await rm(root, { recursive: true, force: true }) })
 
-const OUT = join(root, 'build')
-const BUNDLE = join(OUT, 'example-webhook', 'index.mjs')
 const SOURCE = join('plugins', 'example-webhook', 'src', 'index.ts')
 
-/** Builds the plugins once into the temporary folder; every test waits for it. */
-const built = run(process.execPath, ['scripts/build.mjs', 'plugins'], {
-  timeout: 60_000,
-  env: { ...process.env, PLUGINS_OUT: OUT },
-})
-// Observed here so a failed build is reported by the first test, not as an unhandled rejection.
-built.catch(() => undefined)
+/** The plugins built once for the whole run (helpers/plugin-bundle.ts); every test waits for it. */
+const built = builtPlugins()
+/** The example's bundle, once the build is done. */
+const bundlePath = async (): Promise<string> => bundleOf(await built, 'example-webhook')
 
 /** The fake calls, so nothing goes to the internet. */
-let calls: { url: string; body: unknown; headers: Record<string, string> }[] = []
-const realFetch = globalThis.fetch
-beforeEach(() => { calls = [] })
-after(() => { globalThis.fetch = realFetch })
+const network = fakeFetch((input, init) => ({
+  url: String(input),
+  body: typeof init?.body === 'string' ? JSON.parse(init.body) as unknown : undefined,
+  headers: (init?.headers ?? {}) as Record<string, string>,
+}))
+const { calls } = network
 
 function answerWith(handler: () => unknown): void {
-  globalThis.fetch = (async (input: string | URL, init?: { body?: string; headers?: Record<string, string> }) => {
-    calls.push({
-      url: String(input),
-      body: typeof init?.body === 'string' ? JSON.parse(init.body) as unknown : undefined,
-      headers: init?.headers ?? {},
-    })
-    return handler()
-  }) as unknown as typeof fetch
+  network.answerWith(() => handler())
 }
 
 /** The plugin installed in a throwaway data folder, with its bus. */
 async function load(): Promise<{
-  plugins: Awaited<ReturnType<typeof createPlugins>>
+  plugins: Plugins
   dir: string
   routes: { path: string; handler: (req: unknown, res: unknown) => unknown }[]
   bus: ReturnType<typeof fakePluginHost>['bus']
 }> {
-  await built
-  const dir = await mkdtemp(join(root, 'data-'))
-  const folder = join(dir, 'example-webhook')
-  await mkdir(folder, { recursive: true })
-  await copyFile(join('plugins', 'example-webhook', 'manifest.json'), join(folder, 'manifest.json'))
-  await copyFile(BUNDLE, join(folder, 'index.mjs'))
-  const fake = fakePluginHost({ mediaDir: dir })
-  const { bus } = fake
-  const routes = fake.routes as unknown as { path: string; handler: (req: unknown, res: unknown) => unknown }[]
-  const plugins = await createPlugins({
-    dir,
-    host: fake.host,
-  })
-  await plugins.start()
-  return { plugins, dir, routes, bus }
-}
-
-/** A fake request and response for the plugin's route. */
-function fakeRequest(method = 'POST'): unknown {
-  return { method, resume: () => undefined }
-}
-function fakeResponse(): { statusCode: number; body: string; headers: Record<string, string>; setHeader: (n: string, v: string) => void; end: (b?: string) => void } {
-  const response = {
-    statusCode: 200,
-    body: '',
-    headers: {} as Record<string, string>,
-    setHeader(name: string, value: string) { response.headers[name] = value },
-    end(body?: string) { response.body = body ?? '' },
-  }
-  return response
+  return installPlugin(root, 'example-webhook', await bundlePath())
 }
 
 test('the source is in the repo, the bundle builds and imports only builtins', async () => {
@@ -98,13 +58,14 @@ test('the source is in the repo, the bundle builds and imports only builtins', a
   assert.ok(source.split('\n').length < 130, `source too long: ${String(source.split('\n').length)} lines`)
   const { stdout } = await built
   assert.match(stdout, /plugin example-webhook: index\.mjs/)
-  const info = await stat(BUNDLE)
+  const bundle = await bundlePath()
+  const info = await stat(bundle)
   assert.ok(info.size > 1_000, 'the bundle exists')
-  const text = await readFile(BUNDLE, 'utf8')
+  const text = await readFile(bundle, 'utf8')
   for (const line of text.split('\n').filter(line => line.startsWith('import '))) {
     assert.match(line, /from "node:/, `non-builtin import: ${line}`)
   }
-  const module = await import(pathToFileURL(BUNDLE).href) as { default?: unknown }
+  const module = await import(pathToFileURL(bundle).href) as { default?: unknown }
   assert.equal(typeof module.default, 'function')
 })
 

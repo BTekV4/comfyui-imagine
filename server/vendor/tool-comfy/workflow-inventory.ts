@@ -13,6 +13,7 @@ import type { ImagineHost } from '../../src/host.ts'
 import { message } from '../../src/messages.ts'
 import type { ComfyGraph } from '../comfyui/index.ts'
 import { isPlainObject } from './guards.ts'
+import { isComfyLink } from './high-inputs.ts'
 import type { WorkflowInventory } from './imagine-chat.ts'
 import type { LoadedWorkflow } from './index.ts'
 import { insertLora, listLoras, removeLora, setLoraStrength, type LoraInGraph, type LoraRequest } from './lora.ts'
@@ -48,6 +49,12 @@ function pinsOf(loaded: LoadedWorkflow): Record<string, string | undefined> {
   if (loaded.chain !== undefined) {
     pins['chain.loadNodeId'] = loaded.chain.loadNodeId
     pins['chain.saveNodeId'] = loaded.chain.saveNodeId
+  }
+  // The high recipe's overrides: the node each one writes, and the node a
+  // rewired link points at.
+  for (const [index, input] of (loaded.highInputs ?? []).entries()) {
+    pins[`highInputs[${String(index)}]`] = input.nodeId
+    if (isComfyLink(input.value)) pins[`highInputs[${String(index)}].value`] = input.value[0]
   }
   return pins
 }

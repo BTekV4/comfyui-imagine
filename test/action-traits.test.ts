@@ -4,11 +4,18 @@
  * are copied here as they were, so the derived values are checked to be the
  * same for every action: the refactor changes where the facts live, not what
  * any action does.
+ *
+ * The plain facts then moved to shared/imagine-action-table.ts, which the host
+ * reads too (job-request.ts: the accepted file kinds, the name of an unnamed
+ * run, the output kind of a fixed graph). The host's old tables are copied
+ * here the same way.
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { IMAGINE_ACTIONS, type ImagineAction } from '../shared/imagine-types.ts'
 import { ACTION_TRAITS, inputKindOf } from '../web/vendor-imagine/client/action-traits.ts'
+import { ACTION_TABLE } from '../shared/imagine-action-table.ts'
+import { ACTION_RUNS } from '../server/vendor/tool-comfy/job-request.ts'
 
 const OLD_NO_PROMPT = new Set<ImagineAction>(['upscale', 'bg', 'redo', 'resume', 'scanFrame', 'recreate', 'regenerate', 'relight'])
 const OLD_EMPTY_LINE: Partial<Record<ImagineAction, string>> = { upscale: 'upscale', bg: 'bg' }
@@ -64,5 +71,31 @@ for (const action of IMAGINE_ACTIONS) {
     assert.equal(traits.keepsStaging === true, action === 'generate' || action === 'music', 'keeps staging')
     assert.equal(traits.failedKey, OLD_FAILED_KEYS[action], 'failed key')
     assert.deepEqual(traits.doneKeys, OLD_DONE_KEYS[action], 'done keys')
+  })
+}
+
+// The host's tables as they were in job-request.ts before the shared table.
+const OLD_SERVER_KINDS: Partial<Record<ImagineAction, readonly string[]>> = {
+  remix: ['image'], video: ['image'], loop: ['image'], bg: ['image'], upscale: ['image', 'video'],
+  voice: ['audio', 'video'], recreate: ['video'], scanFrame: ['video'], regenerate: ['video'],
+  objectSwap: ['video'], swapPerson: ['video'], relight: ['image'], compose: ['image'],
+}
+const OLD_UNPROMPTED: Partial<Record<ImagineAction, string>> = { upscale: 'upscale', bg: 'bg', voice: 'voice', swapPerson: 'character swap' }
+const OLD_RUN_OUTPUT: Partial<Record<ImagineAction, 'image' | 'video' | 'audio'>> = {
+  generate: 'image', video: 'video', loop: 'video', extend: 'video', bg: 'image', voice: 'audio', music: 'audio',
+  scanFrame: 'image', recreate: 'video', regenerate: 'video', objectSwap: 'video', swapPerson: 'video',
+  relight: 'image', compose: 'image',
+}
+
+for (const action of IMAGINE_ACTIONS) {
+  test(`${action}: the host's derived values equal its old tables`, () => {
+    const row = ACTION_TABLE[action]
+    assert.deepEqual(row.accepts, OLD_SERVER_KINDS[action], 'accepted kinds')
+    assert.equal(row.untitled, OLD_UNPROMPTED[action], 'unprompted name')
+    assert.equal(ACTION_RUNS[action]?.output, OLD_RUN_OUTPUT[action], 'run output')
+    // The page's row is the shared row plus its sentences: no fact is restated.
+    for (const [key, value] of Object.entries(row)) {
+      assert.deepEqual((ACTION_TRAITS[action] as unknown as Record<string, unknown>)[key], value, `page ${key}`)
+    }
   })
 }
