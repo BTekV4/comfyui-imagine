@@ -10,8 +10,9 @@ import type { ImagineHost } from '../../src/host.ts'
 import type { ComfyChainLink } from './index.ts'
 import type { Singer } from './music-prompt.ts'
 import type {
-  ImagineJobFields, ImagineQuality, ImagineRegion, ImagineSpeed, ModelRoute,
+  ImagineJobFields, ImagineQuality, ImagineRegion, ImagineSpeed, ModelRoute, ImagineSetupPlan,
 } from '../../../shared/imagine-types.ts'
+import { message } from '../../src/messages.ts'
 
 /**
  * Where a `speak` job reads its text out loud: an OpenAI-shaped speech
@@ -366,6 +367,66 @@ export function endRunControl(id: string): void {
 export async function stopRun(ctx: ImagineHost, id: string, promptId: string | undefined): Promise<void> {
   if (promptId !== undefined) await ctx.comfy.cancel(promptId).catch(() => undefined)
   runControllers.get(id)?.abort()
+  setupWaits.get(id)?.no()
+}
+
+/**
+ * The jobs waiting for the user's yes before ComfyUI installs what they need
+ * (comfy-setup.ts), by id: the yes resolves the wait, a stop rejects it.
+ */
+const setupWaits = new Map<string, { readonly yes: () => void; readonly no: () => void }>()
+
+/**
+ * Show the job's install plan in the chat and wait for the user to agree.
+ * @param id - the job.
+ * @param plan - what ComfyUI has to install.
+ * @param signal - the run's signal: a stop or the deadline ends the wait.
+ * @returns when the user agreed; rejects when the job ends first.
+ */
+export function waitForSetupApproval(id: string, plan: ImagineSetupPlan, signal?: AbortSignal): Promise<void> {
+  patchJob(id, { notice: 'setup-needed', setup: plan })
+  return new Promise((resolve, reject) => {
+    const finish = (): void => { setupWaits.delete(id); signal?.removeEventListener('abort', no) }
+    const no = (): void => { finish(); reject(new Error(message('setup.declined'))) }
+    setupWaits.set(id, {
+      yes: () => { finish(); patchJob(id, { notice: 'setup-running', setupProgress: { stage: '', percent: 0 } }); resolve() },
+      no,
+    })
+    if (signal?.aborted === true) no()
+    else signal?.addEventListener('abort', no, { once: true })
+  })
+}
+
+/**
+ * The user's yes, from the chat.
+ * @param id - the job waiting for it.
+ * @returns false when no job of that id was waiting.
+ */
+export function approveSetup(id: string): boolean {
+  const wait = setupWaits.get(id)
+  if (wait === undefined) return false
+  wait.yes()
+  return true
+}
+
+/**
+ * Where the install stands, on the job's card.
+ * @param id - the job.
+ * @param progress - the step, how far, how long left.
+ */
+export function setSetupProgress(id: string, progress: NonNullable<ImagineJob['setupProgress']>): void {
+  patchJob(id, { notice: 'setup-running', setupProgress: { ...progress, percent: Math.round(progress.percent) } })
+}
+
+/**
+ * The install is over and the run goes on: the card goes back to the render.
+ * @param id - the job.
+ */
+export function endSetup(id: string): void {
+  const live = getImagineJob(id)
+  if (live === undefined || live.setup === undefined) return
+  const { notice: _notice, setup: _setup, setupProgress: _progress, ...rest } = live
+  putJob(id, rest)
 }
 
 /** Hold the painted mask a queued zone edit will read when its turn comes. */

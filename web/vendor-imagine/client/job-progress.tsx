@@ -15,7 +15,7 @@ import type { ImagineJobView as ImagineJob } from '../../../shared/imagine-types
 import css from './JobProgress.module.css'
 
 /** The part of a job that moves while it runs. */
-export type JobProgressView = Pick<ImagineJob, 'progress' | 'scanProgress'>
+export type JobProgressView = Pick<ImagineJob, 'progress' | 'scanProgress' | 'notice' | 'setupProgress'>
 
 /** What changes when a job's progress does: the preview by its length and tail. */
 function keyOf(job: JobProgressView): string {
@@ -26,6 +26,8 @@ function keyOf(job: JobProgressView): string {
     progress?.percent, progress?.step, progress?.maxSteps, progress?.nodeClass, progress?.etaSeconds,
     preview === undefined ? '' : `${String(preview.length)}${preview.slice(-24)}`,
     job.scanProgress?.done, job.scanProgress?.total,
+    // ComfyUI installing what the job needs: the step moves without the rest.
+    job.notice, job.setupProgress?.stage,
   ].join(':')
 }
 
@@ -45,7 +47,7 @@ export const jobProgress = {
     for (const job of jobs) {
       const key = keyOf(job)
       if (entries.get(job.id)?.key === key) continue
-      entries.set(job.id, { key, view: { progress: job.progress, scanProgress: job.scanProgress } })
+      entries.set(job.id, { key, view: { progress: job.progress, scanProgress: job.scanProgress, notice: job.notice, setupProgress: job.setupProgress } })
       changed.push(job.id)
     }
     if (whole) {

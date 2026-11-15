@@ -129,6 +129,8 @@ test('the field is saved and read back, and a value that is not a tier means the
     thinking: 'low',
     resumeSweep: false,
     requireLogin: false,
+    hfToken: '',
+    autoSetup: false,
   }
   const settings = await createHostSettings({ file, passwordFile: join(root, 'password'), base, envKey: undefined })
   assert.equal(settings.current().thinking, 'low')

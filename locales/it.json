@@ -1211,5 +1211,18 @@
   "imagine.drawStyle.pixel": "Pixel art",
   "imagine.drawStyle.cartoon3d": "Cartone 3D",
   "imagine.refAdd": "Aggiungi immagine di riferimento",
-  "imagine.refRemove": "Togli l'immagine di riferimento"
+  "imagine.refRemove": "Togli l'immagine di riferimento",
+  "imagine.setupNeededTitle": "Prima ComfyUI deve installare qualcosa",
+  "imagine.setupNeeded": "Per farlo, ComfyUI deve installare: {what} ({size} da scaricare). Installo adesso?",
+  "imagine.setupInstall": "Installa",
+  "imagine.setupRunning": "Preparo ComfyUI",
+  "imagine.setupRestart": "Riavvio ComfyUI…",
+  "imagine.noticeSetupNeeded": "Prima di partire ComfyUI deve installare qualcosa.",
+  "imagine.noticeSetupRunning": "Installo su ComfyUI, poi la richiesta riparte da sola.",
+  "imagine.host.setupTitle": "Installazione su ComfyUI",
+  "imagine.host.autoSetup": "Installa automaticamente",
+  "imagine.host.autoSetupHelp": "Se una richiesta ha bisogno di nodi o modelli che ComfyUI non ha, li installa senza chiedere (pacchetto comfyui-imagine). Spento: prima chiede in chat.",
+  "imagine.host.hfToken": "Chiave Hugging Face",
+  "imagine.host.hfTokenSet": "impostata — lascia vuoto per tenerla",
+  "imagine.host.hfTokenNone": "serve solo per i modelli che richiedono un account"
 }

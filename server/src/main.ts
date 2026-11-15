@@ -35,6 +35,7 @@ import { message, withLanguage } from './messages.ts'
 import { allowOnly, HttpError, languageOf, methods, readBody, readObject, restOf, sendJson } from './route-kit.ts'
 import { createLocalePacks, createLocalePacksRoutes } from './locales.ts'
 import { createHostSettings } from './settings.ts'
+import { configureComfySetup } from '../vendor/tool-comfy/comfy-setup.ts'
 import { serveStatic } from './static.ts'
 import { createNotifyBus } from './notify-bus.ts'
 import type { ImagineHost, WebRoute } from './host.ts'
@@ -126,8 +127,13 @@ const settings = await createHostSettings({
     resumeSweep: process.env.IMAGINE_RESUME_SWEEP === '1',
 
     requireLogin: false,
+    hfToken: '',
+    autoSetup: false,
   },
 })
+
+// ComfyUI's setup (comfyui-imagine) reads the token and the switch when a run needs them.
+configureComfySetup(() => ({ hfToken: settings.current().hfToken, autoSetup: settings.current().autoSetup }))
 const now = (): HostSettingsValues => settings.current()
 
 /** Providers as the LLM client sees them, with the gateway fields from the settings. */

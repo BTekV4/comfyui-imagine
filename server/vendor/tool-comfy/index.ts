@@ -38,6 +38,7 @@ import { loadPersona, setPersona } from './persona.ts'
 import { CUSTOM_PREFIX, customGraphFile, loadCustomWorkflows, loadCustomWorkflowsSync } from './custom-workflows.ts'
 import { imagineHandler, type ImagineSettingsSurface } from './imagine-routes.ts'
 import { parseSize } from './snap-size.ts'
+import { ensureComfyReady, type SetupHooks } from './comfy-setup.ts'
 import {
   BASE_FIELDS, OPTION_PINS, WORKFLOW_ROWS, type FieldSpec, type WorkflowEntries, type WorkflowGraphs,
 } from './workflow-fields.ts'
@@ -456,6 +457,12 @@ export interface RunInputs {
   readonly onRestart?: (() => void) | undefined
   /** Caller cancellation, which ends the history wait. */
   readonly signal?: AbortSignal | undefined
+  /**
+   * How the job asks the user and shows progress when ComfyUI first has to
+   * install what the graph needs (`comfy-setup.ts`). Absent, a missing piece
+   * is reported unless «Install automatically» is on.
+   */
+  readonly setup?: SetupHooks | undefined
 }
 
 /**
@@ -1020,6 +1027,8 @@ export async function runWorkflow(
 ): Promise<ComfyRunReport> {
   const graph = await parameterize(ctx, workflow, opts, inputs)
   const { declared, onPrompt, onRestart, signal } = inputs
+  // ComfyUI gets what this graph needs first (comfyui-imagine's setup), or is left as it is.
+  await ensureComfyReady(ctx, graph, { ...inputs.setup, ...signal === undefined ? {} : { signal } })
   /*
    * A cancelled run has to end here, not at the deadline. Deleting the prompt
    * from ComfyUI's queue means no history record is ever written for it, so
@@ -1036,8 +1045,14 @@ export async function runWorkflow(
     const ext = (media.format ?? media.filename.split('.').pop() ?? 'bin').toLowerCase()
     // A first output goes to the declared name; when that name is occupied
     // the run moves aside and the report says where the file landed.
+    /*
+     * The declared name takes the extension the file really has: a graph
+     * changed to PNG under a config.yaml still saying `outputExt: webp` (the
+     * repository's graphs switched on 2026-11-15) stored PNG bytes under a
+     * .webp name.
+     */
     const target = index === 0 && declared !== undefined
-      ? freeOutputPath(declared)
+      ? freeOutputPath(extname(declared).slice(1).toLowerCase() === ext ? declared : `${declared.slice(0, declared.length - extname(declared).length)}.${ext}`)
       : join(outputDir, `${run.promptId}-${index}.${ext}`)
     // Streamed: a clip can run to hundreds of megabytes.
     await ctx.comfy.fetchMediaTo(media, target)

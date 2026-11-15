@@ -42,7 +42,7 @@ import {
 import type { ImagineWorkflows } from './workflow-fields.ts'
 import { LIPSYNC_MIN, listeningPrompt, singingPrompt } from './story.ts'
 import {
-  endRunControl, getImagineJob, isSettled, jobThatProduced, patchJob, setJobNotice, setJobPromptId, startRunControl,
+  endRunControl, getImagineJob, isSettled, jobThatProduced, patchJob, setJobNotice, setJobPromptId, endSetup, setSetupProgress, startRunControl, waitForSetupApproval,
   stopRun, takePaintedMask, type ImagineJob,
 } from './job-queue.ts'
 import { ACTION_RUNS, placementKeyframes } from './job-request.ts'
@@ -1304,6 +1304,14 @@ function rendererFor(setup: RenderSetup): Render {
         refImage: refImage === undefined ? undefined : { bytes: refImage.bytes, name: refImage.name },
         onPrompt: (promptId) => { setJobPromptId(ctx, job.id, promptId) },
         onRestart: () => { setJobNotice(job.id, 'comfy-restart') },
+        // ComfyUI missing nodes or models: the chat asks, then shows the install.
+        setup: {
+          approve: plan => waitForSetupApproval(job.id, plan, signal),
+          progress: (state) => {
+            setSetupProgress(job.id, { stage: state.stage, percent: state.percent, ...state.etaSeconds === undefined ? {} : { etaSeconds: state.etaSeconds } })
+          },
+          done: () => { endSetup(job.id) },
+        },
         signal,
       },
     )

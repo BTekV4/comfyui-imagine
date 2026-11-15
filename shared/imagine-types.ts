@@ -200,6 +200,17 @@ export interface ImagineJobProgress {
   readonly elapsedSeconds?: number
 }
 
+/**
+ * What ComfyUI is missing for a job, as comfyui-imagine's setup reported it:
+ * the node packs to install and the model files to download.
+ */
+export interface ImagineSetupPlan {
+  readonly packs: readonly { readonly id: string; readonly name: string }[]
+  readonly models: readonly { readonly name: string; readonly folder: string; readonly size: number }[]
+  /** Bytes to download in all. */
+  readonly bytes: number
+}
+
 /** The fields of an Imagine job the page reads; the server's job carries more. */
 export interface ImagineJobFields {
   readonly id: string
@@ -254,6 +265,14 @@ export interface ImagineJobFields {
   readonly quality?: ImagineQuality
   readonly error?: string
   readonly files?: readonly MediaFileRef[]
+  /**
+   * What ComfyUI has to install before this job can run, while the job waits
+   * for the user's yes (notice `setup-needed`) or installs it
+   * (`setup-running`, with `setupProgress`).
+   */
+  readonly setup?: ImagineSetupPlan
+  /** The install in progress: the file being downloaded (or `restart`), how far, how long left. */
+  readonly setupProgress?: { readonly stage: string; readonly percent: number; readonly etaSeconds?: number }
   readonly lyrics?: string
   /**
    * The prompt the vision pass wrote from the source image, when it ran: H3

@@ -457,6 +457,19 @@
 }
 
 /* In a job's row the button closes the label line, at its right end. */
+.approveSetup {
+  margin-left: auto;
+  padding: 1px 10px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  background: var(--imagine-ink);
+  color: var(--imagine-bg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .chatWorkLabel .stopJob {
   margin-left: auto;
   font-weight: 400;

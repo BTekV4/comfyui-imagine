@@ -24,6 +24,7 @@ import { dataPath } from '../home-paths/index.ts'
 import type { ComfyGraph } from '../comfyui/index.ts'
 import { finite, isPlainObject, trimmedText } from './guards.ts'
 import { conceptLines, lookForSegments } from './segment-concepts.ts'
+import { ensureComfyReady } from './comfy-setup.ts'
 import { eyesOf } from './eyes.ts'
 import type {
   ImagineSegment, ImagineSegmentKind, ImagineSegmentsIndex, ImagineSegmentsStatus,
@@ -118,6 +119,12 @@ const stamp = (): string => Date.now().toString(36)
  */
 export async function analyzeSegments(ctx: ImagineHost, outputDir: string, photo: string, background = false): Promise<ImagineSegmentsIndex> {
   const path = join(outputDir, photo)
+  /*
+   * ComfyUI has the Segments node and SAM 3 (comfyui-imagine's setup), checked
+   * before the vision pass, which costs minutes: nobody is in the chat to say
+   * yes, so it installs only with «Install automatically» on.
+   */
+  await ensureComfyReady(ctx, segmentsGraph('probe.png', 'object', '[]', 'imagine-segments/probe'))
   const sight = await lookForSegments(ctx, path, background)
   if (sight === undefined) throw new Error(message('segments.nothingListed'))
   const route = eyesOf(ctx)?.route

@@ -1,0 +1,51 @@
+{
+  "packs": {
+    "comfyui-krea2edit": {
+      "name": "Krea 2 Identity Edit",
+      "version": "1.2.3",
+      "url": "https://cdn.comfy.org/conradlocke/comfyui-krea2edit/1.2.3/node.zip",
+      "size": 24384,
+      "sha256": "0bbc7e726253d08a67868fe428540bce46868c1070ab584b2e5fc6c63ad31c63",
+      "folder": "comfyui-krea2edit",
+      "classes": ["Krea2EditModelPatch", "Krea2EditGroundedEncode"]
+    }
+  },
+  "models": {
+    "krea2_turbo_int8_convrot.safetensors": {
+      "folder": "diffusion_models",
+      "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/diffusion_models/krea2_turbo_int8_convrot.safetensors",
+      "size": 13492686496,
+      "sha256": "8e4eeda70dd5037ab1ba2bef6b417f9f901e26093117cf397f741fc1fdaaf3f1"
+    },
+    "qwen3vl_4b_int8_convrot.safetensors": {
+      "folder": "text_encoders",
+      "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_int8_convrot.safetensors",
+      "size": 4858559240,
+      "sha256": "32de113cbf8282b02cbff0794b637b9d6676da09314a1db5a30bcea9bf4ee01c"
+    },
+    "qwen_image_vae.safetensors": {
+      "folder": "vae",
+      "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/vae/qwen_image_vae.safetensors",
+      "size": 253806246,
+      "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f"
+    },
+    "krea2/krea2_identity_edit_v1_2.safetensors": {
+      "folder": "loras",
+      "url": "https://huggingface.co/conradlocke/krea2-identity-edit/resolve/main/krea2_identity_edit_v1_2.safetensors",
+      "size": 1828256432,
+      "sha256": "6adf9a69cc9502d286db7b69964d37da7e9cfe4b05b4d004bc275f087d3fd3cf"
+    },
+    "sam3.1_multiplex_fp16.safetensors": {
+      "folder": "checkpoints",
+      "url": "https://huggingface.co/Comfy-Org/sam3.1/resolve/main/checkpoints/sam3.1_multiplex_fp16.safetensors",
+      "size": 1745546848,
+      "sha256": "9ba99c92703c2e8b4f47de2d34a539bb8e18923049e238b780d70dbe6368eb03"
+    },
+    "birefnet.safetensors": {
+      "folder": "background_removal",
+      "url": "https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors",
+      "size": 444473596,
+      "sha256": "9ab37426bf4de0567af6b5d21b16151357149139362e6e8992021b8ce356a154"
+    }
+  }
+}

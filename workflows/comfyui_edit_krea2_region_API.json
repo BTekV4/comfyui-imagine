@@ -172,30 +172,19 @@
   "class_type": "VAEDecode"
  },
  "94": {
-  "class_type": "Image Save",
-  "_meta": {
-   "title": "Save Image (WebP lossless)"
-  },
   "inputs": {
    "images": [
     "604",
     0
    ],
-   "output_path": "[time(%Y-%m-%d)]",
    "filename_prefix": "Krea2_Edit_Region",
-   "filename_delimiter": "_",
-   "filename_number_padding": 4,
-   "filename_number_start": "false",
-   "extension": "webp",
-   "dpi": 300,
-   "quality": 100,
-   "optimize_image": "true",
-   "lossless_webp": "true",
-   "overwrite_mode": "false",
-   "show_history": "false",
-   "show_history_by_prefix": "true",
-   "embed_workflow": "false",
-   "show_previews": "true"
+   "format": "png",
+   "lossless": true,
+   "quality": 95
+  },
+  "class_type": "ImagineSaveImage",
+  "_meta": {
+   "title": "Save Image (PNG)"
   }
  },
  "600": {
@@ -210,10 +199,6 @@
   }
  },
  "601": {
-  "class_type": "FL_InpaintCrop",
-  "_meta": {
-   "title": "Ritaglia la zona con contesto"
-  },
   "inputs": {
    "image": [
     "76",
@@ -225,28 +210,27 @@
    ],
    "context_factor": 2.5,
    "target_size": 1536,
-   "resize_mode": "max_dimension",
-   "force_square": false,
    "divisible_by": 16,
-   "invert_mask": false,
-   "fill_mask_holes": true,
-   "use_gpu": false
+   "fill_mask_holes": true
+  },
+  "class_type": "ImagineInpaintCrop",
+  "_meta": {
+   "title": "Inpaint Crop"
   }
  },
  "610": {
-  "class_type": "GrowMaskWithBlur",
   "inputs": {
    "mask": [
     "601",
     2
    ],
    "expand": 8,
-   "incremental_expandrate": 0,
    "tapered_corners": true,
-   "flip_input": false,
-   "blur_radius": 16,
-   "lerp_alpha": 1,
-   "decay_factor": 1
+   "blur_radius": 16.0
+  },
+  "class_type": "ImagineGrowMask",
+  "_meta": {
+   "title": "Grow Mask"
   }
  },
  "611": {
@@ -276,10 +260,6 @@
   }
  },
  "602": {
-  "class_type": "FL_Inpaint_Stitch",
-  "_meta": {
-   "title": "Ricuci nella foto"
-  },
   "inputs": {
    "stitch": [
     "601",
@@ -289,22 +269,25 @@
     "308",
     0
    ]
+  },
+  "class_type": "ImagineInpaintStitch",
+  "_meta": {
+   "title": "Inpaint Stitch"
   }
  },
  "603": {
-  "class_type": "GrowMaskWithBlur",
   "inputs": {
    "mask": [
     "600",
     0
    ],
    "expand": 16,
-   "incremental_expandrate": 0,
    "tapered_corners": true,
-   "flip_input": false,
-   "blur_radius": 24,
-   "lerp_alpha": 1,
-   "decay_factor": 1
+   "blur_radius": 24.0
+  },
+  "class_type": "ImagineGrowMask",
+  "_meta": {
+   "title": "Grow Mask"
   }
  },
  "604": {

@@ -1,0 +1,12 @@
+[project]
+name = "comfyui-imagine"
+description = "Nodes and setup routes for ComfyUI Imagine: Segments (SAM 3), inpaint crop/stitch, lossless WebP save, and installing the node packs and models a graph needs."
+version = "1.0.0"
+license = { text = "MIT" }
+
+[project.urls]
+Repository = "https://github.com/BTekV4/comfyui-imagine"
+
+[tool.comfy]
+PublisherId = "btekv4"
+DisplayName = "ComfyUI Imagine"

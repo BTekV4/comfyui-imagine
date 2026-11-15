@@ -28,6 +28,15 @@ export function clockStamp(at: number): string {
 }
 
 /**
+ * A download size in gigabytes, one decimal: 13.5 GB (megabytes under one).
+ * @param bytes - the size.
+ * @returns the text.
+ */
+export function formatGigabytes(bytes: number): string {
+  return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${String(Math.max(1, Math.round(bytes / 1e6)))} MB`
+}
+
+/**
  * The time a run has left, as the tile says it: rounded up to five seconds so
  * a label redrawn every second does not flicker, `40 s` under a minute and
  * `1:35` above it.

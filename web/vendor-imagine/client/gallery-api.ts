@@ -129,6 +129,17 @@ export async function saveImagineStudio(studio: ImagineStudio): Promise<void> {
 }
 
 /**
+ * Say yes to what ComfyUI has to install before a job can run
+ * (POST /comfy-imagine/<id>/setup): the job waiting for it goes on.
+ * @param id - the job.
+ * @returns nothing; a refusal throws with the status.
+ */
+export async function approveImagineSetup(id: string): Promise<void> {
+  const response = await request(`/comfy-imagine/${encodeURIComponent(id)}/setup`, 'POST')
+  if (!response.ok && response.status !== 404) throw new Error(`setup ${String(response.status)}`)
+}
+
+/**
  * Stop a live job through DELETE /comfy-imagine/<id>.
  * @param id - the job to stop.
  * @returns nothing; a refusal throws with the status.

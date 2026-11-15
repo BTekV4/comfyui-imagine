@@ -100,6 +100,18 @@ export const MESSAGES = {
     en: 'The {name} plugin shows here a program that runs on its own, and nothing answers at {url}. Install and start {name}, then enter its address in Plugins → {name}.',
   },
   'app.unreachableDetail': { it: 'Errore: {error}', en: 'Error: {error}' },
+  'setup.unknown': {
+    it: 'A ComfyUI mancano cose che Imagine non sa installare da solo: {what}. Vanno messe a mano (nodi in custom_nodes, modelli nelle cartelle di models).',
+    en: 'ComfyUI is missing things Imagine cannot install by itself: {what}. Add them by hand (nodes in custom_nodes, models in the models folders).',
+  },
+  'setup.askFirst': {
+    it: 'Per questa azione ComfyUI deve prima installare: {what}. Avviala dalla chat per confermare, oppure accendi «Installa automaticamente» in Impostazioni.',
+    en: 'For this action ComfyUI first has to install: {what}. Start it from the chat to confirm, or turn on «Install automatically» in Settings.',
+  },
+  'setup.declined': { it: 'Installazione non confermata: richiesta annullata.', en: 'Install not confirmed: request cancelled.' },
+  'setup.failed': { it: 'Installazione su ComfyUI non riuscita: {reason}', en: 'Installing on ComfyUI failed: {reason}' },
+  'setup.stillMissing': { it: 'Dopo l\'installazione a ComfyUI manca ancora: {what}', en: 'After the install ComfyUI is still missing: {what}' },
+  'setup.restartTimeout': { it: 'ComfyUI non è ripartito entro {minutes} minuti dall\'installazione.', en: 'ComfyUI did not come back within {minutes} minutes of the install.' },
   'still.iopaintUnreachable': { it: 'IOPaint non raggiungibile o troppo lento', en: 'IOPaint is unreachable or too slow' },
   'still.iopaintAnswered': { it: 'IOPaint ha risposto {status}: {detail}', en: 'IOPaint answered {status}: {detail}' },
   'segments.nothingListed': { it: 'il modello non ha elencato niente nella foto', en: 'the model listed nothing in the photo' },

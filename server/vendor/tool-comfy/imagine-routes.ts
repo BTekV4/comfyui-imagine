@@ -18,6 +18,7 @@ import { readImagineChat, type ImagineChatRequest, type WorkflowInventory } from
 import {
   cancelImagineJob, getImagineJob, listImagineJobs, pruneOldJobs, startImagineJob, type ImagineJob, type SpeakTarget,
 } from './imagine-jobs.ts'
+import { approveSetup } from './job-queue.ts'
 import { invalidChoiceReason } from './job-request.ts'
 import {
   applyOverrideOps, imagineSettingsPath, readImagineOverrides, saveImagineOverrides, workflowConfigKey, type WorkflowMap,
@@ -513,6 +514,12 @@ async function jobRoute(
     notAllowed(res, 'GET, HEAD, POST, DELETE')
     return
   }
+  // «Install»: the user's yes to what ComfyUI has to install for this job.
+  if (jobId.endsWith('/setup')) {
+    const approved = approveSetup(jobId.slice(0, -'/setup'.length))
+    sendJson(res, approved ? 200 : 404, { ok: approved })
+    return
+  }
   const body = await readObject<{
     action?: string
     prompt?: string
@@ -738,6 +745,11 @@ function jobWithProgress(ctx: ImagineHost, job: ImagineJob): ImagineJobView {
    * placeholders read back — takes the reader's language.
    */
   const localized: ImagineJob = job.error === undefined ? job : { ...job, error: translateMessage(job.error, currentLanguage()) }
+  // ComfyUI installing what the job needs: that is the progress there is.
+  if (localized.promptId === undefined && localized.status === 'running' && localized.setupProgress !== undefined) {
+    const { percent, etaSeconds } = localized.setupProgress
+    return { ...localized, progress: { percent, ...etaSeconds === undefined ? {} : { etaSeconds } } }
+  }
   if (localized.promptId === undefined || (localized.status !== 'queued' && localized.status !== 'running')) return localized
   const progress = ctx.comfy.progressOf(localized.promptId)
   return progress === undefined ? localized : { ...localized, progress }

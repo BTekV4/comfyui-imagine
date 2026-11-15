@@ -68,11 +68,12 @@ export async function createHostSettings(options: {
   }
 
   const view = (): HostSettingsView => {
-    const { apiKey, ...rest } = merged()
+    const { apiKey, hfToken, ...rest } = merged()
     const key = apiKey !== '' ? apiKey : options.envKey ?? ''
     return {
       ...rest,
       apiKeySet: key !== '',
+      hfTokenSet: hfToken !== '',
       apiKeyFromEnv: apiKey === '' && key !== '',
       apiKeyTail: key.length > 4 ? key.slice(-4) : '',
       passwordSet,
@@ -95,6 +96,9 @@ export async function createHostSettings(options: {
       take('thinking', isThinkingLevel)
       take('resumeSweep', value => typeof value === 'boolean')
       take('requireLogin', value => typeof value === 'boolean')
+      take('autoSetup', value => typeof value === 'boolean')
+      // An empty token from the page means "keep the one saved"; a single space clears it.
+      if (typeof patch.hfToken === 'string' && patch.hfToken !== '') next['hfToken'] = patch.hfToken.trim()
       if (typeof patch.password === 'string' && patch.password.length > 0) {
         if (patch.password.length < 8) throw new Error(message('password.tooShort'))
         await savePassword(options.passwordFile, patch.password)

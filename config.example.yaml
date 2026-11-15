@@ -86,7 +86,7 @@ toolComfy:
     # sampler step count used for "Quality: high" (the graph is saved at 8).
     generateImage:
       path: ./workflows/comfyui_generazione_krea2_API.json
-      outputExt: webp
+      outputExt: png
       promptNodeId: "73"
       seedNodeId: "53"
       sizeNodeId: "52"
@@ -99,7 +99,7 @@ toolComfy:
     # description. Any text-to-image graph works; here the same Krea 2 graph.
     recreateFrame:
       path: ./workflows/comfyui_generazione_krea2_API.json
-      outputExt: webp
+      outputExt: png
       promptNodeId: "73"
       seedNodeId: "53"
       sizeNodeId: "52"
@@ -111,7 +111,7 @@ toolComfy:
     # Image to image (the "remix" action): an anchored Krea 2 edit.
     editImage:
       path: ./workflows/comfyui_edit_krea2_API.json
-      outputExt: webp
+      outputExt: png
       promptNodeId: "500"
       steps:
         nodeId: "307"
@@ -122,7 +122,7 @@ toolComfy:
     # `lastImageNodeId` node, and pixels outside it stay the source's own.
     editImageRegion:
       path: ./workflows/comfyui_edit_krea2_region_API.json
-      outputExt: webp
+      outputExt: png
       promptNodeId: "500"
       seedNodeId: "307"
       imageNodeId: "76"
@@ -162,7 +162,7 @@ toolComfy:
     # Background removal (BiRefNet), the "bg" action.
     removeBackground:
       path: ./workflows/utility_birefnet_remove_background.json
-      outputExt: webp
+      outputExt: png
       imageNodeId: "22"
 
     # ---------------------------------------------------------------- video

@@ -184,30 +184,19 @@
   "class_type": "VAEDecode"
  },
  "94": {
-  "class_type": "Image Save",
-  "_meta": {
-   "title": "Save Image (WebP lossless)"
-  },
   "inputs": {
    "images": [
     "308",
     0
    ],
-   "output_path": "[time(%Y-%m-%d)]",
    "filename_prefix": "Krea2_Edit_Replace",
-   "filename_delimiter": "_",
-   "filename_number_padding": 4,
-   "filename_number_start": "false",
-   "extension": "webp",
-   "dpi": 300,
-   "quality": 100,
-   "optimize_image": "true",
-   "lossless_webp": "true",
-   "overwrite_mode": "false",
-   "show_history": "false",
-   "show_history_by_prefix": "true",
-   "embed_workflow": "false",
-   "show_previews": "true"
+   "format": "png",
+   "lossless": true,
+   "quality": 95
+  },
+  "class_type": "ImagineSaveImage",
+  "_meta": {
+   "title": "Save Image (PNG)"
   }
  }
 }

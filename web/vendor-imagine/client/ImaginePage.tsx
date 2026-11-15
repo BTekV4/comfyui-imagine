@@ -23,7 +23,7 @@ import { IMAGINE_ASPECTS } from '../../../shared/imagine-media.ts'
 import type { GalleryItem, ImagineAction } from '../../../shared/imagine-types.ts'
 import type { WorkflowProposal } from '../../../shared/imagine-chat.ts'
 import { readDismissedScans, rememberDismissedScan } from './dismissed-scans.ts'
-import { uploadGalleryItem, startMusicClip, type SocialPost } from './gallery-api.ts'
+import { approveImagineSetup, uploadGalleryItem, startMusicClip, type SocialPost } from './gallery-api.ts'
 import { CHAT_DEFAULT, CHAT_OLD_DEFAULT, CHAT_MAX, CHAT_MIN, type ImagineView } from './gallery-store.ts'
 import {
   HISTORY_PAGE, createProject, lastUsedOf, nextUntitledTitle,
@@ -638,6 +638,9 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
     setOverlay({ kind: 'menu', item, x: event.clientX, y: event.clientY, anchor: event.currentTarget.getBoundingClientRect() })
   })
   const onJobStop = useEvent((id: string) => { void stopJob(id) })
+  const onApproveSetup = useEvent((id: string) => {
+    approveImagineSetup(id).catch((error: unknown) => { setNote(noteFromError(error)) })
+  })
   const onHistoryMore = useEvent(() => { setHistoryLimit(limit => limit + HISTORY_PAGE) })
   const onComposerMode = useEvent(changeMode)
   const onComposerUpload = useEvent((files: FileList | readonly File[]) => { void ingestFiles(files) })
@@ -1044,6 +1047,7 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
                 onCancelProposal={onCancelProposal}
                 onStopReading={onStopReading}
                 onStopJob={onJobStop}
+                onApproveSetup={onApproveSetup}
                 onResizeStart={onChatResize}
               />
             )}

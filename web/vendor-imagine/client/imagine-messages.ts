@@ -107,6 +107,8 @@ const NOTICE_KEYS: Readonly<Record<string, ComfyLocaleKey>> = {
   'video-ratio': 'imagine.noticeVideoRatio',
   'voice-mux-failed': 'imagine.noticeVoiceMuxFailed',
   'recreate-audio-failed': 'imagine.noticeRecreateAudioFailed',
+  'setup-needed': 'imagine.noticeSetupNeeded',
+  'setup-running': 'imagine.noticeSetupRunning',
 }
 
 /**

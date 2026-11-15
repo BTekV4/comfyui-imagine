@@ -522,6 +522,33 @@ export class ComfyUi {
   }
 
   /**
+   * One call to the setup routes of the comfyui-imagine node pack
+   * (`/imagine/setup/<route>`), which installs what a graph needs.
+   * @param route - `status`, `check`, `install` or `restart`.
+   * @param body - the JSON body, for the POST routes.
+   * @param headers - extra headers (the Hugging Face token for `install`).
+   * @param signal - caller cancellation.
+   * @returns the parsed answer, or undefined when this ComfyUI does not have
+   *   the pack (the route is not there).
+   * @throws {ComfyError} when the pack answers with an error.
+   */
+  async setupCall(route: 'status' | 'check' | 'install' | 'restart', body?: unknown, headers: Record<string, string> = {}, signal?: AbortSignal): Promise<unknown> {
+    const response = await this.request(`/imagine/setup/${route}`, body === undefined && route === 'status'
+      ? { method: 'GET' }
+      : { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body ?? {}) }, signal)
+    if (response.status === 404 || response.status === 405) {
+      await response.body?.cancel().catch(() => {})
+      return undefined
+    }
+    const payload = await this.json(response, 'COMFY_WAIT_FAILED')
+    if (!response.ok) {
+      const reason = typeof payload === 'object' && payload !== null && 'error' in payload ? String((payload as { error: unknown }).error) : `HTTP ${String(response.status)}`
+      throw new ComfyError(`ComfyUI setup: ${reason}`, 'COMFY_WAIT_FAILED')
+    }
+    return payload
+  }
+
+  /**
    * The live progress snapshot for one prompt id, when preview tracking is
    * enabled and the prompt is still being tracked.
    * @param promptId - the prompt id returned by `submit`.

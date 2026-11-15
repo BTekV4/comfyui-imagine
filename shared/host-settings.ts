@@ -54,11 +54,22 @@ export interface HostSettingsValues {
   readonly thinking: ThinkingLevel
   readonly resumeSweep: boolean
   readonly requireLogin: boolean
+  /**
+   * A Hugging Face token for the models that need one (gated repos): sent to
+   * ComfyUI's Imagine Setup only for the downloads it makes, never shown back.
+   */
+  readonly hfToken: string
+  /**
+   * Install the node packs and models a request needs without asking first
+   * (comfyui-imagine's setup). Off: the chat asks once per request.
+   */
+  readonly autoSetup: boolean
 }
 
 /** What the page is shown: the key is never sent back, only whether it is set. */
-export type HostSettingsView = Omit<HostSettingsValues, 'apiKey'> & {
+export type HostSettingsView = Omit<HostSettingsValues, 'apiKey' | 'hfToken'> & {
   readonly apiKeySet: boolean
+  readonly hfTokenSet: boolean
   readonly apiKeyFromEnv: boolean
   readonly apiKeyTail: string
   readonly passwordSet: boolean

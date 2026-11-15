@@ -79,12 +79,18 @@ point at another graph — see [The workflows](#the-workflows).
 | Make video, loop, extend, video on a song, recreate video | **MiniMax H3** (fast and quality graphs) | `minimax_h3_fl2va` / `minimax_h3_ref2va` (int8), text encoder `qwen3vl_32b_minimax_h3_nvfp4_awq`, video and audio VAEs, Pika H3 Flex turbo LoRAs |
 | Edit object in a video: change, remove, background, add | **MiniMax H3** + **SAM 3.1** | the H3 weights + `minimax_h3_character_swap_v1.1` LoRA, `sam3.1_multiplex_fp16` |
 | Regenerate detail (video at 1.5×) | **MiniMax H3** | latent upscaler 3D + `minimax_h3_open_regenerate_2k` LoRA |
-| Segments (objects in a photo) | **SAM 3.1** + the vision model | `sam3.1_multiplex_fp16`, node in [comfyui-nodes/imagine-segments](comfyui-nodes/imagine-segments) |
+| Segments (objects in a photo) | **SAM 3.1** + the vision model | `sam3.1_multiplex_fp16`, node in [comfyui-nodes/comfyui-imagine](comfyui-nodes/comfyui-imagine) |
 | Upscale photo / video | **SeedVR2** | `seedvr2_ema_7b_sharp_fp16` (photo), `seedvr2_3b_int8_convrot` (video), `ema_vae_fp16` |
 | Remove background | **BiRefNet** | `birefnet` |
 | Music | **MiniMax Music 3** | `minimax_music3_dit_fp16`, its text encoder and `minimax_music3_dav` |
 | Change voice / extract vocals | **RVC** / **MelBand RoFormer** | your `voice-model.pth`; `MelBandRoformer_fp16` |
 | Remove object (photo) | **LaMa** in IOPaint | through the IOPaint plugin, outside ComfyUI |
+
+**Installed for you:** the Krea 2 actions (generate, edit, precise edit),
+Segments and Remove background. With the [comfyui-imagine](#the-comfyui-pack)
+pack in ComfyUI, the first request that needs them downloads the weights above
+(about 22.6 GB in all, from the official Hugging Face repos) and the one node
+pack they use. The other families still go in by hand for now.
 
 **Text and vision** go to any OpenAI-compatible chat-completions endpoint
 (Ollama, vLLM, LM Studio, llama.cpp, a hosted API): the model writes the
@@ -97,9 +103,11 @@ recommended — Segments, Recreate and the photo descriptions need it.
 - `git`, to get the code and to update it.
 - `ffmpeg` and `ffprobe` on the `PATH`: thumbnails, crops, trims and every
   video step use them (`apt install ffmpeg` on Debian/Ubuntu).
-- A reachable ComfyUI, with the custom nodes your graphs use.
+- A reachable ComfyUI (0.45 or newer) with the **comfyui-imagine** pack — see
+  [The ComfyUI pack](#the-comfyui-pack). It installs the models and nodes of the
+  Krea 2 actions by itself; for the other actions, the custom nodes and weights
+  their graphs name go in by hand. **Weights are not included in this repository.**
 - An OpenAI-compatible endpoint for text, and ideally one that takes images.
-- The checkpoints, VAEs and LoRAs your graphs name. **They are not included.**
 
 ## Install
 
@@ -126,6 +134,26 @@ the page into `dist/web`. Each part also builds alone: `npm run build:server`,
 `build:mcp`, `build:plugins`, `build:web`. `npm test` runs the test suite.
 
 Open `http://localhost:3090`.
+
+### The ComfyUI pack
+
+`comfyui-nodes/comfyui-imagine` is the one thing to copy into ComfyUI by hand:
+
+```sh
+cp -r comfyui-nodes/comfyui-imagine /path/to/ComfyUI/custom_nodes/
+# restart ComfyUI
+```
+
+It brings the nodes the studio's graphs use (Segments, the precise-edit crop and
+stitch, lossless WebP/PNG saving) and the **setup** the studio asks before every
+run. When a request needs a node pack or a model ComfyUI does not have, the chat
+says what and how much, and asks **Install**; then it shows the download, restarts
+ComfyUI if a node pack came in, and the same request goes on. Only what the
+pack's `manifest.json` lists can be installed, each file checked by SHA-256.
+
+In **Settings → ComfyUI setup**: **Install automatically** skips the question,
+and a **Hugging Face token** is used for models that need an account (none of the
+current ones do). Details in [the pack's README](comfyui-nodes/comfyui-imagine/README.md).
 
 **There is no login until you turn it on.** Whoever reaches the address gets
 in, so on a shared network set a password in **Settings → Access** and switch on

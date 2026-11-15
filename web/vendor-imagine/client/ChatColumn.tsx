@@ -15,7 +15,7 @@ import type { ImagineJobView as ImagineJob, MediaFileRef } from '../../../shared
 import type { WorkflowProposal } from '../../../shared/imagine-chat.ts'
 import type { ImagineMessage, ImagineProject } from '../../../shared/imagine-projects.ts'
 import { isSeedMessage } from './imagine-projects.ts'
-import { clockStamp, formatEta } from './format.ts'
+import { clockStamp, formatEta, formatGigabytes } from './format.ts'
 import { GeneratingLabel, progressStageLabel } from './imagine-bits.tsx'
 import { Percent, ProgressBar, useJobProgress } from './job-progress.tsx'
 import { useTrace, type TraceStore } from './reading-trace.ts'
@@ -197,6 +197,8 @@ interface ChatColumnProps {
   readonly onCancelProposal: () => void
   readonly onStopReading: () => void
   readonly onStopJob: (id: string) => void
+  /** «Install»: the user agrees to what ComfyUI has to install for a job. */
+  readonly onApproveSetup: (id: string) => void
   readonly onResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void
 }
 
@@ -207,11 +209,32 @@ interface ChatColumnProps {
  * foot of the conversation. The progress is read here, from `job-progress`,
  * so a moving percentage redraws this row alone.
  */
-const JobRow = memo(function JobRow({ job, onStop }: {
+const JobRow = memo(function JobRow({ job, onStop, onApproveSetup }: {
   job: ImagineJob
   onStop: (id: string) => void
+  onApproveSetup: (id: string) => void
 }) {
   const live = useJobProgress(job.id)
+  /*
+   * ComfyUI first has to install what this run needs (comfyui-imagine's
+   * setup): the run waits for a yes, then shows the download instead of the
+   * render (2026-11-15).
+   */
+  if (job.notice === 'setup-needed' && job.setup !== undefined) {
+    const what = [...job.setup.packs.map(pack => pack.name), ...job.setup.models.map(model => model.name)].join(', ')
+    return (
+      <div className={css.chatWork} data-imagine-job={job.id}>
+        <span className={css.chatWorkLabel}>{translate('imagine.setupNeededTitle')}</span>
+        <span className={css.chatWorkStage}>{translate('imagine.setupNeeded', { what, size: formatGigabytes(job.setup.bytes) })}</span>
+        <span className={css.chatWorkLabel}>
+          <button type="button" className={css.approveSetup} onClick={() => { onApproveSetup(job.id) }}>{translate('imagine.setupInstall')}</button>
+          <button type="button" className={css.stopJob} onClick={() => { onStop(job.id) }}>{translate('imagine.cancel')}</button>
+        </span>
+      </div>
+    )
+  }
+  const setupProgress = live?.setupProgress ?? job.setupProgress
+  const installing = (live?.notice ?? job.notice) === 'setup-running' && job.promptId === undefined
   const percent = live?.progress?.percent
   const node = live?.progress?.nodeClass
   const stage = node === undefined ? undefined : progressStageLabel(node)
@@ -219,11 +242,16 @@ const JobRow = memo(function JobRow({ job, onStop }: {
     ? undefined
     : translate('imagine.etaLeft', { time: formatEta(live.progress.etaSeconds) })
   const scan = live?.scanProgress
+  const setupStage = installing && setupProgress !== undefined && setupProgress.stage !== ''
+    ? setupProgress.stage === 'restart' ? translate('imagine.setupRestart') : setupProgress.stage
+    : undefined
   return (
     <div className={css.chatWork} data-imagine-job={job.id}>
       <span className={css.chatWorkLabel}>
         {job.status === 'queued'
           ? translate('imagine.jobQueued')
+          : installing
+          ? translate('imagine.setupRunning')
           : scan === undefined
             ? <GeneratingLabel />
             : translate('imagine.scanningFrame', { done: String(scan.done), total: String(scan.total) })}
@@ -232,10 +260,10 @@ const JobRow = memo(function JobRow({ job, onStop }: {
           {translate('imagine.stop')}
         </button>
       </span>
-      {(stage !== undefined || eta !== undefined) && (
+      {(setupStage !== undefined || stage !== undefined || eta !== undefined) && (
         <span className={css.chatWorkStage}>
-          {stage === undefined ? undefined : translate(stage)}
-          {stage !== undefined && eta !== undefined ? ' · ' : undefined}
+          {setupStage ?? (stage === undefined ? undefined : translate(stage))}
+          {(setupStage !== undefined || stage !== undefined) && eta !== undefined ? ' · ' : undefined}
           {eta}
         </span>
       )}
@@ -320,7 +348,7 @@ function ReadingTrace({ trace, reading, onStop }: {
 export const ChatColumn = memo(function ChatColumn(props: ChatColumnProps) {
   const {
     project, picked, ownLive, reading, busy, trace, proposal, choose, composer, onOpenFile,
-    onClearChat, onHideChat, onRetry, onDeleteMessage, onApplyProposal, onCancelProposal, onStopReading, onStopJob,
+    onClearChat, onHideChat, onRetry, onDeleteMessage, onApplyProposal, onCancelProposal, onStopReading, onStopJob, onApproveSetup,
     onChooseFrame, onDismissChoose, onResizeStart,
   } = props
   /** How long the trace is: a new line moves the column down, a token does not. */
@@ -378,7 +406,7 @@ export const ChatColumn = memo(function ChatColumn(props: ChatColumnProps) {
        */}
       {ownLive.length > 0 && (
         <div className={css.chatWorking} data-imagine-working={ownLive.length}>
-          {ownLive.map(job => <JobRow key={job.id} job={job} onStop={onStopJob} />)}
+          {ownLive.map(job => <JobRow key={job.id} job={job} onStop={onStopJob} onApproveSetup={onApproveSetup} />)}
         </div>
       )}
       <div className={css.messages} ref={messagesRef}>

@@ -188,7 +188,7 @@ export function HostSettings({ sections = 'all', onPending }: {
     )
   }
 
-  const toggle = (label: string, hint: string, key: 'resumeSweep' | 'requireLogin') => (
+  const toggle = (label: string, hint: string, key: 'resumeSweep' | 'requireLogin' | 'autoSetup') => (
     <label className={own.toggleRow}>
       <input
         type="checkbox"
@@ -344,6 +344,26 @@ export function HostSettings({ sections = 'all', onPending }: {
             placeholder={view.passwordSet ? translate('imagine.host.14') : translate('imagine.host.15')}
             value={draft.password ?? ''}
             onChange={(event) => { set({ password: event.target.value }) }}
+          />
+        </label>
+      </section>
+
+      {/*
+        * comfyui-imagine's setup (2026-11-15): what a request needs and ComfyUI
+        * lacks is installed after a yes in the chat, or always with this on.
+        */}
+      <section className={css.section}>
+        <h3 className={css.sectionTitle}>{translate('imagine.host.setupTitle')}</h3>
+        {toggle(translate('imagine.host.autoSetup'), translate('imagine.host.autoSetupHelp'), 'autoSetup')}
+        <label className={own.row}>
+          <span className={own.label}>{translate('imagine.host.hfToken')}</span>
+          <input
+            className={own.input}
+            type="password"
+            autoComplete="off"
+            placeholder={view.hfTokenSet ? translate('imagine.host.hfTokenSet') : translate('imagine.host.hfTokenNone')}
+            value={draft.hfToken ?? ''}
+            onChange={(event) => { set({ hfToken: event.target.value }) }}
           />
         </label>
       </section>
