@@ -30,3 +30,6 @@ persona/*.json
 # Bundles of the TypeScript plugins: built by `npm run build:plugins` (and deploy)
 plugins/*/index.mjs
 !plugins/telegram/index.mjs
+
+# Python bytecode of the ComfyUI pack
+__pycache__/
