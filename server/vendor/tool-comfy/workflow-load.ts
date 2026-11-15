@@ -7,11 +7,11 @@
  * @module tool-comfy/workflow-load
  */
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { ComfyError } from '../comfyui/index.ts'
 import { customGraphFile, isCustomPath } from './custom-workflows.ts'
 import { finite, isPlainObject } from './guards.ts'
-import { isHighInputValue, type HighInput } from './high-inputs.ts'
+import { isHighInputValue, migrateRetiredPika, type HighInput } from './high-inputs.ts'
 import type { WorkflowMap } from './imagine-settings.ts'
 import type { LoadedWorkflow, WorkflowConfig, WorkflowExtras } from './index.ts'
 import { ALL_WORKFLOW_FIELDS, WORKFLOW_ROWS, type FieldSpec, type WorkflowGraphs } from './workflow-fields.ts'
@@ -175,6 +175,7 @@ export function loadWorkflows(workflows: WorkflowMap): {
   readonly holders: readonly GraphHolder[]
 } {
   const holders: GraphHolder[] = []
+  workflows = retiredPikaMigrated(workflows)
   const rows = WORKFLOW_ROWS.map((row): LoadedRow => {
     const entry = workflows[row.config] as (WorkflowConfig & WorkflowExtras) | undefined
     const loaded = entry?.path === undefined || entry.path === '' ? undefined : loadWorkflow(entry)
@@ -211,4 +212,25 @@ export function loadWorkflows(workflows: WorkflowMap): {
     ...Object.keys(high).length === 0 ? {} : { high },
   }
   return { rows, byRun, holders }
+}
+
+/**
+ * The entries that still name a retired Pika pair, pointed at the merged
+ * graph (see {@link migrateRetiredPika}), with a note in the log: a config
+ * copied from an older config.example.yaml keeps starting instead of failing
+ * on a file that is gone.
+ * @param workflows - the workflow entries.
+ * @returns the same map, or a copy with the old entries rewritten.
+ */
+function retiredPikaMigrated(workflows: WorkflowMap): WorkflowMap {
+  let out: WorkflowMap | undefined
+  for (const [key, entry] of Object.entries(workflows)) {
+    if (!isPlainObject(entry) || typeof entry.path !== 'string' || isCustomPath(entry.path)) continue
+    const { entry: migrated, migrated: changed } = migrateRetiredPika(entry as { path?: string; pathHigh?: string; highInputs?: readonly HighInput[] }, existsSync)
+    if (!changed) continue
+    out ??= { ...workflows }
+    ;(out as Record<string, unknown>)[key] = migrated
+    console.warn(`[imagine] workflows.${key}: ${entry.path} was merged into ${String(migrated.path)} (quality = highInputs); update config.yaml from config.example.yaml`)
+  }
+  return out ?? workflows
 }

@@ -189,3 +189,32 @@ test('the loader keeps only usable overrides, and the pathHigh graph takes none'
   ])
   assert.equal(byRun.high?.loopVideo?.highInputs, undefined)
 })
+
+test('a config from before the merge still loads: the old pair becomes the merged graph and its highInputs', async () => {
+  const { migrateRetiredPika, RETIRED_PIKA_PAIRS } = await import('../server/vendor/tool-comfy/high-inputs.ts')
+  const workflows: Record<string, Record<string, unknown>> = {}
+  for (const { name, entry } of PAIRS) {
+    const { highInputs: _high, ...rest } = entryOf(entry)
+    workflows[entry] = {
+      ...rest,
+      path: join(ROOT, 'workflows', `comfyui_video_${name}_pika_fast_API.json`),
+      pathHigh: join(ROOT, 'workflows', `comfyui_video_${name}_pika_quality_API.json`),
+    }
+  }
+  const { rows, byRun } = loadWorkflows(workflows as never)
+  for (const { entry, run } of PAIRS) {
+    const row = rows.find(candidate => candidate.run === run)
+    assert.ok(row?.loaded !== undefined, `${entry} loads`)
+    assert.deepEqual(row.loaded.highInputs, exampleWorkflows[entry]?.highInputs, `${entry}: the overrides of config.example.yaml`)
+    assert.equal(byRun.high?.[run], undefined, `${entry}: no pathHigh graph left`)
+  }
+  // The table names every merged graph config.example.yaml ships, with its overrides.
+  for (const { name, entry } of PAIRS) {
+    const retired = RETIRED_PIKA_PAIRS[`comfyui_video_${name}_pika_fast_API.json`]
+    assert.equal(retired?.file, String(exampleWorkflows[entry]?.path).split('/').pop())
+    assert.deepEqual(retired?.highInputs, exampleWorkflows[entry]?.highInputs)
+  }
+  // A deployment that keeps its own copies of the old files is left alone.
+  const kept = migrateRetiredPika({ path: '/srv/x/comfyui_video_i2v_pika_fast_API.json', pathHigh: '/srv/x/q.json' }, () => true)
+  assert.equal(kept.migrated, false)
+})

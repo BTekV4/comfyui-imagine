@@ -118,3 +118,80 @@ export function applyHighInputs(graph: ComfyGraph, inputs: readonly HighInput[] 
   }
   dropUnused(graph, released)
 }
+
+/** The quality overrides of each merged Pika graph, as config.example.yaml writes them. */
+const I2V_HIGH: readonly HighInput[] = [
+  { nodeId: 'pika:lora', field: 'lora_name', value: 'pika_h3_flex_fl2va_v1_bf16.safetensors' },
+  { nodeId: '105:17', field: 'sampler_name', value: 'lcm' },
+  { nodeId: '105:14', field: 'sigmas', value: ['pika:sigmas', 0] },
+  { nodeId: '105:143', field: 'shift_video', value: 12 },
+]
+
+/**
+ * The Pika pairs retired on 2026-11-15, by the name of their fast file: the
+ * graph that replaced the pair and the overrides of its quality recipe.
+ */
+export const RETIRED_PIKA_PAIRS: Readonly<Record<string, { readonly file: string; readonly highInputs: readonly HighInput[] }>> = {
+  'comfyui_video_i2v_pika_fast_API.json': { file: 'comfyui_video_i2v_pika_API.json', highInputs: I2V_HIGH },
+  'comfyui_video_loop_pika_fast_API.json': {
+    file: 'comfyui_video_loop_pika_API.json',
+    highInputs: [
+      { nodeId: 'pika:lora', field: 'lora_name', value: 'pika_h3_flex_ref2va_v1_bf16.safetensors' },
+      { nodeId: '105:17', field: 'sampler_name', value: 'lcm' },
+      { nodeId: '105:14', field: 'sigmas', value: ['pika:sigmas', 0] },
+    ],
+  },
+  'comfyui_video_extend_pika_fast_API.json': {
+    file: 'comfyui_video_extend_pika_API.json',
+    highInputs: [
+      { nodeId: 'pika:lora', field: 'lora_name', value: 'pika_h3_flex_fl2va_v1_bf16.safetensors' },
+      { nodeId: '1682:135', field: 'sampler_name', value: 'lcm' },
+      { nodeId: '1682:125', field: 'sigmas', value: ['pika:sigmas', 0] },
+      { nodeId: 'pika:lora', field: 'model', value: ['1682:200', 0] },
+    ],
+  },
+  'comfyui_video_song_pika_fast_API.json': {
+    file: 'comfyui_video_song_pika_API.json',
+    highInputs: [
+      { nodeId: 'pika:lora', field: 'lora_name', value: 'pika_h3_flex_ref2va_v1_bf16.safetensors' },
+      { nodeId: '1682:135', field: 'sampler_name', value: 'lcm' },
+      { nodeId: '1682:125', field: 'sigmas', value: ['pika:sigmas', 0] },
+    ],
+  },
+}
+
+/** The pieces of a workflow entry the migration reads and writes. */
+interface PikaEntry {
+  readonly path?: string
+  readonly pathHigh?: string
+  readonly highInputs?: readonly HighInput[]
+}
+
+/**
+ * A config written before the Pika pairs were merged, made to work: an entry
+ * whose `path` names a retired fast file that is no longer on disk reads the
+ * merged graph next to it, and its `pathHigh` to the retired quality file
+ * becomes the merged graph's `highInputs`. An entry whose files still exist
+ * (a deployment that keeps its own copies) is left as it is.
+ * @param entry - one workflow entry, paths already resolved.
+ * @param exists - whether a file is on disk.
+ * @returns the entry to load, and whether it was rewritten.
+ */
+export function migrateRetiredPika<T extends PikaEntry>(entry: T, exists: (file: string) => boolean): { readonly entry: T; readonly migrated: boolean } {
+  const path = entry.path
+  if (path === undefined || exists(path)) return { entry, migrated: false }
+  const slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+  const retired = RETIRED_PIKA_PAIRS[path.slice(slash + 1)]
+  if (retired === undefined) return { entry, migrated: false }
+  const { pathHigh, ...rest } = entry
+  const keepHigh = pathHigh !== undefined && pathHigh !== '' && exists(pathHigh)
+  return {
+    entry: {
+      ...rest,
+      path: `${path.slice(0, slash + 1)}${retired.file}`,
+      ...keepHigh ? { pathHigh } : {},
+      highInputs: entry.highInputs ?? retired.highInputs,
+    } as unknown as T,
+    migrated: true,
+  }
+}
