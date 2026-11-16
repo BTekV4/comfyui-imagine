@@ -50,6 +50,15 @@ the repository ships Italian (see [Languages](#languages)).
   model writes one prompt per scene. Make video, extend (up to 60 s), animated
   loops (the last scene lands back on the first frame) and both swaps work this
   way; the swaps render at 480p, 720p or 1080p.
+- **Ready-made models, one form each.** Sixteen templates under the home
+  page (photo edit, background, headshot, profile picture, restyle, product
+  colour, smart resize, collage, e-commerce set, UGC photos, editorial poster,
+  icon maker, emoji pack, mascot, character sprite, hero reveal): fill in the
+  few fields the model asks for and the studio queues the runs it needs — one
+  per choice, one per style, each chained into what has to happen to its
+  result (cut the subject out of every emoji, put the still on the ratio you
+  asked for). Collages and resizes are composed with ffmpeg, with no AI in the
+  middle.
 - **A job queue that survives.** Long renders report progress, can be cancelled,
   and a music video left half-made is picked up again after a restart.
 - **A photo viewer with tools.** Every picture opens with **Segments** (each
@@ -61,7 +70,9 @@ the repository ships Italian (see [Languages](#languages)).
 - **An MCP server.** `mcp/` exposes the studio's projects, files and jobs as
   typed tools for MCP clients (Claude Code and other agents). It is a separate
   process that talks to the studio only through its HTTP API — see
-  [mcp/README.md](mcp/README.md).
+  [mcp/README.md](mcp/README.md). The home page's sixteen models are there too
+  (`imagine_templates`, `imagine_run_template`), so an agent can read a form
+  and run it with gallery files.
 
 ## Screenshots
 
@@ -259,6 +270,52 @@ the pins.
 
 There is no LoRA switching by keyword anywhere: a graph is static, and what
 varies at run time is only what the pins address.
+
+## The templates
+
+The sixteen models of the home page live in `shared/imagine-templates.ts`: the
+fields a form asks for (`photos`, `choice`, `aspect`, `text`), the runs of each
+model, and the expansion that turns a form's answers into a list of runs. The
+page imports the catalog directly, so the form and the server cannot disagree
+about what a value means; the host reaches the same file through
+`GET /comfy-imagine/templates` and `POST /comfy-imagine/template`, and the MCP
+server exposes the two as the `imagine_templates` and `imagine_run_template`
+tools.
+
+A run is a job — `generate`, `remix`, `bg`, `video`, `loop` — with an English
+prompt that holds placeholders: a choice stands for the `prompt` of the value
+picked, `forEach` unrolls a run once per selected value (one picture per style,
+one emoji per expression), a line whose placeholders are all empty is dropped,
+and `then` hangs further steps on the output of the run before it (a cut-out,
+a loop, a still put on another ratio). Every job is queued through the same
+path as a run started by hand (`server/vendor/tool-comfy/job-start.ts`), so
+the checks, the board project and the live tiles are the same. Every planned
+body, chain steps included, and every gallery file a run reads are checked
+before the first run is queued, so a refused form starts nothing; a run that
+still stops half way answers 202 with what did start and an `error`. The
+chains wait on the queue in the background for as long as a step is queued
+(a step is given up on only after three hours *running*), log every early
+stop with the template and the step, and live in memory only — an update
+restarts the queue too, so a chain that had not queued its next step yet is
+not resumed. From the home page a run lands in a project like a composer run:
+the open one, the one named after the model, or a new one.
+
+Two runs are not jobs at all: a collage (`grid`, `strip`) and a resize are
+composed by ffmpeg in `server/vendor/tool-comfy/template-compose.ts`, and the
+`text` layout writes the user's own words under the picture (a product card,
+a poster) — no model in the middle, so the words come out exactly as typed.
+
+Note on ratios: the `remix` graph takes its canvas from the photo it edits, so
+a model that needs another ratio renders the edit and then puts the still on
+that canvas with ffmpeg (`onCanvas` in the catalog). Nothing is redrawn by
+that second step: the frame is cropped, or laid on the background colour the
+run asks for.
+
+Each model's card carries its own cover — a render of the studio's own,
+`web/public/imagine/tpl-<id>.webp`, made with the graph itself from invented
+subjects. To change one, replace that file (768 × 768 WebP) or name it in the
+catalog's `cover` field; a model with no `cover` falls back to the gradient of
+its group.
 
 ## The home covers
 

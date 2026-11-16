@@ -56,6 +56,8 @@ header.
 | `imagine_object_swap` | Change, remove or add an object in a video, or change its setting (480p/720p/1080p) |
 | `imagine_run_action` | Any other studio action (upscale, background, music, voice, loop and extend up to 60 s, …) |
 | `imagine_custom_workflows` | The user's uploaded workflows, run with `imagine_run_action` `custom` |
+| `imagine_templates` | The studio's own ready-made models (photo edit, headshot, collage, product set, emoji pack, …), with the fields each form takes |
+| `imagine_run_template` | Run a model (`template_id`): the answers (`values`) and the gallery photos (`files`) become the studio's jobs |
 | `imagine_job` | A job's state, waiting up to 50 s per call; finished jobs return their files |
 | `imagine_list_jobs` | Queued and running jobs |
 | `imagine_cancel_job` | Stop a job |
@@ -71,6 +73,17 @@ LaMa fills from the background around the object instead of redrawing its edge.
 not exist creates that project *with the job already in it* — an empty project
 created from outside is removed by the page on its next sync. The files a job
 starts from (its `source`, `reference`, …) are put into the project too.
+
+**Templates.** `imagine_templates` reads the studio's own catalog
+(`GET /comfy-imagine/templates`), so the MCP offers the same models the home
+page does, down to the option values: the answer carries the shape of each
+form — photo counts, options with their values, defaults — which is all
+`imagine_run_template` needs to build a valid request. A run goes through the
+studio's own path (`POST /comfy-imagine/template`), which validates the answers,
+expands the model into its runs and adopts them into the project, so the steps
+a model chains (a picture, then its cut-out) are queued by the studio when the
+one before them finishes. The files a model composes itself, with no AI in the
+middle (a collage, a resize), come back ready in the run's answer.
 
 Sizes, video aspect labels and allowed durations come from
 the same helpers the page uses, so a tool call and a click produce the same

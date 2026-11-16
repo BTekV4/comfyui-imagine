@@ -503,6 +503,24 @@ export const MESSAGES = {
   'social.fileNotFoundNamed': { it: 'File non trovato: {name}', en: 'file not found: {name}' },
   'social.storyCannotGo': { it: "Non puo' uscire come storia: {reason}", en: 'it cannot go out as a story: {reason}' },
   'social.dateInvalid': { it: 'Data non valida: {value}', en: 'invalid date: {value}' },
+  /* The home page's templates: a form the user fills in, and the sentences that refuse it. */
+  'template.notFound': { it: 'modello «{id}» non trovato', en: 'no such model: {id}' },
+  'template.nothingToRun': { it: 'questo modello non ha niente da eseguire con queste risposte', en: 'this model has nothing to run with these answers' },
+  'template.fileNotGallery': { it: 'non è un file della galleria: {name}', en: 'not a gallery file: {name}' },
+  'template.photosCount': { it: '{label}: servono da {min} a {max} foto', en: '{label}: between {min} and {max} photos are needed' },
+  'template.textRequired': { it: '{label} non può restare vuoto', en: '{label} cannot be left empty' },
+  'template.textTooLong': { it: '{label}: {max} caratteri al massimo', en: '{label}: {max} characters at most' },
+  'template.valueNotOffered': { it: '{label}: «{value}» non è fra le scelte', en: '{label}: "{value}" is not one of the choices' },
+  'template.oneValueOnly': { it: '{label}: va scelto un solo valore', en: '{label}: only one value can be chosen' },
+  'template.choiceRequired': { it: '{label}: serve una scelta', en: '{label}: a choice is needed' },
+  'template.aspectRequired': { it: '{label}: serve un formato', en: '{label}: a frame is needed' },
+  'template.composeFailed': { it: 'non sono riuscito a comporre il file: {reason}', en: 'could not compose the file: {reason}' },
+  'template.tooManyItems': { it: '{label}: {max} voci al massimo', en: '{label}: {max} items at most' },
+  'template.fileMissing': { it: 'il file non è nella galleria: {name}', en: 'the file is not in the gallery: {name}' },
+  'template.partial': {
+    it: '{count} passi avviati, poi il modello si è fermato: {reason}',
+    en: '{count} steps started, then the model stopped: {reason}',
+  },
 } as const satisfies Readonly<Record<string, MessageEntry>>
 
 /** A key of the table. */

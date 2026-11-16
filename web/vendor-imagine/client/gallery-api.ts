@@ -451,6 +451,33 @@ export async function startImagineJob(
 }
 
 /**
+ * Queue the runs of one home-page model (the «Models» section).
+ *
+ * The server expands the catalog itself (`shared/imagine-templates.ts`) and
+ * queues every run through the job route, so the answers come back as ordinary
+ * jobs: their tiles turn up on the board with the others, and a chain
+ * (`then`) continues once the run before it settles.
+ * @param templateId - which model (`photo-edit`, `ugc`, …).
+ * @param request - the answers, the gallery files of each photo field, and the project they land in.
+ * @returns the ids of the jobs queued, the files a run composed on the server,
+ *   and `error` when the run stopped half way (what is listed did start).
+ */
+export async function runTemplate(
+  templateId: string,
+  request: {
+    values: Record<string, string | string[]>
+    files: Record<string, string[]>
+    projectId?: string
+  },
+): Promise<{ jobs: string[]; files: string[]; error?: string }> {
+  return await postJson<{ jobs: string[]; files: string[]; error?: string }>(
+    '/comfy-imagine/template',
+    { templateId, ...request },
+    'template',
+  )
+}
+
+/**
  * Upload a dropped still or clip to POST /comfy-media.
  * @param file - the browser file.
  * @returns the new gallery item.

@@ -1,48 +1,44 @@
 /**
  * The routes under `/comfy-imagine`: the job queue, the projects, the
  * workflows and their edits, the settings page, the ComfyUI server, the
- * music-video form, sight, titles and the chat — one table from the path after
- * the prefix to the handler that answers it.
+ * music-video form, sight, titles, the chat and the home page's templates —
+ * one table from the path after the prefix to the handler that answers it.
  * @module tool-comfy/imagine-routes
  */
 
-import { SWAP_RESOLUTIONS, type SwapResolution } from '../../../shared/imagine-sizing.ts'
 import { basename } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ImagineHost } from '../../src/host.ts'
-import { currentLanguage, message, translateMessage } from '../../src/messages.ts'
+import { currentLanguage, message, translateMessage, type MessageKey } from '../../src/messages.ts'
 import { allowOnly, languageOf, notAllowed, readObject, restOf, sendJson, writeJsonTagged } from '../../src/route-kit.ts'
+import { expandTemplate, TEMPLATES, templateById, templateProblems } from '../../../shared/imagine-templates.ts'
 import { kindOf, safeBasename } from './gallery.ts'
 import { isPlainObject } from './guards.ts'
-import { isImagineAction } from './imagine-actions.ts'
 import { readImagineChat, type ImagineChatRequest, type WorkflowInventory } from './imagine-chat.ts'
-import {
-  cancelImagineJob, getImagineJob, listImagineJobs, pruneOldJobs, startImagineJob, type ImagineJob, type SpeakTarget,
-} from './imagine-jobs.ts'
+import { cancelImagineJob, getImagineJob, listImagineJobs, pruneOldJobs, type ImagineJob } from './imagine-jobs.ts'
 import { approveSetup } from './job-queue.ts'
-import { invalidChoiceReason } from './job-request.ts'
+import { projectIdOf, routeOf, startFromBody, type JobBody, type JobStartContext } from './job-start.ts'
+import { isTemplatePhotoName, runTemplate } from './template-jobs.ts'
+import { fieldLabels } from './template-labels.ts'
 import {
   applyOverrideOps, imagineSettingsPath, readImagineOverrides, saveImagineOverrides, workflowConfigKey, type WorkflowMap,
 } from './imagine-settings.ts'
 import { lookSoon } from './imagine-sight.ts'
-import { adoptJobsInto, loadImagineStoreJson, saveImagineStore } from './imagine-store.ts'
+import { loadImagineStoreJson, saveImagineStore } from './imagine-store.ts'
 import { startMusicClip } from './music-clip.ts'
 import type { LoraInGraph } from './lora.ts'
 import { loraRoute } from './custom-workflow-routes.ts'
 import { readProjectTitle } from './project-title.ts'
-import { parseSize } from './snap-size.ts'
 import type { WorkflowChange } from './workflow-edit.ts'
 import type { ImagineSettingsView, WorkflowDetail } from '../../../shared/imagine-settings-view.ts'
-import { WORKFLOW_KEYS, type ImagineWorkflows } from './workflow-fields.ts'
-import type {
-  ImagineJobView, ImagineObjectMode, ImaginePlacement, ImagineQuality, ImagineRegion,
-  ImagineSettingOp, ImagineSpeed, ModelRoute,
-} from '../../../shared/imagine-types.ts'
+import { WORKFLOW_KEYS } from './workflow-fields.ts'
+import type { ImagineJobView, ImagineSettingOp } from '../../../shared/imagine-types.ts'
 
-/** Everything the studio's routes are handed at boot. */
-interface ImagineRoutes {
-  /** Plugin context. */
-  readonly ctx: ImagineHost
+/**
+ * Everything the studio's routes are handed at boot: what a job needs to start
+ * ({@link JobStartContext}) and what the other routes read.
+ */
+export interface ImagineRoutes extends JobStartContext {
   /** The workflows the studio may talk about. */
   readonly inventory: WorkflowInventory
   /** Applies a confirmed workflow change. */
@@ -62,14 +58,8 @@ interface ImagineRoutes {
    */
   readonly tuneLora: (key: string, node: string, strength: number) =>
   Promise<{ backup: string; loras: readonly LoraInGraph[] }>
-  /** The loaded graphs. */
-  readonly workflows: ImagineWorkflows
-  /** The validated media output directory. */
-  readonly outputDir: string
   /** The configuration layers this entry booted with. */
   readonly settings: ImagineSettingsSurface
-  /** Where a `speak` job reads its text out loud, when configured. */
-  readonly speak: SpeakTarget | undefined
 }
 
 /** One named route: the request, the response and what the routes were handed. */
@@ -349,6 +339,149 @@ const chatRoute: Route = async (req, res, { ctx, inventory, workflows, outputDir
   sendJson(res, 200, await readImagineChat(ctx, asked, inventory, outputDir))
 }
 
+/**
+ * The catalog of the home page's ready-made models, for the callers that only
+ * speak HTTP.
+ *
+ * The page imports the same list from `shared/imagine-templates.ts`, so this is
+ * for the MCP server and the tests. The runs are left out: they are the
+ * server's side of the contract, and a client writing bodies out of them would
+ * be re-implementing `expandTemplate`.
+ */
+const templatesRoute: Route = async (req, res) => {
+  if (!allowOnly(req, res, 'GET', 'HEAD')) return
+  sendJson(res, 200, { templates: TEMPLATES.map(({ runs: _runs, ...rest }) => rest) })
+}
+
+/**
+ * One template, run: the form's answers in, the queued jobs and the composed
+ * files out.
+ *
+ * The checks are the form's own, in the same order, because they are the
+ * shared engine's (`templateProblems`): a body the page would have refused is
+ * refused here with the same sentence. What runs is the job route's own path
+ * ({@link startFromBody}), so the argument checks, the project adoption and
+ * the live tiles are the ones every other run has.
+ *
+ * Answers 202: a template queues work; its chains finish minutes later, in the
+ * background, and are read off the job queue like any other run. Every planned
+ * body is checked before the first is queued (`runTemplate`), so a refusal is
+ * a 400 with nothing started; a run that stops half way anyway answers 202
+ * with what did start and the sentence of what stopped it (`error`), so the
+ * caller files those runs instead of retrying them all.
+ */
+const templateRoute: Route = async (req, res, routes) => {
+  if (!allowOnly(req, res, 'POST')) return
+  const body = await readObject<{
+    /** Which of {@link TEMPLATES} the answers are for. */
+    templateId?: unknown
+    /** The choice, aspect and text fields, by field id. */
+    values?: unknown
+    /** The photo fields, each a list of gallery names, by field id. */
+    files?: unknown
+    /** The board project the runs belong to. */
+    projectId?: unknown
+  }>(req, MAX_BODY_BYTES)
+  const template = typeof body.templateId === 'string' ? templateById(body.templateId) : undefined
+  if (template === undefined) {
+    sendJson(res, 400, { error: message('template.notFound', { id: typeof body.templateId === 'string' ? body.templateId : '' }) })
+    return
+  }
+  /*
+   * A body is not trusted: `values` and `files` are maps of field id to
+   * answer, and a list where a map belongs would be read as field names.
+   */
+  if ((body.values !== undefined && !isPlainObject(body.values))
+    || (body.files !== undefined && !isPlainObject(body.files))) {
+    sendJson(res, 400, { error: message('json.objectRequired') })
+    return
+  }
+  const values = valuesOf(body.values)
+  const files = filesOfBody(body.files)
+  const stranger = galleryStranger(files)
+  if (stranger !== undefined) {
+    sendJson(res, 400, { error: message('template.fileNotGallery', { name: stranger }) })
+    return
+  }
+  // The field names in the sentence's own language: an Italian refusal with
+  // the English name of the field read as two languages in one line.
+  const problems = templateProblems(template, { values, files }, await fieldLabels())
+  if (problems.length > 0) {
+    sendJson(res, 400, {
+      error: problems.map(problem => message(problem.key as MessageKey, problem.args)).join('; '),
+    })
+    return
+  }
+  if (expandTemplate(template, { values, files }).length === 0) {
+    sendJson(res, 400, { error: message('template.nothingToRun') })
+    return
+  }
+  try {
+    // The chains go on in the background: the answer carries the runs queued
+    // now, and the board shows the steps of a `then` as they are queued.
+    const { jobs, files: composed, error } = await runTemplate(routes, template, {
+      values, files, projectId: projectIdOf(body.projectId),
+    })
+    sendJson(res, 202, { jobs, files: composed, ...error === undefined ? {} : { error } })
+  } catch (error: unknown) {
+    sendJson(res, 400, { error: error instanceof Error ? error.message : String(error) })
+  }
+}
+
+/**
+ * The `values` of a template body, as the shared engine reads them: a string
+ * or a list of strings per field, anything else dropped — the engine checks
+ * what is offered, and a number is not one of the answers a form gives.
+ * @param source - the `values` field as it arrived.
+ * @returns the answers, by field id.
+ */
+function valuesOf(source: unknown): Readonly<Record<string, string | readonly string[]>> {
+  if (!isPlainObject(source)) return {}
+  const kept: Record<string, string | readonly string[]> = {}
+  for (const [field, value] of Object.entries(source)) {
+    if (typeof value === 'string') kept[field] = value
+    else if (Array.isArray(value)) kept[field] = value.filter((entry): entry is string => typeof entry === 'string')
+  }
+  return kept
+}
+
+/**
+ * The `files` of a template body, as the shared engine reads them: one list of
+ * gallery names per photo field. A single name is taken as a list of one, and
+ * anything that is not a name is dropped — `templateProblems` counts what is
+ * left, and refuses a form that lost its photos.
+ * @param source - the `files` field as it arrived.
+ * @returns the names, by field id.
+ */
+function filesOfBody(source: unknown): Readonly<Record<string, readonly string[]>> {
+  if (!isPlainObject(source)) return {}
+  const kept: Record<string, readonly string[]> = {}
+  for (const [field, value] of Object.entries(source)) {
+    if (typeof value === 'string') kept[field] = [value]
+    else if (Array.isArray(value)) kept[field] = value.filter((entry): entry is string => typeof entry === 'string')
+  }
+  return kept
+}
+
+/**
+ * The first name a template body offers as a photo that is not a gallery photo.
+ *
+ * A run reads its pictures out of the media folder: a name with a path in it,
+ * a dot-file (an intermediate, a composition still being written), or a file
+ * that is not a picture (a clip, a song) is not a photo and has to be refused
+ * before a job is queued on it.
+ * @param files - the photo fields of the body.
+ * @returns the offending name, or undefined when every name is a gallery file.
+ */
+function galleryStranger(files: Readonly<Record<string, readonly string[]>>): string | undefined {
+  for (const names of Object.values(files)) {
+    for (const name of names) {
+      if (!isTemplatePhotoName(name)) return name
+    }
+  }
+  return undefined
+}
+
 /** The named paths under `/comfy-imagine`, and the handler of each. */
 const ROUTES: Readonly<Record<string, Route>> = {
   projects: projectsRoute,
@@ -360,6 +493,8 @@ const ROUTES: Readonly<Record<string, Route>> = {
   sight: sightRoute,
   title: titleRoute,
   chat: chatRoute,
+  templates: templatesRoute,
+  template: templateRoute,
 }
 
 /**
@@ -450,9 +585,12 @@ async function workflowRoute(
 async function jobRoute(
   req: IncomingMessage,
   res: ServerResponse,
-  { ctx, workflows, outputDir, speak }: ImagineRoutes,
+  routes: ImagineRoutes,
   jobId: string,
 ): Promise<void> {
+  // The queue, its progress and the cancels read the ComfyUI client; the POST
+  // is `startFromBody`, which reads the rest off the same object.
+  const { ctx } = routes
   if (req.method === 'GET' || req.method === 'HEAD') {
     if (jobId.length === 0) {
       pruneOldJobs()
@@ -492,218 +630,12 @@ async function jobRoute(
     sendJson(res, approved ? 200 : 404, { ok: approved })
     return
   }
-  const body = await readObject<{
-    action?: string
-    prompt?: string
-    source?: string
-    size?: string
-    aspectRatio?: string
-    seconds?: number
-    megapixels?: number
-    /** Character and object swap only: `480p`, `720p` or `1080p`. */
-    swapResolution?: string
-    /** The clip's render speed: `fast` as the graph ships, `slow` for more steps. */
-    speed?: string
-    /** The photo's recipe: `standard` as the graph ships, `high` for more steps. */
-    quality?: string
-    lyrics?: string
-    voice?: string
-    pitch?: number
-    count?: number
-    /** `scanFrame` only: how many candidate frames to draw (1-20). */
-    candidates?: number
-    /** `custom` only: which uploaded workflow to run. */
-    customWorkflowId?: string
-    /** `custom` only: the card's own controls, keyed `<node>.<field>`. */
-    customFields?: Record<string, unknown>
-    /** `custom` only: the card's file slots, keyed by node id. */
-    customFiles?: Record<string, string>
-    /**
-     * A recreation's opening frame, already in the gallery: one of the
-     * candidates a `scanFrame` drew, or a frame of an earlier run. Handed in,
-     * the run draws nothing and renders from that picture.
-     */
-    frame?: string
-    song?: string
-    /** The second photo of an `objectSwap` or a `compose`; the first file travels in `source`. */
-    reference?: string
-    /** `relight` only: the light look to paint, by slug. */
-    light?: string
-    /**
-     * `objectSwap` only: which of the four recipes runs — `change` (the photo
-     * goes in), `remove`, `background`, `add`. Checked against the shared list
-     * by `invalidChoiceReason` before a job exists.
-     */
-    objectMode?: string
-    /**
-     * `objectSwap` only, `add` mode: the box the new object goes into, as
-     * shares of the frame ({ x, y, width, height }). Checked by
-     * `invalidChoiceReason` before a job exists.
-     */
-    placement?: unknown
-    upscaleTo?: number
-    region?: unknown
-    lastSource?: string
-    mask?: string
-    sources?: unknown
-    clipSeconds?: number
-    /** A montage whose shots stay in their own photo, joined on hard cuts. */
-    hardCuts?: boolean
-    /**
-     * Whether a recreation keeps the reference clip's soundtrack.
-     *
-     * Absent or false leaves the audio the video model wrote under the new
-     * picture; true lays the reference clip's own track over the finished
-     * video, which is what a recreation of a filmed clip usually wants.
-     */
-    keepAudio?: boolean
-    /** Character swap only: false turns lip-sync off (the people do not sing or talk along). */
-    lipSync?: boolean
-    /**
-     * The board project this generation belongs to. The jobs are adopted
-     * into it at once, so the canvas shows them while they run.
-     */
-    projectId?: unknown
-    model?: unknown
-  }>(req, MAX_BODY_BYTES)
-  if (!isImagineAction(body.action)) {
-    sendJson(res, 400, { error: message('job.actionInvalid') })
-    return
-  }
-  // Reject bad parameters here rather than letting the job be created and
-  // die later: a caller that sends the label it sees on the button ("720p")
-  // should read why at the POST, not poll a queued job into an error.
-  const invalid = invalidRequestReason(body) ?? invalidChoiceReason(body)
-  if (invalid !== undefined) {
-    sendJson(res, 400, { error: invalid })
-    return
-  }
-  // The model the composer's chip is showing. Imagine writes text before it
-  // runs a graph — a song's caption and structure tags, a story's beats, a
-  // look's rewrite — and those passes take this route first, so the chip
-  // names the model that actually writes rather than one the deployment
-  // pinned behind it.
-  const chosen = routeOf(body.model)
+  const body = await readObject<JobBody>(req, MAX_BODY_BYTES)
   try {
-    // The card's file slots, read once: the job takes them and the project adopts them.
-    const customFiles = isPlainObject(body.customFiles)
-      ? Object.fromEntries(Object.entries(body.customFiles)
-        .filter((entry): entry is [string, string] => /^\d+$/.test(entry[0]) && typeof entry[1] === 'string' && entry[1].length > 0))
-      : undefined
-    const job = await startImagineJob(ctx, workflows, outputDir, {
-      action: body.action,
-      prompt: typeof body.prompt === 'string' ? body.prompt : '',
-      ...typedFields(body, JOB_FIELDS),
-      // Already checked against the ladder by `invalidRequestReason`.
-      ...(SWAP_RESOLUTIONS as readonly unknown[]).includes(body.swapResolution)
-        ? { swapResolution: body.swapResolution as SwapResolution }
-        : {},
-      ...isPlainObject(body.customFields) ? { customFields: body.customFields } : {},
-      ...customFiles === undefined ? {} : { customFiles },
-      ...typeof body.region === 'object' && body.region !== null ? { region: body.region as ImagineRegion } : {},
-      // One photo per shot: a montage instead of a single take. Filtered to
-      // strings here so a malformed body cannot reach the queue as a name.
-      ...Array.isArray(body.sources)
-        ? { sources: body.sources.filter((name): name is string => typeof name === 'string') }
-        : {},
-      ...body.hardCuts === true ? { hardCuts: true } : {},
-      ...body.keepAudio === true ? { keepAudio: true } : {},
-      ...body.lipSync === false ? { lipSync: false } : {},
-      // Already checked against the shared lists by `invalidChoiceReason`.
-      ...body.speed === undefined ? {} : { speed: body.speed as ImagineSpeed },
-      ...body.quality === undefined ? {} : { quality: body.quality as ImagineQuality },
-      ...body.objectMode === undefined ? {} : { objectMode: body.objectMode as ImagineObjectMode },
-      // The box is an object, not one of the scalar fields above: it reaches
-      // the plan as it came, and the plan checks it (and defaults it).
-      ...typeof body.placement === 'object' && body.placement !== null
-        ? { placement: body.placement as ImaginePlacement }
-        : {},
-      ...chosen === undefined ? {} : { model: chosen },
-    }, speak)
-    /*
-     * A job queued from outside the studio belongs to the project it names,
-     * from the moment it is queued.
-     *
-     * The board draws a live tile only for the jobs a project lists, so a
-     * generation started through this route was invisible while it ran: the
-     * work happened and the canvas showed nothing until it finished (the
-     * user asked three times why). A story's shots are all queued before
-     * this returns, so adopting by their story puts the whole chain on the
-     * board live.
-     */
-    const project = projectIdOf(body.projectId)
-    if (project !== undefined) {
-      const mine = job.storyId === undefined
-        ? [job.id]
-        : listImagineJobs().filter(seen => seen.storyId === job.storyId).map(seen => seen.id)
-      /*
-       * The files the job starts from go into the project too (2026-11-07).
-       * The page puts a file on the board when it is uploaded or dropped; a
-       * job queued from outside (an LLM, the MCP) only named it, so the
-       * project showed the results and none of the clips they were made from
-       * ("I have to go and find them one by one in the media"). A file key in the
-       * adoptions is a file, a bare id is a job (`withSharedEdits`).
-       */
-      const inputs = [body.source, body.reference, body.lastSource, body.frame, body.song,
-        ...Array.isArray(body.sources) ? body.sources : [],
-        ...Object.values(customFiles ?? {})]
-        .filter((name): name is string => typeof name === 'string' && safeBasename(name) === name && kindOf(name) !== undefined)
-      await adoptJobsInto([project], [...mine, ...new Set(inputs)]).catch(() => undefined)
-    }
-    sendJson(res, 202, job)
+    sendJson(res, 202, await startFromBody(routes, body))
   } catch (error: unknown) {
     sendJson(res, 400, { error: error instanceof Error ? error.message : String(error) })
   }
-}
-
-
-/**
- * The plain fields of a job request and the type each must have: a field of
- * another type is dropped, as the spread-per-field this replaced did.
- */
-const JOB_FIELDS = {
-  source: 'string', size: 'string', aspectRatio: 'string', seconds: 'number', megapixels: 'number',
-  lyrics: 'string', voice: 'string', pitch: 'number', count: 'number', candidates: 'number', song: 'string', reference: 'string',
-  frame: 'string', upscaleTo: 'number',
-  lastSource: 'string', mask: 'string', clipSeconds: 'number', customWorkflowId: 'string',
-  light: 'string',
-} as const
-
-interface FieldTypes { string: string; number: number }
-
-/**
- * The fields of an untrusted body that have the type the spec names.
- * @param body - the parsed request.
- * @param spec - field name → `typeof` it must have.
- * @returns the kept fields, typed.
- */
-function typedFields<S extends Readonly<Record<string, keyof FieldTypes>>>(
-  body: object,
-  spec: S,
-): { -readonly [K in keyof S]?: FieldTypes[S[K]] } {
-  const kept: Record<string, unknown> = {}
-  for (const [field, type] of Object.entries(spec)) {
-    const value = (body as Record<string, unknown>)[field]
-    if (typeof value === type) kept[field] = value
-  }
-  return kept as { -readonly [K in keyof S]?: FieldTypes[S[K]] }
-}
-
-/**
- * One provider/model pair off an untrusted body, or nothing.
- *
- * Both halves have to be non-empty strings: a half-written route reaches
- * `textRoutes` as the first candidate and every text pass then fails on it
- * before falling back, which reads as a studio that stopped writing prompts.
- * @param value - the `model` field as it arrived.
- * @returns the route, or undefined when the body did not carry a usable one.
- */
-function routeOf(value: unknown): ModelRoute | undefined {
-  if (typeof value !== 'object' || value === null) return undefined
-  const { provider, model } = value as { provider?: unknown; model?: unknown }
-  if (typeof provider !== 'string' || provider.length === 0) return undefined
-  if (typeof model !== 'string' || model.length === 0) return undefined
-  return { provider, model }
 }
 
 /**
@@ -729,16 +661,6 @@ function jobWithProgress(ctx: ImagineHost, job: ImagineJob): ImagineJobView {
   if (localized.promptId === undefined || (localized.status !== 'queued' && localized.status !== 'running')) return localized
   const progress = ctx.comfy.progressOf(localized.promptId)
   return progress === undefined ? localized : { ...localized, progress }
-}
-
-/**
- * The board project a request names, or nothing: a non-empty name that is
- * not a path.
- * @param value - the `projectId` field as it arrived.
- * @returns the project id, or undefined.
- */
-function projectIdOf(value: unknown): string | undefined {
-  return typeof value === 'string' && value.length > 0 && !value.includes('/') ? value : undefined
 }
 
 /**
@@ -823,57 +745,6 @@ async function streamImagineChat(
     })
   }
   res.end()
-}
-
-
-/** Largest side a generation request may ask for, per axis. */
-const MAX_REQUEST_SIDE = 8192
-
-/**
- * Longest `seconds` each action accepts. A clip is a handful of seconds of
- * frames; a MiniMax Music 3 track is minutes of `max_duration`, and one blanket
- * ceiling rejected the 120s and 180s the music composer offers. A story's
- * seconds are the whole video's, spread over as many clips as it takes.
- */
-const MAX_SECONDS: Readonly<Record<string, number>> = { music: 300, story: 300 }
-
-/** Ceiling for every action MAX_SECONDS does not name. */
-const DEFAULT_MAX_SECONDS = 60
-
-/**
- * Say why the size or length of an Imagine request is refused, or undefined
- * when they fit.
- * @param body - the parsed request body, including the action it names.
- * @returns the reason, in the user's language.
- */
-function invalidRequestReason(body: {
-  action?: string
-  size?: string
-  seconds?: number
-  megapixels?: number
-  swapResolution?: string
-}): string | undefined {
-  if (typeof body.size === 'string') {
-    const size = parseSize(body.size)
-    if (size === undefined) {
-      return message('request.sizeInvalid', { size: body.size })
-    }
-    if (size.width > MAX_REQUEST_SIDE || size.height > MAX_REQUEST_SIDE) {
-      return message('request.sizeTooLarge', { max: MAX_REQUEST_SIDE })
-    }
-  }
-  const maxSeconds = MAX_SECONDS[body.action ?? ''] ?? DEFAULT_MAX_SECONDS
-  if (body.seconds !== undefined && (!Number.isFinite(body.seconds) || body.seconds <= 0 || body.seconds > maxSeconds)) {
-    return message('request.secondsInvalid', { max: maxSeconds })
-  }
-  if (body.swapResolution !== undefined && !(SWAP_RESOLUTIONS as readonly string[]).includes(body.swapResolution)) {
-    return message('request.swapResolutionInvalid', { allowed: SWAP_RESOLUTIONS.join(', ') })
-  }
-  if (body.megapixels !== undefined && (!Number.isFinite(body.megapixels) || body.megapixels <= 0 || body.megapixels > 16)) {
-    return message('request.megapixelsInvalid')
-  }
-  // Speed, quality, batch size and scan count: `invalidChoiceReason`.
-  return undefined
 }
 
 /** The configuration layers the entry booted with, for the settings page. */

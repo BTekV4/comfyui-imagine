@@ -19,6 +19,9 @@ import { CoverMedia } from './cover-media.tsx'
 import { CARD_MOTION, JOB_CARDS, slotsOf, type JobCardId } from './job-cards.ts'
 import { CustomWorkflows, type CustomWorkflow } from './custom-workflows-view.tsx'
 import { CustomWorkflowPanel, type CustomBatchRequest, type CustomRunRequest } from './custom-workflow-panel.tsx'
+import { TemplatePanel } from './TemplatePanel.tsx'
+import { TemplatesSection } from './TemplatesSection.tsx'
+import { templateById, type Template } from '../../../shared/imagine-templates.ts'
 import { useEvent } from './use-event.ts'
 import { WorkflowPanel } from './WorkflowPanel.tsx'
 import { WORKFLOW_SPECS, type WorkflowSlot, type WorkflowSpec } from './workflow-specs.ts'
@@ -187,6 +190,21 @@ export interface HomeViewProps extends PanelActions {
   /** Open the full panel of an uploaded card. */
   readonly onOpenCustom: (workflow: CustomWorkflow) => void
   readonly onBackCustom: () => void
+  /** The model whose panel is open, by id, if any. */
+  readonly templatePanel?: string
+  /** Open the panel of one of the ready-made models. */
+  readonly onTemplate: (template: Template) => void
+  /** Back from a model's panel to the grid. */
+  readonly onBackTemplate: () => void
+  /**
+   * Run a model with its form's answers: the page files the runs in a
+   * project (`runTemplateForm`), and the panel hears whether anything started
+   * and what stopped it.
+   */
+  readonly onRunTemplate: (
+    template: Template,
+    request: { values: Record<string, string | string[]>; files: Record<string, string[]> },
+  ) => Promise<{ readonly started: boolean; readonly error?: string }>
   /** Run an uploaded card with its panel's values and files. */
   readonly onRunCustomJob: (workflow: CustomWorkflow, request: CustomRunRequest) => void
   /** Queue one run per value of the card's batch control. */
@@ -209,6 +227,27 @@ export function HomeView(props: HomeViewProps) {
           items={items}
           busy={busy}
           actions={props}
+        />
+      </div>
+    )
+  }
+  /*
+   * A model's panel stands where the grid was, as a flow card's panel does.
+   * The id is kept in the page, so the panel is found again by id: the catalog
+   * is the one place that says what a model is.
+   */
+  const template = props.templatePanel === undefined ? undefined : templateById(props.templatePanel)
+  if (template !== undefined) {
+    return (
+      <div className={css.home} ref={homeRef}>
+        <TemplatePanel
+          key={template.id}
+          template={template}
+          items={items}
+          busy={busy}
+          onRun={async request => await props.onRunTemplate(template, request)}
+          onBack={props.onBackTemplate}
+          onDone={props.onBackTemplate}
         />
       </div>
     )
@@ -258,6 +297,7 @@ export function HomeView(props: HomeViewProps) {
         <div className={css.heroComposer}>{composer}</div>
         </div>
         <HomeCards onCard={onCard} />
+        <TemplatesSection onOpen={props.onTemplate} />
         <CustomWorkflows onOpen={props.onOpenCustom} />
       </div>
     </div>

@@ -18,7 +18,7 @@ import {
   type ImaginePlacement, type ImagineRegion,
 } from '../../../shared/imagine-types.ts'
 import type { ComposerStore } from './composer-store.ts'
-import { applyWorkflowChanges, fetchImagineJobs, readImagineChat, startImagineJob } from './gallery-api.ts'
+import { applyWorkflowChanges, fetchImagineJobs, readImagineChat, runTemplate, startImagineJob } from './gallery-api.ts'
 import { SEED_MESSAGE_PREFIX, appendMessage, createProject, isSeedMessage, rememberJob, titleFromPrompt } from './imagine-projects.ts'
 import { HISTORY_PROJECT_ID } from '../../../shared/imagine-projects.ts'
 import {
@@ -606,6 +606,63 @@ export function useRunner(ctx: RunnerContext) {
     }
   }
 
+  /**
+   * Run a home-page model («Models») and file what it started in a project,
+   * as a composer run is filed.
+   *
+   * The home has no open project (`go('home')` clears it), so a model run
+   * gets one the way a new composer run does (`openOrCreate`): the open
+   * project when there is one, else the project already named after the
+   * model, else a new one. A new project is minted here but put in the rail
+   * only once the server has started something: created first, a refused
+   * form would leave an empty project (the page purges those) and the panel
+   * would close on its own error. Its id goes with the request, so the
+   * server adopts the jobs, the files they read and the composed files into
+   * it, the chain steps included as they are queued later.
+   *
+   * The jobs queued now get their live tiles at once (the queue is read for
+   * them, as a batch's siblings are) and the composed files are listed in the
+   * project; the chain steps queued later arrive through the live tick, like
+   * any job of another session filed in a project.
+   * @param template - the model's id and the title its project takes.
+   * @param request - the answers and the gallery files of each photo field.
+   * @returns whether anything started, and the server's sentence when the run
+   *   stopped half way; a refusal is thrown, with nothing started.
+   */
+  const runTemplateForm = async (
+    template: { readonly id: string; readonly title: string },
+    request: { readonly values: Record<string, string | string[]>; readonly files: Record<string, string[]> },
+  ): Promise<{ readonly started: boolean; readonly error?: string }> => {
+    if (busy !== undefined) return { started: false }
+    setBusy('template')
+    try {
+      const existing = current ?? projects.find(project =>
+        project.id !== HISTORY_PROJECT_ID && project.title === template.title)
+      const base = existing ?? seedProject(createProject(template.title, true))
+      const answer = await runTemplate(template.id, { ...request, projectId: base.id })
+      const error = answer.error === undefined ? {} : { error: answer.error }
+      if (answer.jobs.length === 0 && answer.files.length === 0) return { started: false, ...error }
+      const queue = answer.jobs.length === 0 ? [] : await fetchImagineJobs().catch((): readonly ImagineJob[] => [])
+      const started = queue.filter(job => answer.jobs.includes(job.id))
+      if (started.length > 0) {
+        jobProgress.take(started)
+        editJobs(currentJobs => [...started, ...currentJobs.filter(entry => !started.some(job => job.id === entry.id))])
+      }
+      let next = base
+      for (const id of answer.jobs) next = rememberJob(next, id)
+      const fresh = answer.files.filter(name => !next.itemNames.includes(name))
+      if (fresh.length > 0) next = { ...next, itemNames: [...next.itemNames, ...fresh] }
+      if (existing === undefined) actions.upsertProject(next)
+      else patch(next)
+      // A run that stopped half way stays on its panel, which says so; the
+      // runs that did start are already in the project, in the rail.
+      if (answer.error === undefined && projectId !== next.id) actions.openProject(next.id)
+      return { started: true, ...error }
+    } finally {
+      setBusy(undefined)
+    }
+  }
+
   /** The upscale of every picked file the upscale can still raise, one job each. */
   const runBatchUpscale = async (upscaleTo?: { image?: number; video?: number }): Promise<void> => {
     const targets = pickedGroups.upscalable
@@ -1043,6 +1100,6 @@ export function useRunner(ctx: RunnerContext) {
 
   return {
     run, runCustomBatch, runBatchUpscale, sendLine, submit, runPanel, chooseFrame, applyProposal,
-    openOrCreate, seedProject,
+    openOrCreate, seedProject, runTemplateForm,
   }
 }

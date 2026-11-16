@@ -1,0 +1,181 @@
+/*
+ * The model panel (TemplatePanel.tsx).
+ *
+ * The panel's skeleton — the back link, the two columns, the blocks, the pills
+ * and the run bar — is the flows' own (WorkflowPanel.module.css, imported by
+ * the component): the two panels are the same surface and must not drift.
+ * What lives here is what only a model has: the gradient cover, the strip of
+ * chosen photos and the small print under the fields.
+ */
+
+/* The cover: the card's gradient, big, with the group's mark on it. */
+.cover {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--imagine-radius-card, 16px);
+  background: var(--imagine-media-bed);
+}
+
+/*
+ * One gradient per group of the catalog. Composed from the section's file so
+ * the card and the panel can never paint the same model two colours.
+ */
+.catPhoto { composes: catPhoto from './TemplatesSection.module.css'; }
+.catPeople { composes: catPeople from './TemplatesSection.module.css'; }
+.catStyle { composes: catStyle from './TemplatesSection.module.css'; }
+.catProduct { composes: catProduct from './TemplatesSection.module.css'; }
+.catSocial { composes: catSocial from './TemplatesSection.module.css'; }
+.catCollection { composes: catCollection from './TemplatesSection.module.css'; }
+
+/* The model's own render, filling the intro card. */
+.photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
+}
+
+.glyph {
+  font-size: 54px;
+  line-height: 1;
+  color: rgb(255 255 255 / 0.42);
+}
+
+/* The group's name, above the title: a chip, not the card's floating badge. */
+.group {
+  display: inline-block;
+  margin-top: 14px;
+  padding: 3px 10px;
+  border-radius: var(--imagine-radius-pill);
+  background: var(--imagine-chip-on);
+  color: var(--imagine-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.about {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--imagine-muted);
+}
+
+/*
+ * The photos picked for one field, in the order the run reads them: a row of
+ * squares, each one numbered, movable and removable. The number is the value —
+ * `ugc` reads the second photo as the reference — so it is drawn on the tile.
+ */
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  flex: none;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--imagine-media-bed);
+}
+
+.chipThumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chipIndex {
+  position: absolute;
+  left: 5px;
+  top: 5px;
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: var(--imagine-radius-pill);
+  background: rgb(0 0 0 / 0.6);
+  color: var(--imagine-on-media);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* Reorder and remove: a bar along the bottom, out of the picture's way. */
+.chipTools {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  display: flex;
+  gap: 4px;
+}
+
+.move,
+.chipRemove {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  background: rgb(0 0 0 / 0.62);
+  color: var(--imagine-on-media);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.move:hover:not(:disabled) { background: rgb(0 0 0 / 0.85); }
+.move:disabled { opacity: 0.35; cursor: default; }
+
+.chipRemove {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+}
+
+.chipRemove:hover { background: var(--imagine-danger); }
+
+/* How many photos the field takes: the sentence under the strip. */
+.hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--imagine-muted);
+}
+
+/* A refused upload, or the server's own sentence about a form. */
+.note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--imagine-danger);
+}
+
+/* The everyday name of a ratio, beside it in the pill. */
+.aspectName {
+  margin-left: 6px;
+  color: var(--imagine-muted);
+  font-size: 12px;
+}
+
+/* A box whose choice is not picked: readable, but plainly not needed now. */
+.fieldOff { opacity: 0.6; }
+
+@media (max-width: 900px) {
+  .cover { aspect-ratio: 16 / 7; }
+  .glyph { font-size: 42px; }
+  .chip { width: 72px; height: 72px; }
+}

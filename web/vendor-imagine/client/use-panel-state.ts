@@ -7,6 +7,7 @@
 
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import type { GalleryItem } from '../../../shared/imagine-types.ts'
+import type { Template } from '../../../shared/imagine-templates.ts'
 import type { ComposerStore } from './composer-store.ts'
 import type { CustomWorkflow } from './custom-workflows-view.tsx'
 import { uploadGalleryItem } from './gallery-api.ts'
@@ -35,6 +36,8 @@ export function usePanelState({ view, composer, homeRef, addItems, setNote }: Pa
   const [panelCard, setPanelCard] = useState<JobCardId | undefined>(undefined)
   /** The uploaded workflow open full page: its own panel, as the actions have. */
   const [customPanel, setCustomPanel] = useState<CustomWorkflow | undefined>(undefined)
+  /** The model («Models») whose panel the home view shows, by id; one at a time. */
+  const [templatePanel, setTemplatePanel] = useState<string | undefined>(undefined)
 
   /**
    * Set the composer's mode and carry the fields only that mode has: the
@@ -73,9 +76,12 @@ export function usePanelState({ view, composer, homeRef, addItems, setNote }: Pa
 
   /*
    * A card opens its panel: a clean composer, in the mode the panel's run
-   * this deployment.
+   * this deployment. A model's panel stands down, as `openTemplate` closes the
+   * card's: the home shows one surface at a time, and a model left open behind
+   * a card came back the moment that card was closed.
    */
   const openPanel = (id: JobCardId): void => {
+    setTemplatePanel(undefined)
     composer.set({ sources: [], prompt: '' })
     changeMode(CARD_MODE[id])
     composer.set({ note: undefined, panelUpscaleTo: undefined })
@@ -89,6 +95,21 @@ export function usePanelState({ view, composer, homeRef, addItems, setNote }: Pa
     if (mode !== 'image' && mode !== 'video') changeMode('image')
   }
   /*
+   * A model's card opens its own panel, and the other two stand down: the home
+   * shows one surface at a time. The panel keeps its form while it is open,
+   * so the answers survive a re-render of the page.
+   */
+  const openTemplate = (template: Template): void => {
+    setPanelCard(undefined)
+    setCustomPanel(undefined)
+    setTemplatePanel(template.id)
+    homeRef.current?.scrollTo({ top: 0 })
+  }
+  /** Back to the grid of models. */
+  const closeTemplate = (): void => {
+    setTemplatePanel(undefined)
+  }
+  /*
    * A run that opened its project leaves the home view, and the panel goes
    * with it.
    */
@@ -97,6 +118,7 @@ export function usePanelState({ view, composer, homeRef, addItems, setNote }: Pa
     if (view !== 'home' && viewSeenRef.current === 'home') {
       if (panelCard !== undefined) closePanel()
       if (customPanel !== undefined) setCustomPanel(undefined)
+      if (templatePanel !== undefined) closeTemplate()
     }
     viewSeenRef.current = view
     // eslint-disable-next-line react-hooks/exhaustive-deps -- on the view only
@@ -128,5 +150,8 @@ export function usePanelState({ view, composer, homeRef, addItems, setNote }: Pa
     }
   }
 
-  return { panelCard, customPanel, setCustomPanel, changeMode, openPanel, closePanel, stageInSlot, uploadToSlot }
+  return {
+    panelCard, customPanel, setCustomPanel, changeMode, openPanel, closePanel, stageInSlot, uploadToSlot,
+    templatePanel, openTemplate, closeTemplate,
+  }
 }

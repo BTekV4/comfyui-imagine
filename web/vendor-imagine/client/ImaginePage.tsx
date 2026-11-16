@@ -16,6 +16,7 @@
  */
 
 import { translate } from './locale-store.ts'
+import type { ComfyLocaleKey } from './locales.ts'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react'
 import type { CanvasNote, ImagineProject } from '../../../shared/imagine-projects.ts'
 import { HISTORY_PROJECT_ID } from '../../../shared/imagine-projects.ts'
@@ -45,6 +46,7 @@ import { Rail } from './Rail.tsx'
 import { HomeView } from './HomeView.tsx'
 import type { CustomWorkflow } from './custom-workflows-view.tsx'
 import type { CustomBatchRequest, CustomRunRequest } from './custom-workflow-panel.tsx'
+import type { Template } from '../../../shared/imagine-templates.ts'
 import { ProjectsGrid } from './ProjectsGrid.tsx'
 import { StageHeader } from './StageHeader.tsx'
 import { AppFrame, type AppFrameView } from './AppFrame.tsx'
@@ -407,6 +409,7 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
 
   const {
     panelCard, customPanel, setCustomPanel, changeMode, openPanel, closePanel, stageInSlot, uploadToSlot,
+    templatePanel, openTemplate, closeTemplate,
   } = usePanelState({ view, composer, homeRef, addItems, setNote })
   const {
     likes, merging, setPendingFocus, deleteItems, stageBatchVideo, placeOnBoard, likeMany, downloadMany,
@@ -704,7 +707,12 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
   const onRailClick = useEvent(() => { if (selected !== undefined) setSelected(undefined) })
   const onCloseDrawer = useEvent(() => { setRailDrawer(false) })
   // From inside a workflow card too: "New generation" is the grid of tools.
-  const onNewGeneration = useEvent(() => { closePanel(); setCustomPanel(undefined); actions.go('home') })
+  const onNewGeneration = useEvent(() => {
+    closePanel()
+    setCustomPanel(undefined)
+    closeTemplate()
+    actions.go('home')
+  })
   const onNewProject = useEvent(newBlankProject)
   const onDeleteProject = useEvent(deleteProject)
   const onToggleRail = useEvent(() => {
@@ -736,6 +744,22 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
     homeRef.current?.scrollTo({ top: 0 })
   })
   const onBackCustom = useEvent(() => { setCustomPanel(undefined) })
+  /** A «Models» card: its panel takes the home, as a flow card's does. */
+  const onTemplate = useEvent((template: Template) => { openTemplate(template) })
+  const onBackTemplate = useEvent(closeTemplate)
+  /*
+   * A model's run lands in a project like a composer run (`runTemplateForm`);
+   * a composed file (a collage, a resize) is new on disk, so the gallery is
+   * read again for its tile.
+   */
+  const onRunTemplate = useEvent(async (
+    template: Template,
+    request: { values: Record<string, string | string[]>; files: Record<string, string[]> },
+  ) => {
+    const answer = await runner.runTemplateForm({ id: template.id, title: translate(template.titleKey as ComfyLocaleKey) }, request)
+    if (answer.started) void reload()
+    return answer
+  })
   const onRunCustomBatch = useEvent((workflow: CustomWorkflow, request: CustomRunRequest, batch: CustomBatchRequest) => {
     void runner.runCustomBatch(workflow, request, batch)
   })
@@ -933,7 +957,12 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
             onBackCustom={onBackCustom}
             onRunCustomJob={onRunCustomJob}
             onRunCustomBatch={onRunCustomBatch}
-            
+
+            templatePanel={templatePanel}
+            onTemplate={onTemplate}
+            onBackTemplate={onBackTemplate}
+            onRunTemplate={onRunTemplate}
+
             items={items}
             composer={composerNode}
             homeRef={homeRef}

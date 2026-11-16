@@ -5,6 +5,7 @@
  * A thin client of Imagine's own HTTP API (the routes the page uses), so it
  * runs as its own process and never touches the studio's state directly:
  * `POST /comfy-imagine` queues a job (and adopts it into `projectId`),
+ * `POST /comfy-imagine/template` runs one of the studio's own models,
  * `PUT /comfy-imagine/projects` merges a project in, `POST /comfy-media`
  * uploads a file. Transport: MCP Streamable HTTP, stateless, behind a bearer.
  *
@@ -28,6 +29,7 @@ import {
 } from '../shared/imagine-sizing.ts'
 import { segmentFileUrl, type ImagineSegmentsIndex, type ImagineSegmentsStatus } from '../shared/imagine-segments.ts'
 import { HISTORY_PROJECT_ID, type ImagineProject } from '../shared/imagine-projects.ts'
+import type { Template, TemplateField } from '../shared/imagine-templates.ts'
 import { checkedZone, growMask, joinMasks, maskDataUrl, readMask, rectangleMask, type Fractions } from './masks.ts'
 
 const IMAGINE = (process.env.IMAGINE_URL ?? 'http://127.0.0.1:3090').replace(/\/+$/, '')
@@ -317,6 +319,59 @@ async function requireFiles(names: (string | undefined)[]): Promise<void> {
   const missing = wanted.filter((_, at) => found[at] === undefined)
   if (missing.length > 0) throw new Error(`files not in the library: ${missing.join(', ')} (see imagine_recent_media, imagine_project_files or imagine_upload)`)
 }
+
+// ---------------------------------------------------------------- templates
+
+/**
+ * A model of the studio's «Templates» as its route hands it over: the catalog,
+ * with the whole form and without the runs (the studio keeps those).
+ */
+type TemplateForm = Omit<Template, 'runs'>
+
+/**
+ * A form's field as the model reads it: what it takes, how many, and what a
+ * valid answer looks like. The locale keys are left out — a client needs the
+ * English label, not the page's dictionary.
+ */
+function describeTemplateField(field: TemplateField): Record<string, unknown> {
+  const head = {
+    id: field.id,
+    kind: field.kind,
+    label: field.label,
+    ...field.required === true ? { required: true } : {},
+  }
+  switch (field.kind) {
+    case 'photos':
+      // The order counts and `min` may be 0 (an optional reference photo).
+      return { ...head, min: field.min, max: field.max }
+    case 'text':
+      return {
+        ...head,
+        ...field.multiline === true ? { multiline: true } : {},
+        ...field.placeholder === undefined ? {} : { placeholder: field.placeholder },
+        ...field.maxLength === undefined ? {} : { maxLength: field.maxLength },
+      }
+    case 'aspect':
+      // A ratio is its own label: the value is the text the page shows.
+      return {
+        ...head,
+        options: field.options.map(value => ({ value, label: value })),
+        ...field.multi === true ? { multi: true } : {},
+        ...field.default === undefined ? {} : { default: field.default },
+      }
+    case 'choice':
+      return {
+        ...head,
+        options: field.options.map(option => ({ value: option.value, label: option.label })),
+        ...field.multi === true ? { multi: true } : {},
+        ...field.default === undefined ? {} : { default: field.default },
+      }
+  }
+}
+
+/** The studio's models, whole: the page's own catalog (`GET /comfy-imagine/templates`). */
+const templateForms = async (): Promise<TemplateForm[]> =>
+  (await api<{ templates?: TemplateForm[] }>('/comfy-imagine/templates')).templates ?? []
 
 // ---------------------------------------------------------------- tools
 
@@ -656,6 +711,85 @@ function buildServer(): McpServer {
     annotations: { readOnlyHint: true },
   }, async () => guarded(async () => (await api<{ workflows: Record<string, unknown>[] }>('/comfy-custom-workflows')).workflows
     .map(({ id, title, description, output, inputs }) => ({ id, title, description, output, inputs }))))
+
+  server.registerTool('imagine_templates', {
+    title: 'Models of the studio',
+    description: [
+      'The studio\'s «Templates»: ready-made models of the home page (photo edit, background, headshot, restyle, collage, product set, emoji pack, …), each one a form of photos, choices, a canvas and some words.',
+      'Every model comes with its id, category, title, description and the shape of its form, so imagine_run_template can be called without guessing: photo fields take gallery names (min/max, in the order given), choice and aspect fields take one of the option `value`s (several when `multi`), text fields take words, and a field left out keeps its default.',
+    ].join(' '),
+    inputSchema: { category: z.string().optional().describe('Only the models of one group: one of `categories` in the answer (photo, people, style, product, social, collection).') },
+    annotations: { readOnlyHint: true },
+  }, async ({ category }) => guarded(async () => {
+    const catalog = await templateForms()
+    const key = category?.trim().toLowerCase()
+    const listed = key === undefined || key === '' ? catalog : catalog.filter(entry => entry.category.toLowerCase() === key)
+    return {
+      // Read off the catalog, so a group the studio adds shows up here too.
+      categories: [...new Set(catalog.map(entry => entry.category))],
+      total: listed.length,
+      templates: listed.map(entry => ({
+        id: entry.id,
+        category: entry.category,
+        title: entry.title,
+        description: entry.description,
+        about: entry.about,
+        fields: entry.fields.map(describeTemplateField),
+      })),
+      next: 'Call imagine_run_template with `template_id` (a model id from here), the `values` (option `value`s and text) and the `files` (gallery names, in the order they should be used).',
+    }
+  }))
+
+  server.registerTool('imagine_run_template', {
+    title: 'Run a model',
+    description: [
+      'Run one of the studio\'s models (imagine_templates lists them), named by `template_id`: the answers become jobs in the studio, which render like any other job and appear on the project\'s board.',
+      '`files` are the gallery names of the photo fields (from imagine_recent_media, imagine_project_files or imagine_upload), one array per field id: the order counts — the first photo is the one the model starts from, the others are the set (a collage, a pack).',
+      '`values` are the other answers by field id: a choice or aspect field takes the `value` of one of its options (an array when the field takes several), a text field takes the words. A field left out keeps its default.',
+      'Returns the job ids, to follow with imagine_job, and the files the studio composed itself — a collage, a resize — which are ready at once. A model that chains steps (a picture, then its cut-out) queues the next run by itself when the one before it settles. An `error` next to them means the studio stopped half way: what is listed did start, the rest did not.',
+    ].join(' '),
+    inputSchema: {
+      template_id: z.string().min(1).describe('The model id, as imagine_templates returns it.'),
+      values: z.record(z.string(), z.union([z.string(), z.array(z.string())])).optional()
+        .describe('The answers by field id: an option value (or several, for a field that takes more than one), a ratio, or the words of a text box.'),
+      files: z.record(z.string(), z.array(z.string())).optional()
+        .describe('Gallery file names by photo field id, in the order they should be used.'),
+      project: projectArg,
+    },
+  }, async ({ template_id, values, files, project }) => guarded(async () => {
+    await requireFiles(Object.values(files ?? {}).flat())
+    /*
+     * A title that is not a project yet gets its id minted here and the project
+     * is created once the studio has queued the runs: created first, it would
+     * be empty and the first page that syncs would purge it (see the module
+     * note). The runs are adopted into that id straight away by the studio.
+     */
+    const target = await projectTarget(project)
+    const answer = await api<{ jobs?: string[]; files?: string[]; error?: string }>('/comfy-imagine/template', {
+      method: 'POST',
+      body: JSON.stringify({
+        templateId: template_id,
+        ...values === undefined ? {} : { values },
+        ...files === undefined ? {} : { files },
+        ...target === undefined ? {} : { projectId: target.id },
+      }),
+    })
+    const queued = answer.jobs ?? []
+    const composed = answer.files ?? []
+    if (target?.isNew === true) await createProject(target.id, target.title, { jobIds: queued, itemNames: composed })
+    return {
+      template: template_id,
+      ...target === undefined ? {} : { project: { id: target.id, title: target.title, created: target.isNew } },
+      jobs: queued,
+      files: composed.map(name => ({ name, url: fileUrl(name) })),
+      // The studio stopped half way: the jobs and files above did start (do not
+      // run the model again for them), the rest did not.
+      ...typeof answer.error === 'string' ? { error: answer.error } : {},
+      ...queued.length === 0
+        ? { next: 'Nothing to render: the files above are the whole result, composed by the studio. Look at them with imagine_view.' }
+        : { next: 'Call imagine_job with these ids (wait_seconds up to 50), again while they run. A chained step is queued by the studio when the one before it finishes.' },
+    }
+  }))
 
   server.registerTool('imagine_job', {
     title: 'Follow a job',
