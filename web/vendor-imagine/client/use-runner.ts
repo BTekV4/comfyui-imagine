@@ -956,7 +956,7 @@ export function useRunner(ctx: RunnerContext) {
    * the same controls the home view has). The home view goes straight to the
    * run its mode describes.
    */
-  const submit = (): void => {
+  const submit = (over?: RunOverride): void => {
     if (view === 'project') {
       submitChat()
       return
@@ -976,7 +976,7 @@ export function useRunner(ctx: RunnerContext) {
       const sung = sources.some(item => item.kind === 'audio')
       const pictures = sources.filter(item => item.kind === 'image').length
       const long = sung || (isStoryLength(clampResolution('video', resolution), seconds) && pictures > 1)
-      void run(long ? 'story' : source?.kind === 'video' ? 'extend' : 'video')
+      void run(long ? 'story' : source?.kind === 'video' ? 'extend' : 'video', undefined, over)
     }
     // One action whatever the length: the studio chains a background's
     // segments itself, so a minute of it is still this card and not a story.
@@ -994,6 +994,15 @@ export function useRunner(ctx: RunnerContext) {
     const { sources, prompt, panelUpscaleTo, objectMode, light, placement } = composer.get()
     const staged = slotsOf(spec, sources)
     const line = prompt.trim() === '' ? {} : { prompt: prompt.trim() }
+    /*
+     * The Video card says "What happens · optional" (2026-11-16): left empty,
+     * the run used to stop on "Type a prompt first" and, with a song staged,
+     * the button seemed to do nothing. The card's own line stands in: the
+     * prompt writer and the director still read the photo and the track.
+     */
+    const videoLine = prompt.trim() !== ''
+      ? { prompt: prompt.trim() }
+      : { prompt: translate(staged.song === undefined ? 'imagine.videoEmptyLine' : 'imagine.videoEmptyLineSong') }
     // The panel's title is the line these runs carry: without it the project
     // and its first message were named after the action id ("bg").
     if (spec.id === 'bg' && staged.photo !== undefined) void run('bg', staged.photo, { prompt: translate(spec.titleKey) })
@@ -1047,8 +1056,9 @@ export function useRunner(ctx: RunnerContext) {
     }
     // Two photos: one clip from the first to the second, not one clip each.
     else if (spec.id === 'video' && staged.start?.kind === 'image' && staged.end !== undefined) {
-      void run('video', staged.start, { lastSource: staged.end.name, ...line })
+      void run('video', staged.start, { lastSource: staged.end.name, ...videoLine })
     }
+    else if (spec.id === 'video') submit(videoLine)
     else submit()
   }
 

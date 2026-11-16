@@ -399,6 +399,8 @@ export const en = {
   "imagine.dropHere": "Drop a photo, a video or a track here.",
   "imagine.send": "Send",
   "imagine.duration": "Length",
+  "imagine.videoEmptyLine": "Bring the photo to life with natural movement",
+  "imagine.videoEmptyLineSong": "Bring the photo to life following the track, with natural movement",
   "imagine.durationFromAudio": "Length of the audio",
   "imagine.durationFromAudioSeconds": "{seconds} s · from the audio",
   "imagine.durationFromAudioHint": "The video lasts as long as the audio file and follows it. Remove the audio to choose a length.",

@@ -382,6 +382,8 @@
   "imagine.dropHere": "Trascina qui una foto, un video o un brano.",
   "imagine.send": "Invia",
   "imagine.duration": "Durata",
+  "imagine.videoEmptyLine": "Anima la foto con movimenti naturali",
+  "imagine.videoEmptyLineSong": "Anima la foto seguendo la traccia, con movimenti naturali",
   "imagine.durationFromAudio": "Durata dell'audio",
   "imagine.durationFromAudioSeconds": "{seconds} s · dall'audio",
   "imagine.durationFromAudioHint": "Il video dura quanto il file audio e lo segue. Togli l'audio per scegliere la durata.",
