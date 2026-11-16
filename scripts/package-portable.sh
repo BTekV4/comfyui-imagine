@@ -28,7 +28,11 @@ mkdir -p "$OUT" "$CACHE"
 NODE_VERSION=${NODE_VERSION:-24.22.3}
 # johnvansickle: statica, 77 MB per binario contro i 169 delle build complete di
 # BtbN — la metà del pacchetto, con quello che serve (filtri, libx264, aac).
+# Ma il 16/11/2026 il suo sito ha risposto a un runner di CI con una pagina HTML
+# invece dell'archivio (`xz: File format not recognized`): se il file non è un
+# xz valido si passa a BtbN, che sta su GitHub e non ha sorprese.
 FFMPEG_LINUX_URL=${FFMPEG_LINUX_URL:-https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz}
+FFMPEG_LINUX_FALLBACK=https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz
 FFMPEG_WIN_URL=${FFMPEG_WIN_URL:-https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip}
 
 PYTHON=${PYTHON:-$(command -v python3 || command -v python)}
@@ -80,7 +84,17 @@ if [ "$FFMPEG_KIND" = mac ]; then
   fetch "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip" "$CACHE/ffprobe-mac.zip"
 fi
 case "$FFMPEG_KIND" in
-  linux) fetch "$FFMPEG_LINUX_URL" "$CACHE/ffmpeg-linux.tar.xz" ;;
+  linux)
+    fetch "$FFMPEG_LINUX_URL" "$CACHE/ffmpeg-linux.tar.xz"
+    # Un archivio si verifica prima di usarlo: `xz -t` costa niente e dice
+    # subito se quello che è arrivato è davvero un .tar.xz.
+    if ! xz -t "$CACHE/ffmpeg-linux.tar.xz" 2>/dev/null; then
+      say "  l'archivio non è valido: ripiego sulla build di BtbN"
+      rm -f "$CACHE/ffmpeg-linux.tar.xz" "$CACHE/ffmpeg-linux.tar.xz.url"
+      fetch "$FFMPEG_LINUX_FALLBACK" "$CACHE/ffmpeg-linux.tar.xz"
+      xz -t "$CACHE/ffmpeg-linux.tar.xz" || die "nemmeno BtbN ha dato un archivio valido"
+    fi
+    ;;
   win)   fetch "$FFMPEG_WIN_URL"   "$CACHE/ffmpeg-win.zip" ;;
 esac
 
