@@ -1,0 +1,53 @@
+{
+  "name": "ComfyUI Imagine",
+  "short_name": "Imagine",
+  "description": "A local studio for ComfyUI: describe what you want, get images, edits and videos.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#141414",
+  "theme_color": "#141414",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": [
+    "graphics",
+    "photo",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New generation",
+      "url": "/"
+    },
+    {
+      "name": "Library",
+      "url": "/library"
+    },
+    {
+      "name": "Media",
+      "url": "/media"
+    }
+  ]
+}

@@ -49,3 +49,15 @@ async function start(): Promise<void> {
 }
 
 void start()
+
+/*
+ * The service worker, only in the built page: it is what makes "Install app"
+ * exist in the browser, and what keeps the shell when the host is unreachable.
+ * Registered after `load` so it never competes with the first render, and a
+ * failure is ignored — the studio works identically without it.
+ */
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/sw.js').catch(() => {})
+  })
+}
