@@ -5,14 +5,15 @@
  * @module use-panel-state
  */
 
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { GalleryItem } from '../../../shared/imagine-types.ts'
-import type { Template } from '../../../shared/imagine-templates.ts'
+import { templateById, type Template } from '../../../shared/imagine-templates.ts'
 import type { ComposerStore } from './composer-store.ts'
-import type { CustomWorkflow } from './custom-workflows-view.tsx'
+import { useCustomWorkflowList, type CustomWorkflow } from './custom-workflows-view.tsx'
 import { uploadGalleryItem } from './gallery-api.ts'
 import type { ImagineView } from './gallery-store.ts'
 import { noteFromError } from './imagine-messages.ts'
+import { pathOf, type HomePanel } from './imagine-routes.ts'
 import { clampSeconds, type ImagineMode } from './imagine-settings.ts'
 import { CARD_MODE, slotsOf, type JobCardId } from './job-cards.ts'
 import { translate } from './locale-store.ts'
@@ -34,8 +35,14 @@ export interface PanelStateContext {
 export function usePanelState({ view, composer, homeRef, addItems, setNote }: PanelStateContext) {
   /** The card whose dedicated panel the home view shows, if any. */
   const [panelCard, setPanelCard] = useState<JobCardId | undefined>(undefined)
-  /** The uploaded workflow open full page: its own panel, as the actions have. */
-  const [customPanel, setCustomPanel] = useState<CustomWorkflow | undefined>(undefined)
+  /**
+   * The uploaded workflow open full page, by id: an address can name one
+   * before the host has listed them, and the panel shows once it has.
+   */
+  const [customId, setCustomId] = useState<string | undefined>(undefined)
+  /** The uploaded workflows: the grid's cards, and what an id is checked against. */
+  const customWorkflows = useCustomWorkflowList()
+  const customPanel = customId === undefined ? undefined : customWorkflows.list.find(workflow => workflow.id === customId)
   /** The model («Models») whose panel the home view shows, by id; one at a time. */
   const [templatePanel, setTemplatePanel] = useState<string | undefined>(undefined)
 
@@ -82,6 +89,7 @@ export function usePanelState({ view, composer, homeRef, addItems, setNote }: Pa
    */
   const openPanel = (id: JobCardId): void => {
     setTemplatePanel(undefined)
+    setCustomId(undefined)
     composer.set({ sources: [], prompt: '' })
     changeMode(CARD_MODE[id])
     composer.set({ note: undefined, panelUpscaleTo: undefined })
@@ -101,13 +109,64 @@ export function usePanelState({ view, composer, homeRef, addItems, setNote }: Pa
    */
   const openTemplate = (template: Template): void => {
     setPanelCard(undefined)
-    setCustomPanel(undefined)
+    setCustomId(undefined)
     setTemplatePanel(template.id)
     homeRef.current?.scrollTo({ top: 0 })
   }
   /** Back to the grid of models. */
   const closeTemplate = (): void => {
     setTemplatePanel(undefined)
+  }
+  /** An uploaded card opens its panel page, and the other two stand down. */
+  const openCustom = (workflow: CustomWorkflow): void => {
+    if (panelCard !== undefined) closePanel()
+    setTemplatePanel(undefined)
+    setCustomId(workflow.id)
+    homeRef.current?.scrollTo({ top: 0 })
+  }
+  const closeCustom = (): void => { setCustomId(undefined) }
+  /*
+   * An address naming an uploaded workflow the host does not have (deleted,
+   * mistyped) opens the bare grid, and the address says so without adding a
+   * history entry: Back must not land on it again.
+   */
+  useEffect(() => {
+    if (customId === undefined || !customWorkflows.loaded) return
+    if (customWorkflows.list.some(workflow => workflow.id === customId)) return
+    window.history.replaceState({ view: 'home' }, '', pathOf('home', undefined))
+    setCustomId(undefined)
+  }, [customId, customWorkflows.loaded, customWorkflows.list])
+
+  /** The panel the home shows, for its address (`/tool/…`, `/model/…`, `/workflow/…`). */
+  const homePanel = useMemo((): HomePanel | undefined => {
+    if (panelCard !== undefined) return { kind: 'tool', id: panelCard }
+    if (templatePanel !== undefined) return { kind: 'model', id: templatePanel }
+    if (customId !== undefined) return { kind: 'workflow', id: customId }
+    return undefined
+  }, [panelCard, templatePanel, customId])
+  /**
+   * Show the panel an address names (a reload, a pasted link, Back or
+   * Forward). A flow card opens exactly as its click opens it: the card's
+   * composer mode, with nothing staged and an empty prompt — the address
+   * carries the card, not what was typed in it.
+   * @param panel - the panel, or undefined for the bare grid.
+   */
+  const showPanel = (panel: HomePanel | undefined): void => {
+    if (panel === undefined) {
+      if (panelCard !== undefined) closePanel()
+      closeTemplate()
+      closeCustom()
+      return
+    }
+    if (panel.kind === 'tool') { openPanel(panel.id); return }
+    if (panel.kind === 'model') {
+      const template = templateById(panel.id)
+      if (template !== undefined) openTemplate(template)
+      return
+    }
+    if (panelCard !== undefined) closePanel()
+    setTemplatePanel(undefined)
+    setCustomId(panel.id)
   }
   /*
    * A run that opened its project leaves the home view, and the panel goes
@@ -117,7 +176,7 @@ export function usePanelState({ view, composer, homeRef, addItems, setNote }: Pa
   useEffect(() => {
     if (view !== 'home' && viewSeenRef.current === 'home') {
       if (panelCard !== undefined) closePanel()
-      if (customPanel !== undefined) setCustomPanel(undefined)
+      if (customId !== undefined) closeCustom()
       if (templatePanel !== undefined) closeTemplate()
     }
     viewSeenRef.current = view
@@ -151,7 +210,7 @@ export function usePanelState({ view, composer, homeRef, addItems, setNote }: Pa
   }
 
   return {
-    panelCard, customPanel, setCustomPanel, changeMode, openPanel, closePanel, stageInSlot, uploadToSlot,
+    panelCard, customPanel, openCustom, closeCustom, customWorkflows, homePanel, showPanel, changeMode, openPanel, closePanel, stageInSlot, uploadToSlot,
     templatePanel, openTemplate, closeTemplate,
   }
 }

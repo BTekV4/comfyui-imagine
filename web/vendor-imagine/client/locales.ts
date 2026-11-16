@@ -1495,9 +1495,14 @@ export const en = {
   "imagine.tpl.heroReveal.f.frame": "Frame",
 
   // The section, the panel and what a form says when it cannot run yet.
-  "imagine.templates.title": "Models",
-  "imagine.templates.subtitle": "Ready-made recipes: open one, answer a few questions, get the whole set.",
-  "imagine.templates.open": "Open {name}",
+  "imagine.home.filterLabel": "Show cards",
+  "imagine.home.group.all": "All",
+  "imagine.home.group.photo": "Photo",
+  "imagine.home.group.people": "People",
+  "imagine.home.group.product": "Product",
+  "imagine.home.group.video": "Video",
+  "imagine.home.group.graphics": "Graphics",
+  "imagine.home.group.audio": "Audio",
   "imagine.templates.about": "What it does",
   "imagine.templates.addPhoto": "Add a photo",
   "imagine.templates.choosePhotos": "Choose from the gallery",

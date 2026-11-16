@@ -49,7 +49,11 @@ export type TemplateAction = Extract<
   'generate' | 'remix' | 'bg' | 'video' | 'loop' | 'compose'
 >
 
-/** One group of the home page's section, for the badge on a card. */
+/**
+ * One group of the catalog: the model panel's colour and the host's and MCP
+ * tools' wording. The home grid's filter chips are a table of their own
+ * (`home-groups.ts` in the page).
+ */
 export interface TemplateCategory {
   readonly id: string
   /** The locale key the page translates. */
@@ -294,7 +298,8 @@ export interface Template {
    * The card's cover, a WebP of the repository's own renders:
    * `/imagine/tpl-<id>.webp`, made with the studio from invented subjects.
    *
-   * Absent, the card falls back to the gradient of its group.
+   * Absent, the home card shows a plain bed and the panel the gradient of
+   * its group.
    */
   readonly cover?: string
   /** The locale key of the card's title. */

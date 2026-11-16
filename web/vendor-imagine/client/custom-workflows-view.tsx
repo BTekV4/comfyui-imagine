@@ -1,20 +1,22 @@
 /**
- * The workflows the user added: a tile each, and the form that adds one.
+ * The workflows the user added: their list, and the form that adds one.
  *
  * They are not built-in actions — the deployment ships twenty of those and
- * their graphs are in the repo — so they get their own strip under the home
- * cards: a cover, a title, one line of description, and a panel to run them
- * with a prompt. Adding one is a form here rather than an edit to `config.yaml`
+ * their graphs are in the repo — but since 2026-11-16 their cards sit in the
+ * home's one grid with the others (HomeView.tsx, `home-groups.ts`): a cover,
+ * a title, one line of description, and a panel to run them with a prompt.
+ * What stays here is the list itself ({@link useCustomWorkflowList}, shared by
+ * the grid and the address that names one) and the strip under the grid that
+ * adds one. Adding one is a form here rather than an edit to `config.yaml`
  * because the whole point is doing it without touching the studio.
  * @module client/custom-workflows-view
  */
 
 import { translate } from './locale-store.ts'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getJson, send } from './http.ts'
 import { messageOf } from './message-of.ts'
 import type { CustomWorkflowMeta } from '../../../shared/custom-workflows.ts'
-import { CoverMedia } from './cover-media.tsx'
 import own from './CustomWorkflows.module.css'
 
 /** One uploaded workflow, as the host reports it: the server's own type. */
@@ -29,7 +31,8 @@ interface Picked {
   readonly value: string | number | boolean
 }
 
-const coverOf = (workflow: CustomWorkflow): string | undefined =>
+/** The cover a card of the grid shows, when the user gave one. */
+export const coverOf = (workflow: CustomWorkflow): string | undefined =>
   workflow.hasCover ? `/comfy-custom-cover/${workflow.id}` : undefined
 
 /** A cover picked from disk, as the data URL the host stores. */
@@ -42,19 +45,63 @@ async function readDataUrl(file: File): Promise<string> {
   })
 }
 
-export interface CustomWorkflowsProps {
-  /** Opens the card's full panel (`CustomWorkflowPanel`), as for the built-in actions. */
-  readonly onOpen: (workflow: CustomWorkflow) => void
+/** The uploaded workflows, as the host lists them, and what changes them. */
+export interface CustomWorkflowList {
+  readonly list: readonly CustomWorkflow[]
+  /** Whether the host has answered once: before that an id cannot be judged. */
+  readonly loaded: boolean
+  /** The last failure to read or delete, if any. */
+  readonly error: string | undefined
+  readonly reload: () => Promise<void>
+  readonly remove: (workflow: CustomWorkflow) => Promise<void>
 }
 
 /**
- * The strip of uploaded workflows, and the form that adds one.
- * @param props - how to open a card's panel.
+ * The list of uploaded workflows, read once when the page opens.
+ * @returns the list and its two actions.
+ */
+export function useCustomWorkflowList(): CustomWorkflowList {
+  const [list, setList] = useState<readonly CustomWorkflow[]>([])
+  const [loaded, setLoaded] = useState(false)
+  const [error, setError] = useState<string>()
+  const reload = useCallback(async (): Promise<void> => {
+    try {
+      const body = await getJson<{ workflows: readonly CustomWorkflow[] }>('/comfy-custom-workflows', 'workflow')
+      setList(body.workflows)
+      setError(undefined)
+    } catch (failure: unknown) {
+      setError(messageOf(failure))
+    } finally {
+      setLoaded(true)
+    }
+  }, [])
+  useEffect(() => { void reload() }, [reload])
+  const remove = useCallback(async (workflow: CustomWorkflow): Promise<void> => {
+    try {
+      await send(`/comfy-custom-workflows/${workflow.id}`, 'DELETE', {}, 'workflow')
+      await reload()
+    } catch (failure: unknown) {
+      setError(messageOf(failure))
+    }
+  }, [reload])
+  return useMemo(() => ({ list, loaded, error, reload, remove }), [list, loaded, error, reload, remove])
+}
+
+export interface CustomWorkflowsProps {
+  /** The list the grid shows too: adding one reads it again. */
+  readonly workflows: CustomWorkflowList
+}
+
+/**
+ * The strip under the grid that adds an uploaded workflow; its card then
+ * appears in the grid.
+ * @param props - the shared list.
  * @returns the section.
  */
-export function CustomWorkflows({ onOpen }: CustomWorkflowsProps) {
-  const [list, setList] = useState<readonly CustomWorkflow[]>([])
-  const [error, setError] = useState<string>()
+export function CustomWorkflows({ workflows }: CustomWorkflowsProps) {
+  const { list, reload: load } = workflows
+  const [formError, setError] = useState<string>()
+  const error = formError ?? workflows.error
   const [adding, setAdding] = useState(false)
   const form = useRef<HTMLFormElement>(null)
   /*
@@ -62,15 +109,6 @@ export function CustomWorkflows({ onOpen }: CustomWorkflowsProps) {
    * card offers — the App Builder step, without leaving the page.
    */
   const [picked, setPicked] = useState<readonly Picked[]>([])
-  const load = useCallback(async (): Promise<void> => {
-    try {
-      const body = await getJson<{ workflows: readonly CustomWorkflow[] }>('/comfy-custom-workflows', 'workflow')
-      setList(body.workflows)
-    } catch (failure: unknown) {
-      setError(messageOf(failure))
-    }
-  }, [])
-  useEffect(() => { void load() }, [load])
 
   /*
    * A graph dropped in the form is read here, in the browser: the list of what
@@ -130,16 +168,6 @@ export function CustomWorkflows({ onOpen }: CustomWorkflowsProps) {
       }, 'workflow')
       form.current?.reset()
       setAdding(false)
-      await load()
-    } catch (failure: unknown) {
-      setError(messageOf(failure))
-    }
-  }
-
-  const remove = async (workflow: CustomWorkflow): Promise<void> => {
-    setError(undefined)
-    try {
-      await send(`/comfy-custom-workflows/${workflow.id}`, 'DELETE', {}, 'workflow')
       await load()
     } catch (failure: unknown) {
       setError(messageOf(failure))
@@ -251,32 +279,6 @@ export function CustomWorkflows({ onOpen }: CustomWorkflowsProps) {
           {translate('imagine.custom.emptyState')}
         </p>
       )}
-
-      <div className={own.grid}>
-        {list.map(workflow => {
-          const cover = coverOf(workflow)
-          return (
-            <article key={workflow.id} className={own.card}>
-              <button type="button" className={own.face} onClick={() => { onOpen(workflow) }}>
-                {/*
-                  * The home card's own cover component: an uploaded cover is a
-                  * file of a known type, drawn as is (`direct`), and a video
-                  * there honours reduced motion like every other card.
-                  */}
-                {cover === undefined
-                  ? <span className={own.blank} aria-hidden="true" />
-                  : <CoverMedia className={own.cover} cover={cover} direct={workflow.coverKind === 'video' ? 'video' : 'image'} />}
-                <span className={own.shade} aria-hidden="true" />
-                <span className={own.copy}>
-                  <span className={own.name}>{workflow.title}</span>
-                  <span className={own.hint}>{workflow.description}</span>
-                </span>
-              </button>
-              <button type="button" className={own.remove} title={translate('imagine.remove')} onClick={() => { void remove(workflow) }}>×</button>
-            </article>
-          )
-        })}
-      </div>
 
     </section>
   )

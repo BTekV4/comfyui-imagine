@@ -6,7 +6,7 @@
  * @module HomeView
  */
 
-import { memo, type ReactNode, type RefObject } from 'react'
+import { memo, useMemo, useState, type ReactNode, type RefObject } from 'react'
 import type {
   GalleryItem, ImagineObjectMode, ImaginePlacement, ModelRoute,
 } from '../../../shared/imagine-types.ts'
@@ -17,18 +17,28 @@ import { useComposer, type ComposerStore } from './composer-store.ts'
 import { clampSeconds } from './imagine-settings.ts'
 import { CoverMedia } from './cover-media.tsx'
 import { CARD_MOTION, JOB_CARDS, slotsOf, type JobCardId } from './job-cards.ts'
-import { CustomWorkflows, type CustomWorkflow } from './custom-workflows-view.tsx'
+import {
+  CustomWorkflows, coverOf, type CustomWorkflow, type CustomWorkflowList,
+} from './custom-workflows-view.tsx'
 import { CustomWorkflowPanel, type CustomBatchRequest, type CustomRunRequest } from './custom-workflow-panel.tsx'
 import { TemplatePanel } from './TemplatePanel.tsx'
-import { TemplatesSection } from './TemplatesSection.tsx'
 import { templateById, type Template } from '../../../shared/imagine-templates.ts'
+import {
+  FILTER_LABEL, HOME_GROUPS, filterHome, homeOrder, storeHomeFilter, storedHomeFilter,
+  type HomeEntry, type HomeFilter,
+} from './home-groups.ts'
+import type { ComfyLocaleKey } from './locales.ts'
 import { useEvent } from './use-event.ts'
 import { WorkflowPanel } from './WorkflowPanel.tsx'
 import { WORKFLOW_SPECS, type WorkflowSlot, type WorkflowSpec } from './workflow-specs.ts'
 import css from './HomeView.module.css'
 import { translate } from './locale-store.ts'
 
-type JobCard = (typeof JOB_CARDS)[number]
+/** The flow cards by id, so an entry of the grid finds its cover and words. */
+const CARD_BY_ID = new Map(JOB_CARDS.map(card => [card.id, card]))
+
+/** The key of a catalog text, as the page's translator takes it. */
+const catalogKey = (name: string): ComfyLocaleKey => name as ComfyLocaleKey
 
 /**
  * The cards run down three columns instead of lining up in rows, so each one
@@ -36,59 +46,172 @@ type JobCard = (typeof JOB_CARDS)[number]
  * first card of the middle column is the tall one: that is the shape the home
  * of Grok Imagine shows (the centre card higher than its neighbours). The
  * composer's column width is not touched; on a phone the same cards fall back
- * into two plain columns (`.column { display: contents }` in the CSS).
+ * into two plain columns (`.column { display: contents }` in the CSS), and
+ * each card's `order` keeps them in the grid's order there.
  */
 const CARD_COLUMNS = 3
 
-const CARD_GROUPS: JobCard[][] = Array.from({ length: CARD_COLUMNS }, () => [])
-JOB_CARDS.forEach((card, i) => { CARD_GROUPS[i % CARD_COLUMNS].push(card) })
+/** The chips, «All» first. */
+const FILTERS: readonly HomeFilter[] = ['all', ...HOME_GROUPS]
 
-/** Which card is the tall one: the top of the middle column. */
-const TALL_CARD = CARD_GROUPS[1][0]
+/** What a card of the grid does when pressed, by kind. */
+interface HomeCardActions {
+  readonly onCard: (id: JobCardId) => void
+  readonly onTemplate: (template: Template) => void
+  readonly onCustom: (workflow: CustomWorkflow) => void
+  readonly onRemoveCustom: (workflow: CustomWorkflow) => void
+}
 
-/** The grid of workflow cards. */
-const HomeCards = memo(function HomeCards({ onCard }: {
-  onCard: (id: JobCardId) => void
+/**
+ * One card, whichever kind: the same face for a flow, a model and an uploaded
+ * workflow (a cover, a title, one line), and what a press does stays the
+ * kind's own — a flow prepares the composer, a model opens its form, an
+ * uploaded workflow its panel page.
+ */
+function HomeCard({ entry, tall, order, custom, actions }: {
+  entry: HomeEntry
+  tall: boolean
+  order: number
+  custom: ReadonlyMap<string, CustomWorkflow>
+  actions: HomeCardActions
 }) {
+  let cover: ReactNode
+  let title: string
+  let hint: string
+  let onClick: () => void
+  let workflow: CustomWorkflow | undefined
+  if (entry.kind === 'flow') {
+    const card = CARD_BY_ID.get(entry.id)
+    if (card === undefined) return null
+    /*
+     * One function for every surface (`CoverMedia`: the precedence lives in
+     * `cover-plan.ts`). The repo's clip is passed from here (`motion`) even
+     * when there is a custom cover: the cards that have one play it with the
+     * user's image as poster, otherwise they stand still and the user loses
+     * the motion that was there before (reported on 2026-11-04: some cards
+     * used to be videos).
+     */
+    cover = <CoverMedia className={css.actionCover} cover={card.cover} motion={CARD_MOTION[card.id]} />
+    title = translate(card.title)
+    hint = translate(card.hint)
+    onClick = () => { actions.onCard(card.id) }
+  } else if (entry.kind === 'model') {
+    const template = templateById(entry.id)
+    if (template === undefined) return null
+    // Every model ships the studio's own render; the bed stands in if one does not.
+    const file: string | undefined = template.cover
+    cover = file === undefined
+      ? <span className={css.actionBlank} aria-hidden="true" />
+      : <CoverMedia className={css.actionCover} cover={file} />
+    title = translate(catalogKey(template.titleKey))
+    hint = translate(catalogKey(template.descriptionKey))
+    onClick = () => { actions.onTemplate(template) }
+  } else {
+    workflow = custom.get(entry.id)
+    if (workflow === undefined) return null
+    const own = workflow
+    const file = coverOf(own)
+    /*
+     * An uploaded cover is a file of a known type, drawn as is (`direct`),
+     * and a video there honours reduced motion like every other card.
+     */
+    cover = file === undefined
+      ? <span className={css.actionBlank} aria-hidden="true" />
+      : <CoverMedia className={css.actionCover} cover={file} direct={own.coverKind === 'video' ? 'video' : 'image'} />
+    title = own.title
+    hint = own.description
+    onClick = () => { actions.onCustom(own) }
+  }
+  const face = (
+    <button
+      type="button"
+      className={tall ? `${css.action} ${css.actionTall}` : css.action}
+      style={workflow === undefined ? { order } : undefined}
+      onClick={onClick}
+    >
+      {cover}
+      <span className={css.actionShade} aria-hidden="true" />
+      <span className={css.actionCopy}>
+        <span className={css.actionTitle}>{title}</span>
+        {/*
+          The tile clips this to two lines; the tooltip carries the
+          whole sentence so nothing is lost on a square.
+        */}
+        <span className={css.actionHint} title={hint}>{hint}</span>
+      </span>
+    </button>
+  )
+  if (workflow === undefined) return face
+  const own = workflow
+  // An uploaded card can be deleted from its corner, as before.
   return (
-    <div className={css.actions}>
-      {CARD_GROUPS.map((group, gi) => (
-      <div className={css.column} key={gi}>
-      {group.map(card => {
-        const motion = CARD_MOTION[card.id]
-        return (
-        <button
-          key={card.id}
-          type="button"
-          className={card === TALL_CARD ? `${css.action} ${css.actionTall}` : css.action}
-          onClick={() => { onCard(card.id) }}
-        >
-          {/*
-            * One function for every surface (`CoverMedia`: the precedence
-            * lives in `cover-plan.ts`). The repo's clip is passed from here
-            * (`motion`) even when there is a custom cover: the cards that have
-            * one play it with the user's image as poster, otherwise they stand
-            * still and the user loses the motion that was there before
-            * (reported on 2026-11-04: some cards used to be videos).
-            */}
-          <CoverMedia className={css.actionCover} cover={card.cover} motion={motion} />
-          <span className={css.actionShade} aria-hidden="true" />
-          <span className={css.actionCopy}>
-            <span className={css.actionTitle}>{translate(card.title)}</span>
-            {/*
-              The tile clips this to one line; the tooltip carries the
-              whole sentence so nothing is lost on a square.
-            */}
-            <span className={css.actionHint} title={translate(card.hint)}>
-              {translate(card.hint)}
-            </span>
-          </span>
-        </button>
-        )
-      })}
-      </div>
-      ))}
+    <div className={css.ownCard} style={{ order }}>
+      {face}
+      <button
+        type="button"
+        className={css.ownRemove}
+        title={translate('imagine.remove')}
+        aria-label={translate('imagine.remove')}
+        onClick={() => { actions.onRemoveCustom(own) }}
+      >
+        ×
+      </button>
     </div>
+  )
+}
+
+/**
+ * The home's one grid: the workflow cards, the ready-made models and the
+ * user's uploaded workflows together (as on Grok Imagine, one set of tools),
+ * with a row of chips that keeps one group. The chip is remembered per viewer.
+ */
+const HomeCards = memo(function HomeCards({ custom, actions }: {
+  custom: readonly CustomWorkflow[]
+  actions: HomeCardActions
+}) {
+  const [filter, setFilter] = useState<HomeFilter>(storedHomeFilter)
+  const byId = useMemo(() => new Map(custom.map(workflow => [workflow.id, workflow])), [custom])
+  const entries = useMemo(() => filterHome(homeOrder(custom), filter), [custom, filter])
+  const columns: { entry: HomeEntry; order: number }[][] = Array.from({ length: CARD_COLUMNS }, () => [])
+  entries.forEach((entry, order) => { columns[order % CARD_COLUMNS]?.push({ entry, order }) })
+  const pick = (next: HomeFilter): void => {
+    setFilter(next)
+    storeHomeFilter(next)
+  }
+  return (
+    <>
+      <div className={css.filters} role="group" aria-label={translate('imagine.home.filterLabel')}>
+        {FILTERS.map(chip => (
+          <button
+            key={chip}
+            type="button"
+            className={css.filter}
+            aria-pressed={chip === filter}
+            data-on={chip === filter || undefined}
+            onClick={() => { pick(chip) }}
+          >
+            {translate(FILTER_LABEL[chip])}
+          </button>
+        ))}
+      </div>
+      <div className={css.actions}>
+        {columns.map((column, gi) => (
+          <div className={css.column} key={gi}>
+            {column.map(({ entry, order }) => (
+              <HomeCard
+                key={`${entry.kind}:${entry.id}`}
+                entry={entry}
+                // The tall one: the top of the middle column.
+                tall={order === 1}
+                order={order}
+                custom={byId}
+                actions={actions}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+    </>
   )
 })
 
@@ -187,6 +310,8 @@ export interface HomeViewProps extends PanelActions {
   readonly onCard: (id: JobCardId) => void
   /** The uploaded card whose panel is open, if any. */
   readonly customPanel?: CustomWorkflow
+  /** The uploaded workflows: their cards sit in the grid. */
+  readonly customWorkflows: CustomWorkflowList
   /** Open the full panel of an uploaded card. */
   readonly onOpenCustom: (workflow: CustomWorkflow) => void
   readonly onBackCustom: () => void
@@ -212,7 +337,14 @@ export interface HomeViewProps extends PanelActions {
 }
 
 export function HomeView(props: HomeViewProps) {
-  const { store, busy, panelCard, items, composer, homeRef, onCard } = props
+  const { store, busy, panelCard, items, composer, homeRef, onCard, onTemplate, onOpenCustom, customWorkflows } = props
+  const { remove: removeCustom } = customWorkflows
+  const cardActions = useMemo((): HomeCardActions => ({
+    onCard,
+    onTemplate,
+    onCustom: onOpenCustom,
+    onRemoveCustom: (workflow) => { void removeCustom(workflow) },
+  }), [onCard, onTemplate, onOpenCustom, removeCustom])
   // Every card id has a spec (WORKFLOW_SPECS is a full record), so an open
   // card always has its panel.
   if (panelCard !== undefined) {
@@ -296,9 +428,8 @@ export function HomeView(props: HomeViewProps) {
         */}
         <div className={css.heroComposer}>{composer}</div>
         </div>
-        <HomeCards onCard={onCard} />
-        <TemplatesSection onOpen={props.onTemplate} />
-        <CustomWorkflows onOpen={props.onOpenCustom} />
+        <HomeCards custom={customWorkflows.list} actions={cardActions} />
+        <CustomWorkflows workflows={customWorkflows} />
       </div>
     </div>
   )

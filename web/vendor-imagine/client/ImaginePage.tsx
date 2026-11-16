@@ -318,7 +318,6 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
   const { items, allByName, addItems, jobs, editJobs, status } = sync
 
   const current = projects.find(project => project.id === projectId)
-  useAddressSync({ actions, view, projectId, items, selected, setSelected, unavailable })
   const { reload } = sync
   /*
    * Files can land in the media folder with no job of the studio behind them
@@ -408,9 +407,15 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
   const { ingestFiles } = ingest
 
   const {
-    panelCard, customPanel, setCustomPanel, changeMode, openPanel, closePanel, stageInSlot, uploadToSlot,
+    panelCard, customPanel, openCustom, closeCustom, customWorkflows, homePanel, showPanel,
+    changeMode, openPanel, closePanel, stageInSlot, uploadToSlot,
     templatePanel, openTemplate, closeTemplate,
   } = usePanelState({ view, composer, homeRef, addItems, setNote })
+  /*
+   * After the panels: the address names the home's open card too
+   * (`/tool/<card>`, `/model/<id>`, `/workflow/<id>`).
+   */
+  useAddressSync({ actions, view, projectId, items, selected, setSelected, unavailable, panel: homePanel, showPanel })
   const {
     likes, merging, setPendingFocus, deleteItems, stageBatchVideo, placeOnBoard, likeMany, downloadMany,
     mergeSelection, stopJob, actOn, takeFrame,
@@ -709,7 +714,7 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
   // From inside a workflow card too: "New generation" is the grid of tools.
   const onNewGeneration = useEvent(() => {
     closePanel()
-    setCustomPanel(undefined)
+    closeCustom()
     closeTemplate()
     actions.go('home')
   })
@@ -738,12 +743,8 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
   const onCloseOverlay = useEvent(() => { setOverlay(undefined) })
   const onCard = useEvent(openPanel)
   /** Opens an uploaded card: its panel page, not the small panel on the home. */
-  const onOpenCustom = useEvent((workflow: CustomWorkflow) => {
-    closePanel()
-    setCustomPanel(workflow)
-    homeRef.current?.scrollTo({ top: 0 })
-  })
-  const onBackCustom = useEvent(() => { setCustomPanel(undefined) })
+  const onOpenCustom = useEvent(openCustom)
+  const onBackCustom = useEvent(closeCustom)
   /** A «Models» card: its panel takes the home, as a flow card's does. */
   const onTemplate = useEvent((template: Template) => { openTemplate(template) })
   const onBackTemplate = useEvent(closeTemplate)
@@ -953,6 +954,7 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
             busy={composerBusy}
             panelCard={panelCard}
             customPanel={customPanel}
+            customWorkflows={customWorkflows}
             onOpenCustom={onOpenCustom}
             onBackCustom={onBackCustom}
             onRunCustomJob={onRunCustomJob}

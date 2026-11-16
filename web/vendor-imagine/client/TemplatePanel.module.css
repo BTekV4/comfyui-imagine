@@ -19,15 +19,17 @@
 }
 
 /*
- * One gradient per group of the catalog. Composed from the section's file so
- * the card and the panel can never paint the same model two colours.
+ * One gradient per group of the catalog, behind the model's render while it
+ * loads. They lived in the home's old «Models» section (TemplatesSection,
+ * removed on 2026-11-16 when the models joined the one grid); the panel is
+ * the only surface that still paints them.
  */
-.catPhoto { composes: catPhoto from './TemplatesSection.module.css'; }
-.catPeople { composes: catPeople from './TemplatesSection.module.css'; }
-.catStyle { composes: catStyle from './TemplatesSection.module.css'; }
-.catProduct { composes: catProduct from './TemplatesSection.module.css'; }
-.catSocial { composes: catSocial from './TemplatesSection.module.css'; }
-.catCollection { composes: catCollection from './TemplatesSection.module.css'; }
+.catPhoto { background: linear-gradient(150deg, #26364f 0%, #182231 55%, #10161f 100%); }
+.catPeople { background: linear-gradient(150deg, #4a2b3c 0%, #2c1a25 55%, #1a1016 100%); }
+.catStyle { background: linear-gradient(150deg, #3b2c55 0%, #251a35 55%, #161020 100%); }
+.catProduct { background: linear-gradient(150deg, #24463f 0%, #16302b 55%, #0f1e1a 100%); }
+.catSocial { background: linear-gradient(150deg, #4b3520 0%, #2e2014 55%, #1a120c 100%); }
+.catCollection { background: linear-gradient(150deg, #2c4132 0%, #1d2b21 55%, #111a14 100%); }
 
 /* The model's own render, filling the intro card. */
 .photo {

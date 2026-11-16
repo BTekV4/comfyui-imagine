@@ -22,31 +22,14 @@
   border-radius: 8px; padding: 8px; font: inherit; width: 100%;
 }
 /*
- * The user's workflow cards sit under the masonry grid of the built-in
- * workflows: with `auto-fill minmax(180px)` at 1440 they became four columns
- * of 183 while above there are three of 244, and the two sections looked like
- * two different pages (measured 2026-11-05: 183x183 at x 465/660/855/1050
- * against 244x254 at x 469/727/985). Here they line up: three columns, gap 14,
- * radius 18 and the same 244/254 shape. On the phone they go back to two, like
- * the grid above.
+ * The user's workflow cards are in the home's one grid now (HomeView.tsx);
+ * this strip under it only holds the title, the «Add» button and the form.
+ * On a phone the hero orders its children (the composer is pinned last), so
+ * the strip takes the grid's place in that order instead of jumping above it.
  */
-.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-
 @media (max-width: 900px) {
-  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .wrap { order: 1; }
 }
-.card { position: relative; }
-/*
- * The face is the home's workflow card itself (HomeView.module.css), composed
- * rather than copied, so the two grids cannot drift apart again.
- */
-.face { composes: action from './HomeView.module.css'; }
-.blank { position: absolute; inset: 0; background: linear-gradient(135deg, #1b1b22, #26262f); }
-.cover { composes: actionCover from './HomeView.module.css'; }
-.shade { composes: actionShade from './HomeView.module.css'; }
-.copy { composes: actionCopy from './HomeView.module.css'; }
-.name { composes: actionTitle from './HomeView.module.css'; }
-.hint { composes: actionHint from './HomeView.module.css'; }
 .desc { font-size: 12px; opacity: 0.8; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .remove {
   position: absolute; top: 6px; right: 6px; border: none; border-radius: 8px;

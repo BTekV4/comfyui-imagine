@@ -10,7 +10,7 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react'
 import type { GalleryItem } from '../../../shared/imagine-types.ts'
 import type { ImagineView } from './gallery-store.ts'
-import { pageOf, pathOf, type StudioPage } from './imagine-routes.ts'
+import { isPanelPath, pageOf, pathOf, samePanel, type HomePanel, type StudioPage } from './imagine-routes.ts'
 import type { ImaginePageProps } from './props.ts'
 
 /** What the address follows and drives. */
@@ -29,6 +29,13 @@ export interface AddressSyncContext {
    * than kept in the history.
    */
   readonly unavailable?: ReadonlySet<ImagineView>
+  /** The panel the home shows (a card, a model, an uploaded workflow), if any. */
+  readonly panel?: HomePanel
+  /**
+   * Show the panel an address names, or the bare grid for undefined. Called
+   * only when it differs from `panel`; a flow card opens as a click opens it.
+   */
+  readonly showPanel?: (panel: HomePanel | undefined) => void
 }
 
 /**
@@ -36,14 +43,17 @@ export interface AddressSyncContext {
  * @param page - the page the address names.
  * @param view - the page the store shows.
  * @param projectId - the project the store has open.
+ * @param panel - the panel the home shows.
  * @returns true when they are the same page.
  */
-function showsPage(page: StudioPage, view: ImagineView, projectId: string | undefined): boolean {
-  return page.view === view && (page.view !== 'project' || page.projectId === projectId)
+function showsPage(page: StudioPage, view: ImagineView, projectId: string | undefined, panel: HomePanel | undefined): boolean {
+  return page.view === view
+    && (page.view !== 'project' || page.projectId === projectId)
+    && (page.view !== 'home' || samePanel(page.panel, panel))
 }
 
 export function useAddressSync(
-  { actions, view, projectId, items, selected, setSelected, unavailable }: AddressSyncContext,
+  { actions, view, projectId, items, selected, setSelected, unavailable, panel, showPanel }: AddressSyncContext,
 ): void {
   /*
    * Every page has its own address (2026-11-03): on load the address wins,
@@ -72,8 +82,24 @@ export function useAddressSync(
   }
   const unavailableRef = useRef(unavailable)
   unavailableRef.current = unavailable
+  // Read by the popstate listener, which is registered once.
+  const panelRef = useRef(panel)
+  panelRef.current = panel
+  const showPanelRef = useRef(showPanel)
+  showPanelRef.current = showPanel
   const go = (page: StudioPage | undefined): void => {
     if (page === undefined) return
+    if (page.view === 'home') {
+      // A panel address naming no card: the home, and Back does not land on it.
+      if (page.panel === undefined && isPanelPath(window.location.pathname)) {
+        if (pendingPage.current === page) pendingPage.current = undefined
+        window.history.replaceState({ view: 'home' }, '', pathOf('home', undefined))
+      }
+      actions.go('home')
+      // The same panel is left alone: a popstate of `?file=` must not reset it.
+      if (!samePanel(panelRef.current, page.panel)) showPanelRef.current?.(page.panel)
+      return
+    }
     if (page.view === 'project') {
       if (page.projectId !== undefined) actions.openProject(page.projectId)
       return
@@ -104,17 +130,28 @@ export function useAddressSync(
     const pending = pendingPage.current
     if (pending !== undefined) {
       const moved = startedOn.current?.view !== view || startedOn.current.projectId !== projectId
-      if (!showsPage(pending, view, projectId) && !moved) return
+      /*
+       * The page and the panel land in two renders (the view is the store's,
+       * the panel this page's state): the home without its card yet is not a
+       * move, or `/` would be pushed between the link and the card.
+       */
+      const panelOnItsWay = pending.view === 'home' && view === 'home' && !samePanel(pending.panel, panel)
+      if (!showsPage(pending, view, projectId, panel) && (!moved || panelOnItsWay)) return
       pendingPage.current = undefined
     }
-    const path = pathOf(view, projectId)
+    /*
+     * A panel's address is pushed as a page's is: opening a card adds an
+     * entry, closing it adds the home's, so Back and Forward both move
+     * between the grid and the card.
+     */
+    const path = pathOf(view, projectId, view === 'home' ? panel : undefined)
     if (window.location.pathname === path) return
     // An address naming a page that cannot be shown is replaced, so Back does
     // not land on it again.
     const left = pageOf(window.location.pathname)
     if (left !== undefined && unavailableRef.current?.has(left.view) === true) window.history.replaceState({ view, projectId }, '', path)
     else window.history.pushState({ view, projectId }, '', path)
-  }, [view, projectId])
+  }, [view, projectId, panel?.kind, panel?.id])
   /*
    * A page that becomes unavailable while shown (the plugin list arrived)
    * gives way to the home.

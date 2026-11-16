@@ -50,8 +50,9 @@ the repository ships Italian (see [Languages](#languages)).
   model writes one prompt per scene. Make video, extend (up to 60 s), animated
   loops (the last scene lands back on the first frame) and both swaps work this
   way; the swaps render at 480p, 720p or 1080p.
-- **Ready-made models, one form each.** Sixteen templates under the home
-  page (photo edit, background, headshot, profile picture, restyle, product
+- **Ready-made models, one form each.** Sixteen templates in the home
+  page's grid, mixed in with the workflow cards and filtered by the same chips
+  (All, Photo, People, Product, Video, Graphics, Audio) (photo edit, background, headshot, profile picture, restyle, product
   colour, smart resize, collage, e-commerce set, UGC photos, editorial poster,
   icon maker, emoji pack, mascot, character sprite, hero reveal): fill in the
   few fields the model asks for and the studio queues the runs it needs — one
@@ -314,8 +315,14 @@ run asks for.
 Each model's card carries its own cover — a render of the studio's own,
 `web/public/imagine/tpl-<id>.webp`, made with the graph itself from invented
 subjects. To change one, replace that file (768 × 768 WebP) or name it in the
-catalog's `cover` field; a model with no `cover` falls back to the gradient of
-its group.
+catalog's `cover` field; a model with no `cover` shows a plain card.
+
+The home shows the models and the workflow cards (and the workflows you
+uploaded) as one grid. Each card's filter group is written out in
+`web/vendor-imagine/client/home-groups.ts`, which also fixes the order of
+«All»: generate, edit, style and video first, then one card per group in turn.
+Every card has its own address — `/tool/<card>`, `/model/<id>`,
+`/workflow/<id>` — so a card can be linked or reloaded, and Back closes it.
 
 ## The home covers
 
