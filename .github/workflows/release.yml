@@ -48,8 +48,9 @@ jobs:
         include:
           - os: ubuntu-24.04
             target: linux-x64
-          - os: windows-latest
-            target: windows-x64
+          # Windows entra quando i test girano verdi là (18 asserzioni usano
+          # ancora i separatori POSIX): 0.1.2. Un pacchetto mai avviato non si
+          # allega a una release.
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -111,9 +112,11 @@ jobs:
 
             | Your system | Download | Then |
             |---|---|---|
-            | Windows 10/11 (64-bit) | `Imagine-<version>-windows-x64.zip` | extract, double-click **Avvia Imagine.bat** |
-            | Linux (64-bit) | `Imagine-<version>-linux-x64.zip` | extract, run **Imagine.sh** (or double-click it) |
+            | Linux (64-bit) | `Imagine-<version>-linux-x64.zip` | extract, run **Imagine.sh** (`bash Imagine.sh`, or double-click it) |
             | macOS, or a server | `comfyui-imagine-<version>.tar.gz` | `tar xzf … && ./install.sh` |
+
+            A Windows package is next: it is being tested on Windows before it
+            ships (a package that was never started is not attached to a release).
 
             The Windows and Linux zips carry **Node 24** and a static **ffmpeg**:
             the launcher opens the browser by itself, and a second double-click

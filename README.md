@@ -62,9 +62,13 @@ Node and ffmpeg inside, so there is nothing to install first:
 
 | Your system | Download | Then |
 |---|---|---|
-| **Windows 10/11** (64-bit) | `Imagine-<version>-windows-x64.zip` | extract it anywhere, double-click **Avvia Imagine.bat** |
 | **Linux** (64-bit) | `Imagine-<version>-linux-x64.zip` | extract it, run **Imagine.sh** (`bash Imagine.sh`, or double-click it) |
 | **macOS**, or a server | `comfyui-imagine-<version>.tar.gz` | `tar xzf … && cd … && ./install.sh` |
+
+A **Windows** package is next: it is being tested on Windows before it ships
+(the runner runs the test suite there, and the package is booted before it is
+attached to a release) — the launcher is already in the repository, as
+`scripts/package-portable.sh windows-x64`.
 
 The launcher opens the browser by itself, and a second double-click just
 reopens the page instead of starting a second copy. On the first start there is
@@ -220,13 +224,13 @@ gated repository (FLUX.3 Klein) needs a Hugging Face token in
 
 ## Install
 
-### The portable packages (Windows and Linux)
+### The portable package (Linux)
 
-`Imagine-<version>-windows-x64.zip` and `Imagine-<version>-linux-x64.zip` are the
-studio with **Node 24** and a static **ffmpeg** beside it, plus a launcher
-(`Avvia Imagine.bat`, `Imagine.sh`; a `.command` for macOS is in the tarball's
-shape but not signed, so macOS users should follow [From source](#from-source)
-or run the tarball by hand).
+`Imagine-<version>-linux-x64.zip` is the studio with **Node 24** and a static
+**ffmpeg** beside it, plus `Imagine.sh`. Windows and macOS launchers are written
+in `scripts/package-portable.sh` (`windows-x64`, `macos-arm64`) but they ship
+only once they have been run on their platform: a package nobody booted is not
+a package.
 
 Nothing is asked in a terminal: the server writes `config.yaml` on its first
 start, from `config.example.yaml` shipped beside it, with ComfyUI on

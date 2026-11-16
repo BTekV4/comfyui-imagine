@@ -4,6 +4,31 @@ Notable changes, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project's
 versions follow [semantic versioning](https://semver.org/).
 
+## 0.1.1 — 2026-11-16
+
+The release that does not need a terminal.
+
+### Added
+
+- **A portable package for Linux** — `Imagine-<version>-linux-x64.zip`: the
+  studio with **Node 24** and a static **ffmpeg** inside, plus `Imagine.sh`.
+  Extract it anywhere and run it; the launcher opens the browser when the page
+  answers, and a second launch reopens the page instead of starting a second
+  copy. Everything the studio keeps (projects, thumbnails, plugins, language
+  packs, media) lands in `data/` beside the app, so the folder is
+  self-contained.
+- **No configuration to write on a first run.** With no `config.yaml` the
+  server writes one from `config.example.yaml` (ComfyUI on `127.0.0.1:8188`, a
+  local text endpoint, one model), and the home page's first-run card says what
+  is still missing and how to fix it. Before, the boot died on the missing file
+  and the only way in was `install.sh` asking three questions in a terminal.
+- **CI builds and boots the portable package** on every push, so a package that
+  cannot start does not reach a release.
+
+### Changed
+
+- The release notes are a table by system: download, extract, double-click.
+
 ## 0.1.0 — 2026-11-16
 
 The first release: from here the studio is something to download rather than a
