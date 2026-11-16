@@ -70,6 +70,12 @@ jobs:
         run: npm run build
       - name: Package
         run: OUT_DIR=release bash scripts/package-portable.sh ${{ matrix.target }}
+      # L'AppImage, solo su Linux: un file, doppio clic, icona nel menu.
+      - name: AppImage
+        if: matrix.target == 'linux-x64'
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends squashfs-tools
+          OUT_DIR=release bash scripts/package-appimage.sh
       # La prova che conta: il pacchetto si apre e la pagina risponde.
       - name: Boot it
         run: |
@@ -90,6 +96,8 @@ jobs:
           path: |
             release/Imagine-*.zip
             release/Imagine-*.zip.sha256
+            release/Imagine-*.AppImage
+            release/Imagine-*.AppImage.sha256
           if-no-files-found: error
 
   publish:
@@ -112,7 +120,8 @@ jobs:
 
             | Your system | Download | Then |
             |---|---|---|
-            | Linux (64-bit) | `Imagine-<version>-linux-x64.zip` | extract, run **Imagine.sh** (`bash Imagine.sh`, or double-click it) |
+            | Linux (64-bit) | `Imagine-<version>-linux-x64.AppImage` | make it executable (`chmod +x`), double-click it |
+            | Linux, or a folder you keep | `Imagine-<version>-linux-x64.zip` | extract, run **Imagine.sh** |
             | macOS, or a server | `comfyui-imagine-<version>.tar.gz` | `tar xzf … && ./install.sh` |
 
             A Windows package is next: it is being tested on Windows before it

@@ -50,6 +50,15 @@ fetch() { # url → file in cache, scaricato una volta
   printf '%s' "$url" > "$out.url"
 }
 
+# 0. La versione la stampa la BUILD: un dist/ costruito prima di alzare il numero
+#    in package.json finisce nel pacchetto con la versione vecchia (successo il
+#    16/11/2026: AppImage 0.1.1 che dentro diceva 0.1.0). Se dist/ manca o è più
+#    vecchio del manifest, si ricostruisce: costa secondi.
+if [ ! -f dist/server.mjs ] || [ package.json -nt dist/server.mjs ]; then
+  say "app: dist/ manca o è vecchio rispetto a package.json — ricostruisco"
+  npm run build >/dev/null
+fi
+
 # 1. l'albero dell'app: lo stesso del tarball, così le due forme non divergono
 say "app: costruisco l'albero"
 bash scripts/release-tarball.sh >/dev/null

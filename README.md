@@ -62,7 +62,8 @@ Node and ffmpeg inside, so there is nothing to install first:
 
 | Your system | Download | Then |
 |---|---|---|
-| **Linux** (64-bit) | `Imagine-<version>-linux-x64.zip` | extract it, run **Imagine.sh** (`bash Imagine.sh`, or double-click it) |
+| **Linux** (64-bit), one file | `Imagine-<version>-linux-x64.AppImage` | `chmod +x` then double-click it |
+| **Linux**, a folder you keep | `Imagine-<version>-linux-x64.zip` | extract it, run **Imagine.sh** (`bash Imagine.sh`, or double-click it) |
 | **macOS**, or a server | `comfyui-imagine-<version>.tar.gz` | `tar xzf … && cd … && ./install.sh` |
 
 A **Windows** package is next: it is being tested on Windows before it ships
@@ -223,6 +224,21 @@ gated repository (FLUX.3 Klein) needs a Hugging Face token in
 
 
 ## Install
+
+### The AppImage (Linux)
+
+`Imagine-<version>-linux-x64.AppImage` is one file: `chmod +x` it and run it. An
+AppImage is mounted read-only, so on the first start it copies itself into
+`~/.local/share/imagine` (change it with `IMAGINE_DATA`) and works from there —
+`config.yaml`, projects, plugins and media all live in that folder. A second
+launch reopens the page instead of starting a second copy, and `IMAGINE_PORT`
+picks another port when you want two side by side.
+
+It needs `libfuse2` (Debian/Ubuntu: `apt install libfuse2`). Without it the
+kernel cannot mount it and the file answers *"dlopen(): error loading
+libfuse.so.2"*: run it as
+`./Imagine-<version>-linux-x64.AppImage --appimage-extract-and-run`, or use the
+zip, which needs nothing.
 
 ### The portable package (Linux)
 
