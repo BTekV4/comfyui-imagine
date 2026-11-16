@@ -366,6 +366,19 @@
 
 .pill:hover { background: var(--imagine-hover); }
 
+/* The length a staged track sets (2026-11-16): read-only, as tall as a pill. */
+.trackLength {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  color: var(--imagine-ink);
+  font-size: 13px;
+}
+
 .pill[data-on] {
   background: var(--imagine-ink);
   color: var(--imagine-ink-fg);

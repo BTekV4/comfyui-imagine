@@ -35,6 +35,7 @@ import type { ModelRoute } from '../../../shared/imagine-types.ts'
 import { CoverMedia } from './cover-media.tsx'
 import { DEFAULT_RELIGHT_LOOK, RELIGHT_LOOKS, relightThumbOf, type RelightLook } from '../../../shared/relight-looks.ts'
 import { AudioMark } from './imagine-bits.tsx'
+import { useTrackSeconds } from './use-track-seconds.ts'
 import css from './WorkflowPanel.module.css'
 
 export interface WorkflowPanelProps {
@@ -268,6 +269,14 @@ const NO_OPTIONS = {
 export function WorkflowPanel(given: WorkflowPanelProps) {
   const props = { ...NO_OPTIONS, ...given }
   const { spec } = props
+  /*
+   * A track staged on a card that renders a video ("Video": its song slot) is
+   * the video's length, so the length pills give way to it (2026-11-16).
+   */
+  const track = spec.options.includes('seconds')
+    ? Object.values(props.staged).find(item => item?.kind === 'audio')
+    : undefined
+  const trackSeconds = useTrackSeconds(track)
   /** The panel's texts: an uploaded card brings them already written. */
   const titleText = spec.titleText ?? translate(spec.titleKey)
   const summaryText = spec.summaryText ?? translate(spec.summaryKey)
@@ -556,8 +565,22 @@ export function WorkflowPanel(given: WorkflowPanelProps) {
                   classes={PILLS}
                 />
               )}
-              {(spec.options.includes('seconds') || spec.options.includes('loopSeconds')) && (
+              {(spec.options.includes('seconds') || spec.options.includes('loopSeconds')) && track === undefined && (
                 <Pills label={translate('imagine.duration')} values={seconds} value={seconds.includes(props.seconds) ? props.seconds : seconds[1] ?? seconds[0] ?? 10} onPick={props.onSeconds} format={value => `${String(value)} s`} classes={PILLS} />
+              )}
+              {track !== undefined && (
+                <div className={css.option}>
+                  <span className={css.optionLabel}>{translate('imagine.duration')}</span>
+                  <span
+                    className={css.trackLength}
+                    data-imagine-track-length={trackSeconds ?? ''}
+                    title={translate('imagine.durationFromAudioHint')}
+                  >
+                    {trackSeconds === undefined
+                      ? translate('imagine.durationFromAudio')
+                      : translate('imagine.durationFromAudioSeconds', { seconds: String(trackSeconds) })}
+                  </span>
+                </div>
               )}
               {spec.options.includes('model') && (
                 <div className={css.option}>
