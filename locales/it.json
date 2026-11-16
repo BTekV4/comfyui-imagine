@@ -568,6 +568,8 @@
   "imagine.framesSave": "Salva questo fotogramma",
   "imagine.framesStored": "Il fotogramma va nella galleria come immagine, a piena risoluzione.",
   "imagine.cmtNoText": "senza testo",
+  "imagine.cmtAuthorUnknown": "utente Instagram",
+  "imagine.cmtOnPost": "sul post ↗",
   "imagine.cmtLiked": "Like già messo al commento di {author}",
   "imagine.cmtLike": "Metti like al commento di {author}",
   "imagine.cmtCancel": "Annulla",

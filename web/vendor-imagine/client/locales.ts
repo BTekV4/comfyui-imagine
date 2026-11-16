@@ -592,6 +592,8 @@ export const en = {
   "imagine.framesSave": "Save this frame",
   "imagine.framesStored": "The frame goes into the gallery as an image, at full resolution.",
   "imagine.cmtNoText": "no text",
+  "imagine.cmtAuthorUnknown": "Instagram user",
+  "imagine.cmtOnPost": "on the post ↗",
   "imagine.cmtLiked": "Already liked the comment by {author}",
   "imagine.cmtLike": "Like the comment by {author}",
   "imagine.cmtCancel": "Cancel",

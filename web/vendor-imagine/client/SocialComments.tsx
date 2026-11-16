@@ -108,12 +108,12 @@ function CommentRow({ comment, onChanged }: {
   return (
     <div className={css.row} data-flagged={comment.flagged === true || undefined}>
       <div className={css.head}>
-        <span className={css.author}>{comment.author ?? 'utente Instagram'}</span>
+        <span className={css.author}>{comment.author ?? translate('imagine.cmtAuthorUnknown')}</span>
         {kind !== undefined && <span className={css.kind} data-kind={comment.classification}>{kind}</span>}
         <span className={css.when}>{momentLabel(comment.timestamp ?? comment.seenAt, 'short')}</span>
         {comment.permalink !== undefined && (
           <a className={css.permalink} href={comment.permalink} target="_blank" rel="noopener noreferrer">
-            sul post ↗
+            {translate('imagine.cmtOnPost')}
           </a>
         )}
       </div>
