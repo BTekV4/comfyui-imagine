@@ -22,6 +22,7 @@ import {
 } from './custom-workflows-view.tsx'
 import { CustomWorkflowPanel, type CustomBatchRequest, type CustomRunRequest } from './custom-workflow-panel.tsx'
 import { TemplatePanel } from './TemplatePanel.tsx'
+import { SetupStatusCard } from './SetupStatusCard.tsx'
 import { templateById, type Template } from '../../../shared/imagine-templates.ts'
 import {
   FILTER_LABEL, HOME_GROUPS, filterHome, homeOrder, storeHomeFilter, storedHomeFilter,
@@ -464,6 +465,8 @@ export function HomeView(props: HomeViewProps) {
         */}
         <div className={css.heroComposer}>{composer}</div>
         </div>
+        {/* What a first run is missing, before the cards promise anything. */}
+        <SetupStatusCard />
         <HomeCards custom={customWorkflows.list} actions={cardActions} onAdd={startAdding} />
       </div>
     </div>

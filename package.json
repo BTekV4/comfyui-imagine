@@ -1,5 +1,6 @@
 {
   "name": "comfyui-imagine",
+  "version": "0.1.0",
   "private": true,
   "description": "A local studio for ComfyUI: a chat that turns a sentence into the right graph, a job queue, a gallery and ready-made image and video recipes.",
   "license": "MIT",
@@ -19,7 +20,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "node --env-file=test/test.env --experimental-transform-types --test test/*.test.ts",
     "build:plugins": "node scripts/build.mjs plugins",
-    "build:mcp": "node scripts/build.mjs mcp"
+    "build:mcp": "node scripts/build.mjs mcp",
+    "start": "node dist/server.mjs",
+    "release:tarball": "bash scripts/release-tarball.sh"
   },
   "dependencies": {
     "fflate": "^0.8.3",

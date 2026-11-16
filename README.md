@@ -12,6 +12,8 @@
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-3B6CF6"></a>
   <img alt="Node 24+" src="https://img.shields.io/badge/node-%E2%89%A524-8E44F0">
   <img alt="Languages: English, Italian" src="https://img.shields.io/badge/languages-EN%20%7C%20IT-555">
+  <a href="https://github.com/BTekV4/comfyui-imagine/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/BTekV4/comfyui-imagine?label=release&color=3B6CF6"></a>
+  <a href="https://github.com/BTekV4/comfyui-imagine/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/BTekV4/comfyui-imagine/ci.yml?label=checks"></a>
 </p>
 
 <p align="center"><sub>An independent project for ComfyUI, not affiliated with or endorsed by Comfy Org.</sub></p>
@@ -31,6 +33,41 @@ you configure.
 
 The interface is written in English; other languages are installable packs, and
 the repository ships Italian (see [Languages](#languages)).
+
+## Start here
+
+Two things to know before anything else: **the weights are not in this
+repository** (the studio downloads the ones an action needs, after asking), and
+**ComfyUI is where the rendering happens** — it can be on the same machine or
+another one on the network, and the studio only talks to it over HTTP.
+
+What a fresh install pulls, per kind of work — so you can tell at a glance
+whether this is the project for your card:
+
+| You want | Weights | ComfyUI can run it on |
+|---|---|---|
+| Photos: generate, edit, style, background, upscale | about 22.6 GB (Krea 2 + the pack) | 16 GB of VRAM, comfortably |
+| A person from a reference photo (compose) | + 17.3 GB | 16 GB |
+| Relight | + 5.6–6.2 GB | 16 GB |
+| Music | 14.3 GB | 16 GB |
+| Video (MiniMax H3), any length | 76–88 GB | 24 GB, and patience: a clip is minutes, not seconds |
+
+The first request that needs something ComfyUI does not have offers to install
+it: node packs at the version this studio was tested with, weights checked file
+by file. Nothing is downloaded before you say yes, and everything can be
+declined — the action then says what it would have needed.
+
+```sh
+# the whole install, with a release tarball already built (Node 24 + ffmpeg needed)
+curl -LO https://github.com/BTekV4/comfyui-imagine/releases/latest/download/comfyui-imagine-0.1.0.tar.gz
+tar xzf comfyui-imagine-0.1.0.tar.gz && cd comfyui-imagine-0.1.0
+./install.sh          # asks for ComfyUI's address, the text endpoint and the model
+node dist/server.mjs  # then open http://localhost:3090
+```
+
+That is the short version; [Install](#install) has Docker, the from-source path
+and how updates work.
+
 
 ## What it does
 
@@ -161,7 +198,75 @@ recommended — Segments, Recreate and the photo descriptions need it.
   their graphs name go in by hand. **Weights are not included in this repository.**
 - An OpenAI-compatible endpoint for text, and ideally one that takes images.
 
+### What it will download, and where
+
+Nothing in the table above is bundled: the studio fetches the weights an action
+needs from Hugging Face, with the URLs and the sizes written in the ComfyUI
+pack's `manifest.json`, and every file checked by SHA-256. The files land in
+ComfyUI's own folders (`models/diffusion_models`, `models/text_encoders`,
+`models/vae`, …), so they are shared with everything else that ComfyUI runs. A
+gated repository (FLUX.3 Klein) needs a Hugging Face token in
+**Settings → ComfyUI setup**, and the chat says so before downloading.
+
+
 ## Install
+
+### The release tarball (recommended)
+
+Every [release](https://github.com/BTekV4/comfyui-imagine/releases) ships the
+studio already built — the page, the server, the plugin bundles and the five
+runtime packages — so there is no `npm install` and no build step on your
+machine, and nothing to compile if your Node is not a compiler.
+
+```sh
+curl -LO https://github.com/BTekV4/comfyui-imagine/releases/latest/download/comfyui-imagine-0.1.0.tar.gz
+tar xzf comfyui-imagine-0.1.0.tar.gz
+cd comfyui-imagine-0.1.0
+./install.sh
+node dist/server.mjs
+```
+
+`install.sh` checks Node 24 or newer, `ffmpeg`/`ffprobe` and the ComfyUI address
+it is given, asks three questions (ComfyUI's address, the OpenAI-compatible text
+endpoint, the model id), writes `config.yaml` and prints the next command. Its
+options:
+
+| | |
+|---|---|
+| `./install.sh --check` | only run the checks, write nothing |
+| `./install.sh --systemd` | also install and start `imagine.service` (as root) |
+| `IMAGINE_COMFY_URL=… IMAGINE_LLM_BASE_URL=… IMAGINE_LLM_MODEL=… ./install.sh` | answer the questions without a terminal |
+
+It never installs Node or ffmpeg itself: it names the command for your system,
+because a script that starts changing a machine it has never met is a script
+people stop trusting.
+
+A fresh installation that is missing something does not look broken: the home
+page shows a **first-run card** listing what is wrong — ComfyUI not answering at
+the address in the file, no `ffmpeg`, no model configured, an output folder that
+cannot be written — with the command that fixes each row, and it disappears when
+they are all in place.
+
+### Docker
+
+The studio is one Node process with `ffmpeg` beside it; ComfyUI stays where it
+already runs (the container talks to it over HTTP, and that is the only sane
+split: the GPU and the weights are ComfyUI's). From a clone of this repository:
+
+```sh
+cp config.example.yaml config.yaml   # or run ./install.sh first, which writes one
+docker compose up -d --build
+```
+
+`docker compose` builds the image from source (Node 24, `npm ci`, `npm run
+build`, then a runtime image with `ffmpeg`), mounts `config.yaml` read-only and
+keeps everything the studio writes in `./data`. In the container, ComfyUI on the
+same machine is `http://host.docker.internal:8188` (the compose file maps that
+name); on another machine, its LAN address.
+
+### From source
+
+For development, or when you want to read and change the code:
 
 ```sh
 git clone https://github.com/BTekV4/comfyui-imagine.git
@@ -172,20 +277,21 @@ npm run build
 node dist/server.mjs
 ```
 
-To keep it running, `deploy/imagine.service` is a systemd unit to copy (it
-assumes the app in `/opt/imagine`; keys go in `/opt/imagine/imagine.env`).
-
-To update: `git pull`, `npm install`, `npm run build`, restart. The plugins you
-installed are brought up to the new version at the next start (the old files
-stay beside them as `*.bak-<time>-update`; their settings are never touched).
-
 `npm run build` runs `scripts/build.mjs`, which bundles the server
 (`dist/server.mjs`), the MCP server (`dist/imagine-mcp.mjs`) and the TypeScript
 plugins (`plugins/<id>/index.mjs`) with esbuild, then `vite build web` builds
 the page into `dist/web`. Each part also builds alone: `npm run build:server`,
-`build:mcp`, `build:plugins`, `build:web`. `npm test` runs the test suite.
+`build:mcp`, `build:plugins`, `build:web`. `npm test` runs the suite;
+`npm run release:tarball` builds the tarball a release ships.
 
-Open `http://localhost:3090`.
+### Updating
+
+Replace the folder with the new release's tarball, or `git pull` in a source
+checkout, then `npm install` (source only), `npm run build` (source only) and a
+restart. `config.yaml`, `<data>` and your model weights are outside all of it
+and stay where they are. The plugins you installed are brought up to the new
+version at the next start (the old files stay beside them as
+`*.bak-<time>-update`; their settings are never touched).
 
 ### The ComfyUI pack
 
@@ -223,106 +329,29 @@ The files live in two places:
 Back up both. Pointing `toolComfy.outputDir` inside `<data>` keeps everything
 in one folder.
 
+
 ## Configuration
 
 Everything deployment-specific lives in `config.yaml` — no address, path or
 model name is compiled into the code, and every path in it is read relative to
-the file itself.
-
-| Key | What it is |
-|---|---|
-| `providers` / `models` | One entry per OpenAI-shaped endpoint and the models it serves. `vision: true` marks the ones that can read a frame. |
-| `comfy.baseURL` | Where ComfyUI listens. |
-| `toolComfy.workflows` | One entry per action: the graph file, the output extension, and the ids of the nodes carrying the prompt, seed, canvas or input image. An entry you leave out disables that action. |
-| `toolComfy.persona.path` | Who the prompts describe. See below. |
-| `toolComfy.tts` | The speech endpoint for the `speak` action. |
-
-### The persona
-
-Every prompt that has to show a person starts with the same paragraph, and that
-paragraph is data: a JSON file named by `toolComfy.persona.path`.
-
-```json
-{
-  "identity": "The subject, a person standing alone in the photograph, photographed from the front in natural light.",
-  "hair": ""
-}
-```
-
-- `identity` — the paragraph prepended to every draw.
-- `hair` — a colour to pin in the text, when the source frame keeps winning.
-  Empty leaves the text alone.
-
-A deployment without a persona file boots and works: it draws a neutral,
-undescribed person.
+the file itself. The keys, the persona and where the files land are in
+[docs/configuration.md](docs/configuration.md); `config.example.yaml` is the
+same thing with the current values filled in.
 
 ## The workflows
 
-`workflows/` holds the graphs in ComfyUI's API format — the same JSON you get
-from "Save (API format)". `config.example.yaml` wires them to the actions,
-with the node ids that match the shipped files (each Pika clip graph carries a
-fast and a quality recipe: the entry's `highInputs` lists the inputs the
-quality one writes over the graph; a second graph as `pathHigh` also works).
-[workflows/README.md](workflows/README.md) lists every file, the
-config key it serves and what it does. They are examples from one machine: the
-model and LoRA names in them are the ones installed there, so adapt them to
-your ComfyUI. Change a graph, change the model, or write your own, then update
-the pins.
-
-There is no LoRA switching by keyword anywhere: a graph is static, and what
-varies at run time is only what the pins address.
+`workflows/` holds the graphs in ComfyUI's API format and
+[workflows/README.md](workflows/README.md) lists every file and the action it
+serves. [docs/workflows.md](docs/workflows.md) explains how a graph is wired to
+an action, how a fast and a quality recipe share one file, and what to change to
+point a recipe at your own weights.
 
 ## The templates
 
 The sixteen models of the home page live in `shared/imagine-templates.ts`: the
-fields a form asks for (`photos`, `choice`, `aspect`, `text`), the runs of each
-model, and the expansion that turns a form's answers into a list of runs. The
-page imports the catalog directly, so the form and the server cannot disagree
-about what a value means; the host reaches the same file through
-`GET /comfy-imagine/templates` and `POST /comfy-imagine/template`, and the MCP
-server exposes the two as the `imagine_templates` and `imagine_run_template`
-tools.
-
-A run is a job — `generate`, `remix`, `bg`, `video`, `loop` — with an English
-prompt that holds placeholders: a choice stands for the `prompt` of the value
-picked, `forEach` unrolls a run once per selected value (one picture per style,
-one emoji per expression), a line whose placeholders are all empty is dropped,
-and `then` hangs further steps on the output of the run before it (a cut-out,
-a loop, a still put on another ratio). Every job is queued through the same
-path as a run started by hand (`server/vendor/tool-comfy/job-start.ts`), so
-the checks, the board project and the live tiles are the same. Every planned
-body, chain steps included, and every gallery file a run reads are checked
-before the first run is queued, so a refused form starts nothing; a run that
-still stops half way answers 202 with what did start and an `error`. The
-chains wait on the queue in the background for as long as a step is queued
-(a step is given up on only after three hours *running*), log every early
-stop with the template and the step, and live in memory only — an update
-restarts the queue too, so a chain that had not queued its next step yet is
-not resumed. From the home page a run lands in a project like a composer run:
-the open one, the one named after the model, or a new one.
-
-Two runs are not jobs at all: a collage (`grid`, `strip`) and a resize are
-composed by ffmpeg in `server/vendor/tool-comfy/template-compose.ts`, and the
-`text` layout writes the user's own words under the picture (a product card,
-a poster) — no model in the middle, so the words come out exactly as typed.
-
-Note on ratios: the `remix` graph takes its canvas from the photo it edits, so
-a model that needs another ratio renders the edit and then puts the still on
-that canvas with ffmpeg (`onCanvas` in the catalog). Nothing is redrawn by
-that second step: the frame is cropped, or laid on the background colour the
-run asks for.
-
-Each model's card carries its own cover — a render of the studio's own,
-`web/public/imagine/tpl-<id>.webp`, made with the graph itself from invented
-subjects. To change one, replace that file (768 × 768 WebP) or name it in the
-catalog's `cover` field; a model with no `cover` shows a plain card.
-
-The home shows the models and the workflow cards (and the workflows you
-uploaded) as one grid. Each card's filter group is written out in
-`web/vendor-imagine/client/home-groups.ts`, which also fixes the order of
-«All»: generate, edit, style and video first, then one card per group in turn.
-Every card has its own address — `/tool/<card>`, `/model/<id>`,
-`/workflow/<id>` — so a card can be linked or reloaded, and Back closes it.
+fields a form asks for, the runs of each model, and the expansion that turns
+answers into runs. [docs/templates.md](docs/templates.md) explains the shape, the
+chains, and the two runs that are composed by ffmpeg instead of a model.
 
 ## The home covers
 

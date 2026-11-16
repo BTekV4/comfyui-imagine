@@ -1,0 +1,50 @@
+# A tag is the release: the same typecheck and tests, then the prebuilt tarball
+# (built once, attached once) — so what people download is what CI passed, and
+# nobody has to build it to try the studio.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: npm ci --no-audit --no-fund
+      - name: Types
+        run: npm run typecheck
+      - name: Tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Tarball
+        run: bash scripts/release-tarball.sh
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/comfyui-imagine-*.tar.gz
+            release/comfyui-imagine-*.tar.gz.sha256
+          fail_on_unmatched_files: true
+          body: |
+            The studio, already built: unpack it and run `./install.sh`.
+
+            Node 24 and ffmpeg are required; ComfyUI can be anywhere on the
+            network. The node pack in `comfyui-nodes/comfyui-imagine` is the one
+            thing to copy into ComfyUI by hand, and the page offers the weights
+            on the first request that needs them.
+
+            See the README for the step-by-step.

@@ -35,6 +35,7 @@ import { message, withLanguage } from './messages.ts'
 import { allowOnly, HttpError, languageOf, methods, readBody, readObject, restOf, sendJson } from './route-kit.ts'
 import { createLocalePacks, createLocalePacksRoutes } from './locales.ts'
 import { createHostSettings } from './settings.ts'
+import { liveSetupStatus } from './setup-status.ts'
 import { configureComfySetup } from '../vendor/tool-comfy/comfy-setup.ts'
 import { serveStatic } from './static.ts'
 import { createNotifyBus } from './notify-bus.ts'
@@ -60,6 +61,9 @@ interface HostConfig {
   /** Proxies whose X-Forwarded-For the login brake believes; NPM by default. */
   readonly trustedProxies?: readonly string[]
 }
+
+/* The studio's own version, stamped by the build (`__IMAGINE_VERSION__`). */
+const studioVersion: string | undefined = __IMAGINE_VERSION__ === '' ? undefined : __IMAGINE_VERSION__
 
 const configPath = process.env.IMAGINE_CONFIG ?? 'config.yaml'
 const raw = parseYaml(readFileSync(configPath, 'utf8')) as HostConfig
@@ -200,6 +204,19 @@ const { outputDir } = toolComfy.apply(ctx, toolComfy.Config(config.toolComfy), {
   // Read when the sweep would run, so the settings page's switch counts.
   resumeSweep: () => now().resumeSweep,
 })
+
+/*
+ * A fresh installation has no media folder, and nothing creates it before the
+ * first job writes there: the first render died with ENOENT on a folder the
+ * example configuration only named. Created at boot, then; a folder that
+ * cannot be created is left to the first-run card, which reports it in the
+ * page instead of stopping the studio from starting.
+ */
+try {
+  mkdirSync(outputDir, { recursive: true })
+} catch {
+  // `/setup-status` says which folder and why.
+}
 /*
  * After apply, which records the plugin config's models: the page's choice
  * wins. One model for every pass since 2026-10-31 — the page no longer names
@@ -392,6 +409,26 @@ const own: WebRoute[] = [
     path: '/comfy-cover-info',
     handler: async (_req, res) => {
       sendJson(res, 200, { covers: await coverIndex(coversDir()) })
+    },
+  },
+  /*
+   * What a first run is missing: ComfyUI, ffmpeg, a model, a writable output
+   * folder, this Node. The page draws one row per check, and each row says
+   * the command that fixes it — before this it was a chat that did not answer.
+   */
+  {
+    kind: 'exact',
+    path: '/setup-status',
+    handler: async (_req, res) => {
+      const current = now()
+      sendJson(res, 200, await liveSetupStatus({
+        ...studioVersion === undefined ? {} : { version: studioVersion },
+        comfy,
+        comfyURL: comfy.composedConnection.baseURL,
+        ...current.defaultModel === undefined ? {} : { model: current.defaultModel },
+        providers: Object.keys(config.providers),
+        outputDir,
+      }))
     },
   },
   { kind: 'exact', path: '/api/extract-frame', handler: createFrameRoute(outputDir) },

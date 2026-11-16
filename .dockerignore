@@ -1,0 +1,15 @@
+# What the image build does not need: the development tree, this machine's
+# data and configuration, and the build outputs (the image builds its own).
+.git
+node_modules
+dist
+release
+test
+docs
+data
+config.yaml
+imagine.env
+*.log
+*.bak-*
+persona/*.json
+!persona/example.json

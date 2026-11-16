@@ -18,11 +18,14 @@
 // `PLUGINS_OUT=<dir>` writes the bundles to `<dir>/<id>/index.mjs` instead
 // (the tests use it, so `npm test` never rewrites files in the tree).
 import { build } from 'esbuild'
-import { readdir, stat } from 'node:fs/promises'
+import { readdir, readFile, stat } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
+// The version is the manifest's, read once: every bundle carries the same one,
+// and the first-run card shows it without guessing where package.json sits.
+const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
 const at = path => join(root, path)
 
 /** Options shared by every bundle. */
@@ -36,6 +39,7 @@ const common = {
   keepNames: true,
   legalComments: 'none',
   logLevel: 'warning',
+  define: { __IMAGINE_VERSION__: JSON.stringify(version ?? '') },
 }
 
 /** CommonJS packages inside an ESM bundle still call `require`. */

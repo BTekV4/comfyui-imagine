@@ -1,0 +1,118 @@
+/*
+ * The first-run card: the width and the axis of the composer and the grid, so
+ * it reads as part of the page and not as a banner stuck to it.
+ */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 760px;
+  margin-top: 24px;
+  padding: 16px 18px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 14px;
+  background: var(--imagine-surface);
+  font-family: var(--imagine-font-text);
+  text-align: left;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.version {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.lead {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.8;
+  max-width: 70ch;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+/* The dot of a missing check: the danger colour, small, beside the sentence. */
+.dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--imagine-danger);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sentence {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* The command to paste: monospace, muted, its own line so a copy takes it alone. */
+.fix {
+  font-family: var(--imagine-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  opacity: 0.85;
+  overflow-wrap: anywhere;
+}
+
+.detail {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.55;
+  overflow-wrap: anywhere;
+}
+
+.recheck {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 6px 12px;
+  border: 1px solid var(--imagine-line);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.recheck:hover {
+  background: var(--imagine-hover);
+}
+
+.recheck:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

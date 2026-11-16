@@ -1,0 +1,38 @@
+# ComfyUI Imagine, with the studio in a container and ComfyUI where it already
+# runs. From a clone of the repository:
+#
+#   cp config.example.yaml config.yaml   # then edit it, or run ./install.sh first
+#   docker compose up -d --build
+#
+# The address of ComfyUI inside the container: `http://host.docker.internal:8188`
+# when it runs on the same machine (the extra_hosts line below makes that name
+# resolve), or the LAN address of the machine it runs on.
+services:
+  imagine:
+    build: .
+    image: comfyui-imagine:local
+    restart: unless-stopped
+    ports:
+      - "3090:3090"
+    volumes:
+      # The configuration is read, never written: the studio keeps what it
+      # changes in <data> (IMAGINE_HOME).
+      - ./config.yaml:/app/config.yaml:ro
+      # Media (toolComfy.outputDir is ./data/outputs, read relative to the
+      # config file, so it lands in /app/data) and everything the studio keeps
+      # for itself: projects, thumbnails, plugins, language packs.
+      - ./data:/app/data
+      - ./data:/data
+    environment:
+      - IMAGINE_HOME=/data
+      - IMAGINE_CONFIG=/app/config.yaml
+      # - LOCAL_API_KEY=...            # if the text endpoint wants a key
+      # - TZ=Europe/Rome
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3090/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3

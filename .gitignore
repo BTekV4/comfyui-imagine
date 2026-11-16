@@ -33,3 +33,6 @@ plugins/*/index.mjs
 
 # Python bytecode of the ComfyUI pack
 __pycache__/
+
+# The tarball a release ships, built by scripts/release-tarball.sh
+release/
