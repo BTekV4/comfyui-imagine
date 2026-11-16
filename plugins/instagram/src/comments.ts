@@ -17,7 +17,7 @@ import type { SocialComment, SocialCommentPass } from '../../../shared/social-ty
 import { commentsAttention } from './notify.ts'
 import { reconcilePermalinks } from './posts.ts'
 import { readTokenState } from './token.ts'
-import { COMMENT_SCRIPT, execPython, TIMEOUTS, type ScriptResult } from './python.ts'
+import { COMMENT_SCRIPT, execPython, refusalOf, TIMEOUTS, type ScriptResult } from './python.ts'
 
 /**
  * The account whose replies these are.
@@ -376,7 +376,15 @@ async function runCommentPass(dryRun = false): Promise<unknown> {
   let seen: SeenComment[] = []
   try {
     const result = await execPython(COMMENT_SCRIPT(), ['--readonly', '--json'], TIMEOUTS.comments)
-    seen = Array.isArray(result?.comments) ? result.comments as SeenComment[] : []
+    /*
+     * A script that refuses exits 1 but still answers with JSON
+     * {"ok": false, "error": …}; execPython resolves it instead of throwing.
+     * Reading only `comments` turned that refusal into "zero comments read":
+     * on 15-16/11/2026 the pass logged read:0 errors:0 for a night while Meta
+     * was answering 190 and every comment went unread.
+     */
+    if (result?.['ok'] === false) throw new Error(refusalOf(result, message('social.scriptRefused')))
+    seen = Array.isArray(result?.['comments']) ? result['comments'] as SeenComment[] : []
   } catch (error: unknown) {
     commentsMeta.lastError = error instanceof Error ? error.message : String(error)
     commentsMeta.lastCounters = { ...counters, errors: 1 }

@@ -14,6 +14,14 @@
   padding: 28px clamp(20px, 4vw, 44px) 56px;
   color: var(--imagine-ink);
   font-family: var(--imagine-font);
+  /*
+   * The stage is a column with no scroller of its own (ImaginePage.module.css):
+   * without this the page below the fold - actions and the token fields among
+   * them - was unreachable, because AppFrame clips the overflow. Same rule as
+   * LibraryPage.
+   */
+  overflow: auto;
+  height: 100%;
 }
 
 /* ------------------------------------------------------------------ testata */
