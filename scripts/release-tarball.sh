@@ -45,7 +45,7 @@ if [ -f .publishignore ]; then
     line=$(printf '%s' "$line" | sed 's/[[:space:]]*$//')
     [ -z "$line" ] && continue
     case "$line" in
-      /*|*..*) echo "release: ignorata la riga non valida \"$line\" di .publishignore" >&2; continue ;;
+      /*|*..*) echo "release: ignored the invalid line \"$line\" in .publishignore" >&2; continue ;;
     esac
     rm -rf -- "${DEST:?}/${line%/}"
   done < .publishignore

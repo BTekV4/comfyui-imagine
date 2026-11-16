@@ -3,7 +3,7 @@ dist/
 *.log
 *.map
 
-# Segreti e dati di deployment: mai nel repo
+# Secrets and deployment data: never in the repo
 .env
 .env.*
 imagine.env
@@ -14,16 +14,16 @@ cookie-secret
 *.pem
 *.key
 
-# Copie di backup fatte a mano o dal deploy (file.bak-<data>): mai nel repo,
-# e deploy.sh non deve copiarle nei plugin pubblicati
+# Backup copies made by hand or by the deploy (file.bak-<date>): never in the
+# repo, and deploy.sh must not copy them into the published plugins
 *.bak-*
 
-# Grafi di backup / prove locali
+# Backup graphs / local test runs
 workflows/*.bak*
 workflows/*.before-restore-*
 workflows/test-*/
 
-# La persona vera non viaggia: solo l esempio
+# The real persona does not travel: only the example
 persona/*.json
 !persona/example.json
 

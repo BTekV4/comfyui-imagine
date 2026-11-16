@@ -29,8 +29,8 @@ jobs:
       - name: Build
         run: npm run build
 
-  # Windows è dove sta la maggior parte di chi usa ComfyUI, e non era mai stato
-  # provato: qui girano i tipi e i test sulla stessa piattaforma del pacchetto.
+  # Windows is where most people who use ComfyUI are, and it had never been
+  # tested: here the types and the tests run on the packaging platform itself.
   windows:
     runs-on: windows-latest
     defaults:
@@ -50,8 +50,8 @@ jobs:
       - name: Tests
         run: npm test
 
-  # Il pacchetto portabile si costruisce e si avvia davvero: se il lanciatore o
-  # la PATH del runtime si rompono, si vede qui e non nella release.
+  # The portable package is built and really started: if the launcher or the
+  # runtime PATH breaks, it shows up here and not in the release.
   portable:
     runs-on: ubuntu-24.04
     steps:
@@ -65,8 +65,8 @@ jobs:
         run: npm run build
       - name: Package
         run: OUT_DIR="$RUNNER_TEMP/pkg" bash scripts/package-portable.sh linux-x64
-      # L'AppImage si costruisce qui a ogni push: costa due minuti e se il
-      # runtime o la compressione si rompono lo si scopre prima del tag.
+      # The AppImage is built here on every push: it costs two minutes, and a
+      # broken runtime or compression is found before the tag.
       - name: AppImage
         run: |
           sudo apt-get update && sudo apt-get install -y --no-install-recommends squashfs-tools

@@ -48,9 +48,9 @@ jobs:
         include:
           - os: ubuntu-24.04
             target: linux-x64
-          # Windows entra quando i test girano verdi là (18 asserzioni usano
-          # ancora i separatori POSIX): 0.1.2. Un pacchetto mai avviato non si
-          # allega a una release.
+          # Windows joins when the tests run green there (18 assertions still
+          # use POSIX separators): 0.1.2. A package that was never started is
+          # not attached to a release.
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -70,13 +70,13 @@ jobs:
         run: npm run build
       - name: Package
         run: OUT_DIR=release bash scripts/package-portable.sh ${{ matrix.target }}
-      # L'AppImage, solo su Linux: un file, doppio clic, icona nel menu.
+      # The AppImage, Linux only: one file, double-click, icon in the menu.
       - name: AppImage
         if: matrix.target == 'linux-x64'
         run: |
           sudo apt-get update && sudo apt-get install -y --no-install-recommends squashfs-tools
           OUT_DIR=release bash scripts/package-appimage.sh
-      # La prova che conta: il pacchetto si apre e la pagina risponde.
+      # The check that matters: the package opens and the page answers.
       - name: Boot it
         run: |
           set -e
