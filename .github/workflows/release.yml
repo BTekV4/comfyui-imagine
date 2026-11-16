@@ -11,18 +11,19 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  tarball:
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
       - name: ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg zip
       - run: npm ci --no-audit --no-fund
       - name: Types
         run: npm run typecheck
@@ -32,47 +33,109 @@ jobs:
         run: npm run build
       - name: Tarball
         run: bash scripts/release-tarball.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tarball
+          path: |
+            release/comfyui-imagine-*.tar.gz
+            release/comfyui-imagine-*.tar.gz.sha256
+          if-no-files-found: error
+
+  portable:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux-x64
+          - os: windows-latest
+            target: windows-x64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: ffmpeg
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then choco install ffmpeg -y --no-progress
+          else sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg zip; fi
+      - run: npm ci --no-audit --no-fund
+      - name: Build
+        run: npm run build
+      - name: Package
+        run: OUT_DIR=release bash scripts/package-portable.sh ${{ matrix.target }}
+      # La prova che conta: il pacchetto si apre e la pagina risponde.
+      - name: Boot it
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/app" && cd "$RUNNER_TEMP/app"
+          python -c "import zipfile,glob;zipfile.ZipFile(glob.glob('$GITHUB_WORKSPACE/release/Imagine-*-${{ matrix.target }}.zip')[0]).extractall('.')"
+          cd Imagine-*-${{ matrix.target }}
+          node -e "const y=require('yaml'),fs=require('fs');const c=y.parse(fs.readFileSync('config.example.yaml','utf8'));c.port=3095;fs.writeFileSync('config.yaml',y.stringify(c))"
+          node dist/server.mjs > boot.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -fsS --max-time 2 http://127.0.0.1:3095/ > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3095/setup-status
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portable-${{ matrix.target }}
+          path: |
+            release/Imagine-*.zip
+            release/Imagine-*.zip.sha256
+          if-no-files-found: error
+
+  publish:
+    needs: [tarball, portable]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-artifacts
+          merge-multiple: true
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release/comfyui-imagine-*.tar.gz
-            release/comfyui-imagine-*.tar.gz.sha256
+            dist-artifacts/**
           fail_on_unmatched_files: true
           body: |
-            The studio, already built. Unpack it, run `./install.sh`, start it —
-            no `npm install`, no build step, no compiler.
+            **Choose your system, download, double-click.** Node and ffmpeg are
+            inside the portable packages: nothing else to install.
+
+            | Your system | Download | Then |
+            |---|---|---|
+            | Windows 10/11 (64-bit) | `Imagine-<version>-windows-x64.zip` | extract, double-click **Avvia Imagine.bat** |
+            | Linux (64-bit) | `Imagine-<version>-linux-x64.zip` | extract, run **Imagine.sh** (or double-click it) |
+            | macOS, or a server | `comfyui-imagine-<version>.tar.gz` | `tar xzf … && ./install.sh` |
+
+            The Windows and Linux zips carry **Node 24** and a static **ffmpeg**:
+            the launcher opens the browser by itself, and a second double-click
+            just reopens the page instead of starting a second copy.
+
+            **What you need anyway:** a **ComfyUI** the studio can reach (the zip
+            assumes `127.0.0.1:8188`) and its weights — the first request that
+            needs them offers to download them (about 22.6 GB for the image
+            actions, 76–88 GB for video). The studio never downloads anything
+            before you say yes.
+
+            On the first start there is no configuration to write: the studio
+            creates one, and the home page shows a **first-run card** with what
+            is still missing (ComfyUI not answering, no model, no ffmpeg) and the
+            command or setting that fixes each row. The text model and the
+            ComfyUI address are set from that card and from **Settings**.
+
+            The one manual step: copy the node pack into ComfyUI, once —
 
             ```sh
-            tar xzf comfyui-imagine-*.tar.gz      # the asset attached to this release
-            cd comfyui-imagine-*/
-            ./install.sh
-            node dist/server.mjs
-            ```
-
-            **What you need:** Node 24 or newer, `ffmpeg` on the PATH, and a
-            ComfyUI the studio can reach over HTTP (0.45+). The weights are not
-            in this repository: the first request that needs them offers to
-            download them, and the weights stay in ComfyUI's own folders.
-
-            **First run.** `install.sh` checks Node, ffmpeg and your ComfyUI
-            address, asks three questions (ComfyUI's address, the text endpoint,
-            the model id) and writes `config.yaml`. On a machine where something
-            is still missing, the home page shows a first-run card listing what
-            and how to fix it — no more a chat that silently does not answer.
-
-            **What is in the tarball.** `dist/` (server, MCP server, the built
-            page), the plugin bundles, the graphs, the ComfyUI node pack, the
-            Italian language pack, and the five runtime packages. The source is
-            not included: this archive is the built form, and the repository is
-            where the source lives (and where `docker compose up --build` builds
-            it, if you prefer containers).
-
-            **One manual step.** Copy the node pack into ComfyUI once:
-
-            ```sh
+            # Windows: xcopy /E /I comfyui-nodes\comfyui-imagine C:\ComfyUI\custom_nodes\comfyui-imagine
             cp -r comfyui-nodes/comfyui-imagine <ComfyUI>/custom_nodes/
             ```
 
-            See the [README](https://github.com/BTekV4/comfyui-imagine#start-here)
-            for the downloads table, Docker and the from-source path.
+            See the [README](https://github.com/BTekV4/comfyui-imagine#start-here).

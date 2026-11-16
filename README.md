@@ -57,16 +57,25 @@ it: node packs at the version this studio was tested with, weights checked file
 by file. Nothing is downloaded before you say yes, and everything can be
 declined — the action then says what it would have needed.
 
-```sh
-# the whole install, with a release tarball already built (Node 24 + ffmpeg needed)
-curl -LO https://github.com/BTekV4/comfyui-imagine/releases/latest/download/comfyui-imagine-0.1.0.tar.gz
-tar xzf comfyui-imagine-0.1.0.tar.gz && cd comfyui-imagine-0.1.0
-./install.sh          # asks for ComfyUI's address, the text endpoint and the model
-node dist/server.mjs  # then open http://localhost:3090
-```
+**Download for your system, extract, double-click.** The portable packages carry
+Node and ffmpeg inside, so there is nothing to install first:
 
-That is the short version; [Install](#install) has Docker, the from-source path
-and how updates work.
+| Your system | Download | Then |
+|---|---|---|
+| **Windows 10/11** (64-bit) | `Imagine-<version>-windows-x64.zip` | extract it anywhere, double-click **Avvia Imagine.bat** |
+| **Linux** (64-bit) | `Imagine-<version>-linux-x64.zip` | extract it, run **Imagine.sh** (`bash Imagine.sh`, or double-click it) |
+| **macOS**, or a server | `comfyui-imagine-<version>.tar.gz` | `tar xzf … && cd … && ./install.sh` |
+
+The launcher opens the browser by itself, and a second double-click just
+reopens the page instead of starting a second copy. On the first start there is
+**no configuration to write**: the studio creates one (ComfyUI on
+`127.0.0.1:8188`), and the home page's **first-run card** says what is still
+missing — ComfyUI not answering, no text model, no ffmpeg — with the setting
+that fixes each row. The ComfyUI address and the text model are set from that
+card or from **Settings**.
+
+That is the short version; [Install](#install) has the macOS and server paths,
+Docker, the from-source checkout, and how updates work.
 
 
 ## What it does
@@ -211,7 +220,26 @@ gated repository (FLUX.3 Klein) needs a Hugging Face token in
 
 ## Install
 
-### The release tarball (recommended)
+### The portable packages (Windows and Linux)
+
+`Imagine-<version>-windows-x64.zip` and `Imagine-<version>-linux-x64.zip` are the
+studio with **Node 24** and a static **ffmpeg** beside it, plus a launcher
+(`Avvia Imagine.bat`, `Imagine.sh`; a `.command` for macOS is in the tarball's
+shape but not signed, so macOS users should follow [From source](#from-source)
+or run the tarball by hand).
+
+Nothing is asked in a terminal: the server writes `config.yaml` on its first
+start, from `config.example.yaml` shipped beside it, with ComfyUI on
+`127.0.0.1:8188` and a local text endpoint; the page's first-run card tells you
+what is still missing and how to fix it. Everything the studio keeps (projects,
+thumbnails, plugins, language packs, media) lands in `data/` beside the app, so
+the folder is self-contained: move it, copy it to a USB stick, delete it.
+
+The zips are built in CI on their own platform, and each one is booted there
+before it is attached to the release — a package that cannot start does not
+ship.
+
+### The release tarball
 
 Every [release](https://github.com/BTekV4/comfyui-imagine/releases) ships the
 studio already built — the page, the server, the plugin bundles and the five

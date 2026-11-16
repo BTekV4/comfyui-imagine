@@ -28,3 +28,53 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+
+  # Windows è dove sta la maggior parte di chi usa ComfyUI, e non era mai stato
+  # provato: qui girano i tipi e i test sulla stessa piattaforma del pacchetto.
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: ffmpeg
+        run: choco install ffmpeg -y --no-progress
+      - run: npm ci --no-audit --no-fund
+      - name: Types
+        run: npm run typecheck
+      - name: Tests
+        run: npm test
+
+  # Il pacchetto portabile si costruisce e si avvia davvero: se il lanciatore o
+  # la PATH del runtime si rompono, si vede qui e non nella release.
+  portable:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Build
+        run: npm run build
+      - name: Package
+        run: OUT_DIR="$RUNNER_TEMP/pkg" bash scripts/package-portable.sh linux-x64
+      - name: Boot it
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/app" && cd "$RUNNER_TEMP/app"
+          unzip -q "$RUNNER_TEMP"/pkg/Imagine-*-linux-x64.zip
+          cd Imagine-*-linux-x64
+          node -e "const y=require('yaml'),fs=require('fs');const c=y.parse(fs.readFileSync('config.example.yaml','utf8'));c.port=3095;fs.writeFileSync('config.yaml',y.stringify(c))"
+          setsid ./Imagine.sh > boot.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 2 http://127.0.0.1:3095/ > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3095/setup-status

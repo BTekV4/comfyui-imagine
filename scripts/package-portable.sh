@@ -31,6 +31,8 @@ NODE_VERSION=${NODE_VERSION:-24.22.3}
 FFMPEG_LINUX_URL=${FFMPEG_LINUX_URL:-https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz}
 FFMPEG_WIN_URL=${FFMPEG_WIN_URL:-https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip}
 
+PYTHON=${PYTHON:-$(command -v python3 || command -v python)}
+[ -n "$PYTHON" ] || die "serve Python (3) per gli zip"
 say() { printf '%s\n' "$*"; }
 die() { printf 'package: %s\n' "$*" >&2; exit 3; }
 
@@ -90,7 +92,7 @@ fetch "https://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt" "$CACHE/SHASUMS256
 rm -rf "$CACHE/node-v$NODE_VERSION-$NODE_OS"
 mkdir -p "$CACHE/node-v$NODE_VERSION-$NODE_OS"
 if [ "$NODE_EXT" = zip ]; then
-  python3 -m zipfile -e "$NODE_ARCHIVE" "$CACHE/node-v$NODE_VERSION-$NODE_OS"
+  "$PYTHON" -m zipfile -e "$NODE_ARCHIVE" "$CACHE/node-v$NODE_VERSION-$NODE_OS"
   cp "$CACHE/node-v$NODE_VERSION-$NODE_OS/node-v$NODE_VERSION-$NODE_OS/$NODE_EXE" "$APP/runtime/node/$NODE_EXE"
 else
   tar xzf "$NODE_ARCHIVE" -C "$CACHE/node-v$NODE_VERSION-$NODE_OS" --strip-components=1
@@ -110,7 +112,7 @@ case "$FFMPEG_KIND" in
     ;;
   win)
     rm -rf "$CACHE/ffmpeg-win" && mkdir -p "$CACHE/ffmpeg-win"
-    python3 -m zipfile -e "$CACHE/ffmpeg-win.zip" "$CACHE/ffmpeg-win"
+    "$PYTHON" -m zipfile -e "$CACHE/ffmpeg-win.zip" "$CACHE/ffmpeg-win"
     WINDIR=$(find "$CACHE/ffmpeg-win" -maxdepth 3 -type d -name bin | head -1)
     cp "$WINDIR/ffmpeg.exe" "$WINDIR/ffprobe.exe" "$APP/runtime/ffmpeg/"
     ;;
@@ -216,7 +218,7 @@ esac
 # 4. lo zip
 ZIP="$OUT/Imagine-$VERSION-$TARGET.zip"
 rm -f -- "$ZIP"
-python3 - "$OUT" "$(basename "$APP")" "$(basename "$ZIP")" <<'ZIPPER'
+"$PYTHON" - "$OUT" "$(basename "$APP")" "$(basename "$ZIP")" <<'ZIPPER'
 import os, sys, zipfile
 out, folder, name = sys.argv[1:4]
 with zipfile.ZipFile(os.path.join(out, name), "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
