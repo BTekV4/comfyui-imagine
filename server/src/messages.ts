@@ -380,6 +380,10 @@ export const MESSAGES = {
   'social.noTextModel': { it: 'Nessun modello di testo configurato (Impostazioni → Generale): nessuna risposta scritta.', en: 'No text model is configured (Settings → General): no reply written.' },
   'social.modelWroteNothing': { it: 'Il modello {model} non ha scritto nulla: la richiesta è finita senza testo. Nessuna risposta scritta.', en: 'The model {model} wrote nothing: the request ended without text. No reply written.' },
   'social.modelSkipped': { it: 'il modello ha scelto di non rispondere', en: 'the model chose not to reply' },
+  'social.commentsModelDown': {
+    it: 'Il modello non ha risposto per tutti i tentativi: {count} commenti aspettano una risposta. Riprendo al prossimo passaggio.',
+    en: 'The model did not answer for every attempt: {count} comments are waiting for a reply. I will resume at the next pass.',
+  },
   'social.commentNotFound': { it: 'Commento non trovato', en: 'comment not found' },
   'social.replyTextRequired': { it: 'Serve il testo della risposta', en: 'the reply text is needed' },
   'social.noticeNoFile': { it: '(nessun file)', en: '(no file)' },

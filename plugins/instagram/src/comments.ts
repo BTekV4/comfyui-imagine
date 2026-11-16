@@ -112,6 +112,19 @@ let comments: CommentEntry[] | undefined
 let commentsMeta: { lastRunAt?: string; lastError?: string; lastCounters?: unknown } = {}
 /** The ids the last pass read, for the owner's notice after a scheduled pass. */
 let lastPassIds: readonly string[] = []
+
+/**
+ * When the model failed, the pass is tried again after this pause instead of
+ * waiting for the next comment hour: a model that is restarting at 14:00 must
+ * not cost the whole afternoon.
+ */
+const MODEL_RETRY_MS = 10 * 60_000
+/** One failure buys a bounded number of retries, reset by a pass that writes. */
+const MODEL_RETRIES = 6
+let modelRetryAt: number | undefined
+let modelRetriesLeft = MODEL_RETRIES
+/** One notice per outage, not one per pass that keeps failing. */
+let modelDownNotified = false
 const commentsFile = recordFile(commentsPath, 'comments', () => ({ ...commentsMeta, comments: (comments ?? []).slice(-COMMENTS_KEEP) }))
 
 /**
@@ -468,8 +481,23 @@ async function runCommentPass(dryRun = false): Promise<unknown> {
       // is exactly the thing the rules above exist to prevent, so a pass
       // with the model down likes and says nothing.
       commentsMeta.lastError = noModelReason()
+      if (modelRetriesLeft > 0) {
+        modelRetriesLeft -= 1
+        modelRetryAt = Date.now() + MODEL_RETRY_MS
+      } else if (!modelDownNotified) {
+        /*
+         * Every retry spent: the comments wait for the next comment hour, and
+         * that is the moment to say so once on Telegram rather than let the
+         * queue go quiet without anyone noticing.
+         */
+        modelDownNotified = true
+        await notify(message('social.commentsModelDown', { count: String(batch.length) }))
+      }
       log(`comment pass: no reply written for ${String(batch.length)} comments — ${String(commentsMeta.lastError)}`)
     } else {
+      modelRetryAt = undefined
+      modelRetriesLeft = MODEL_RETRIES
+      modelDownNotified = false
       const decided = readReplies(written, batch)
       for (const comment of batch) {
         const entry = await rememberComment(comment)
@@ -504,13 +532,23 @@ async function runCommentPass(dryRun = false): Promise<unknown> {
  */
 export async function runDueCommentPass(): Promise<void> {
   const now = new Date()
-  if (!commentHours().includes(now.getHours())) return
+  /*
+   * A retry owed to a model that was down runs outside the comment hours:
+   * the hour is the schedule, this is the repair. It is still one pass, and
+   * the record of the last run keeps the thirty-second tick from repeating it.
+   */
+  const retrying = modelRetryAt !== undefined && Date.now() >= modelRetryAt
+  if (!retrying && !commentHours().includes(now.getHours())) return
   await loadComments()
   if (commentsMeta.lastRunAt !== undefined) {
     const last = new Date(commentsMeta.lastRunAt)
-    if (last.getHours() === now.getHours() && last.toDateString() === now.toDateString()) return
+    const sameHour = last.getHours() === now.getHours() && last.toDateString() === now.toDateString()
+    // The retry is due by the clock, not by the hour: only the seconds since
+    // the last attempt matter, and those are already MODEL_RETRY_MS.
+    if (sameHour && !retrying) return
   }
-  log(`comment pass due at ${String(now.getHours())}:00`)
+  if (retrying) modelRetryAt = undefined
+  log(retrying ? 'comment pass retried: the model was down' : `comment pass due at ${String(now.getHours())}:00`)
   await runCommentPass()
   await tellOwner()
 }
