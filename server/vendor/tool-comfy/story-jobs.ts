@@ -30,7 +30,7 @@ import { adoptJobFiles, adoptJobsInto, loadImagineStore, renameInProjects } from
 import { resumePlan } from './story-resume.ts'
 import type { ImagineWorkflows } from './workflow-fields.ts'
 import {
-  LIPSYNC_ARTICULATION, LIPSYNC_FACE_LOST, cameraMovements, faceCameraMovements, laySongOver,
+  LIPSYNC_ARTICULATION, LIPSYNC_FACE_LOST, cameraMovements, closeOnFaceBeat, faceCameraMovements, laySongOver,
   storyLength, storyShots, writeStoryPlan, type StoryPlan, type StorySong,
 } from './story.ts'
 import type { MediaKind, ModelRoute } from '../../../shared/imagine-types.ts'
@@ -231,7 +231,7 @@ export async function storyShotSources(job: ImagineJob): Promise<{ source: strin
  * @param opts - what the director is told beside the shots.
  * @returns the plan, with the photos in the order to cut them.
  */
-async function planMontage(
+export async function planMontage(
   ctx: ImagineHost,
   outputDir: string,
   intent: string,
@@ -255,7 +255,15 @@ async function planMontage(
     ...opts.model === undefined ? {} : { model: opts.model },
     ...opts.song === undefined ? {} : { song: opts.song },
   })
-  return { ...plan, sources: ordered.map(sight => sight.name) }
+  /*
+   * The rule goes on every beat, not only in the brief the director was given:
+   * a brief is advice, and a beat is what the video model reads. A plan that
+   * does not answer leaves the user's own sentence as every beat, and that
+   * sentence knows nothing about keeping the face in frame (see
+   * {@link closeOnFaceBeat}).
+   */
+  const beats = opts.closeOnFace === true ? plan.beats.map(closeOnFaceBeat) : plan.beats
+  return { ...plan, beats, sources: ordered.map(sight => sight.name) }
 }
 
 /** The beat a clip of a story renders, when its plan is in. */

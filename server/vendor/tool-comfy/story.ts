@@ -324,6 +324,27 @@ apertura: <prompt in English to generate the FIRST FRAME of the video: subject, 
 /** A take on one face that sings or speaks: the mouth has to stay in sight. */
 const RULE_CLOSE_ON_FACE = '- The person sings or speaks the track in EVERY beat: keep the face LARGE and FRONTAL in frame for the whole video (close-up or medium close-up, mouth always visible). NEVER a full figure, a wide shot, the person stepping back, turning away or leaving the frame, and never the camera moving off her onto something else. Whatever else moves in the scene moves around her, inside that framing. Use the camera movement written beside each shot.'
 
+/**
+ * The close-on-face rule, put on a beat where the video model reads it.
+ *
+ * The rule was only in the director's brief, and a brief is advice: the beats
+ * are written by that model, and the run of 2026-11-16 showed both halves of
+ * the hole. The director answered nothing for a 45-second take (the studio's
+ * log: "the video clip shot plan: none of the 1 routes wrote usable text"), so
+ * every beat fell back to the user's own sentence — which described the dragon
+ * moving behind her and said nothing about the framing. The video model
+ * followed that sentence: the face was in the shot for the first three shots
+ * and out of frame for 31-87 frames of 136 from the fourth on, and the lipsync
+ * probe read 0.07 down to -0.14 on them. A mouth that is not in the picture
+ * cannot follow the voice, whatever the guide audio says.
+ * @param beat - the beat the director wrote, or the user's sentence when it did not.
+ * @returns the same beat with the rule appended.
+ */
+export function closeOnFaceBeat(beat: string): string {
+  const said = beat.trim()
+  return said.length === 0 ? RULE_CLOSE_ON_FACE : `${said} ${RULE_CLOSE_ON_FACE}`
+}
+
 /** The rule every film shares: one action, one camera move per beat. */
 const RULE_ONE_ACTION = '- One action and one camera movement per beat, plausible in the seconds it has.'
 
