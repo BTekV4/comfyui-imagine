@@ -65,6 +65,13 @@ jobs:
         run: npm run build
       - name: Package
         run: OUT_DIR="$RUNNER_TEMP/pkg" bash scripts/package-portable.sh linux-x64
+      # L'AppImage si costruisce qui a ogni push: costa due minuti e se il
+      # runtime o la compressione si rompono lo si scopre prima del tag.
+      - name: AppImage
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends squashfs-tools
+          OUT_DIR="$RUNNER_TEMP/pkg" bash scripts/package-appimage.sh
+          ls -l "$RUNNER_TEMP/pkg"/*.AppImage
       - name: Boot it
         run: |
           set -e
