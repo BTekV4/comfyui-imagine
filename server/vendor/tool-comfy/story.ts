@@ -21,9 +21,6 @@ import { MAX_STORY_SECONDS, MIN_SHOT_SECONDS } from '../../../shared/imagine-med
 import { AAC_192K, FASTSTART, ffmpegTo } from './media-tools.ts'
 import { firstTextReply } from './text-pass.ts'
 
-/** How long the planner may take before the chain runs on the user's own line. */
-const PLAN_TIMEOUT_MS = 90_000
-
 /**
  * The camera movements a montage is built from, in the order they rotate.
  *
@@ -474,7 +471,7 @@ export async function writeStoryPlan(
    * answered nothing in its budget, and nothing reported it: the video was
    * just flatter.
    */
-  const plan = await firstTextReply(ctx, opts.model, storyPlanInstruction(intent, shots, opts), PLAN_TIMEOUT_MS,
+  const plan = await firstTextReply(ctx, opts.model, storyPlanInstruction(intent, shots, opts),
     written => parseStoryPlan(written, shots.length), 'the video clip shot plan')
   return plan ?? { beats: shots.map(() => intent) }
 }

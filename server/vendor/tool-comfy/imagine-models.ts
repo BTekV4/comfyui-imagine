@@ -152,116 +152,75 @@ export interface StreamTextHooks {
   readonly onReasoning?: (text: string) => void
   /** Called once, when the first text delta arrives. */
   readonly onWriting?: () => void
-  /**
-   * Give up only after this long with nothing streamed, reasoning included.
-   * The deadline stays as the ceiling: a model that is still thinking is not
-   * a model that failed to answer.
-   */
-  readonly idleMs?: number
   /** Stops the call from outside, e.g. the chat closing its stream. */
   readonly signal?: AbortSignal
 }
 
 /**
- * Read one instruction to text, bounded by a deadline and never throwing.
+ * Read one instruction to text, never throwing, with no clock of its own.
  *
  * The shared scaffold behind the chat reading, the music score and the story
  * plan: it accumulates the text deltas, reports reasoning and the first write
- * through the hooks, and returns undefined when the model failed, produced
- * nothing, or ran past the deadline. On the deadline it aborts the stream so a
- * slow route stops consuming the model instead of running on under the
- * fallback, and it always clears its own timer.
+ * through the hooks, and returns undefined when the model failed or produced
+ * nothing.
+ *
+ * The deadline this function used to carry (`timeoutMs`, ninety to three
+ * hundred seconds depending on the pass) is gone (user's decision,
+ * 16/11/2026): it killed the story planner at 90 s while the provider in
+ * `config.yaml` was allowed 600, and a model that is still sending tokens —
+ * reasoning included — is not a model that failed. The only bound is the
+ * silence clock inside the model client (`server/src/llm.ts`), which gives up
+ * on a connection that sends no bytes and pushes back on every delta.
  * @param llm - the streaming surface.
  * @param target - the provider and model to read with.
  * @param instruction - the prompt.
- * @param timeoutMs - how long to wait before giving up on the reading.
- * @param hooks - optional observers of reasoning and the first write.
- * @returns the text, or undefined when it failed, was empty or timed out.
+ * @param hooks - optional observers of reasoning and the first write, and the caller's abort.
+ * @returns the text, or undefined when it failed or was empty.
  */
 export async function streamText(
   llm: StreamCapable,
   target: { provider: string; model: string },
   instruction: string,
-  timeoutMs: number,
   hooks?: StreamTextHooks,
 ): Promise<string | undefined> {
-  // Before any timer is armed: an early return must leave nothing running.
   const outside = hooks?.signal
   if (outside?.aborted === true) return undefined
+  // Aborts the request when the caller stops waiting, e.g. a chat that closed
+  // its stream: the model must not keep thinking for nobody.
   const controller = new AbortController()
-  let timer: ReturnType<typeof setTimeout> | undefined
-  let idle: ReturnType<typeof setTimeout> | undefined
-  /*
-   * The give-up path exists before any timer or listener is armed: a timer
-   * armed first would capture whatever `giveUp` was at that moment, and the
-   * deadline, the idle timer and the caller's abort would all call an empty
-   * function while the stream ran on (found 2026-11-15). The race below always
-   * includes `timeout`; when nothing gives up it simply never settles.
-   */
-  let settle: (value: undefined) => void = () => {}
-  const timeout = new Promise<undefined>((resolve) => { settle = resolve })
-  const giveUp = (): void => {
-    controller.abort()
-    settle(undefined)
-  }
-  /*
-   * `timeoutMs` 0 or absent = no ceiling: the request waits for the model as
-   * long as it takes. A ceiling stays available to callers that pass one (and
-   * so does an `idleMs`, which stops a dead connection rather than a slow one).
-   */
-  const limited = typeof timeoutMs === 'number' && timeoutMs > 0
-  if (limited) {
-    timer = setTimeout(giveUp, timeoutMs)
-    timer.unref()
-  }
-  /** Push the idle deadline back: something just arrived. */
-  const alive = (): void => {
-    if (hooks?.idleMs === undefined) return
-    if (idle !== undefined) clearTimeout(idle)
-    idle = setTimeout(giveUp, hooks.idleMs)
-    idle.unref()
-  }
-  outside?.addEventListener('abort', giveUp, { once: true })
-  alive()
+  const stop = (): void => { controller.abort() }
+  outside?.addEventListener('abort', stop, { once: true })
   try {
-    const work = (async (): Promise<string | undefined> => {
-        try {
-          let text = ''
-          let writing = false
-          for await (const chunk of llm.stream({
-            provider: target.provider,
-            model: target.model,
-            messages: [{
-              id: randomUUID(),
-              role: 'user',
-              source: { kind: 'user' },
-              content: [{ type: 'text', text: instruction }],
-            }],
-            signal: controller.signal,
-          })) {
-            alive()
-            if (chunk.type === 'reasoning-delta' && typeof chunk.text === 'string' && chunk.text.length > 0) {
-              hooks?.onReasoning?.(chunk.text)
-            }
-            if (chunk.type === 'text-delta' && typeof chunk.text === 'string') {
-              if (!writing) {
-                writing = true
-                hooks?.onWriting?.()
-              }
-              text += chunk.text
-            }
-          }
-          return text.trim().length === 0 ? undefined : text
-        } catch {
-          return undefined
+    let text = ''
+    let writing = false
+    for await (const chunk of llm.stream({
+      provider: target.provider,
+      model: target.model,
+      messages: [{
+        id: randomUUID(),
+        role: 'user',
+        source: { kind: 'user' },
+        content: [{ type: 'text', text: instruction }],
+      }],
+      signal: controller.signal,
+    })) {
+      if (chunk.type === 'reasoning-delta' && typeof chunk.text === 'string' && chunk.text.length > 0) {
+        hooks?.onReasoning?.(chunk.text)
+      }
+      if (chunk.type === 'text-delta' && typeof chunk.text === 'string') {
+        if (!writing) {
+          writing = true
+          hooks?.onWriting?.()
         }
-    })()
-    return await Promise.race([work, timeout])
+        text += chunk.text
+      }
+    }
+    return text.trim().length === 0 ? undefined : text
+  } catch {
+    return undefined
   } finally {
     controller.abort()
-    if (timer !== undefined) clearTimeout(timer)
-    if (idle !== undefined) clearTimeout(idle)
-    outside?.removeEventListener('abort', giveUp)
+    outside?.removeEventListener('abort', stop)
   }
 }
 
@@ -355,32 +314,30 @@ async function lookSlot(background: boolean): Promise<() => void> {
 }
 
 /**
- * One look, bounded in time, aborted on the deadline, never throwing.
+ * One look, never throwing, with no clock of its own.
  *
- * The shared scaffold behind every pass that looks at a file. On the
- * deadline the request itself is aborted — a `Promise.race` with a timer
- * left the model answering for up to ten minutes after nobody was waiting.
+ * The shared scaffold behind every pass that looks at a file. The caller's
+ * abort ends the request itself; a slow look is left to the silence clock in
+ * the model client (`server/src/llm.ts`), which gives up on a connection that
+ * stops sending bytes and nothing sooner (the per-pass deadlines — ninety to
+ * three hundred seconds — were removed on 16/11/2026 at the user's request).
  * @param vision - the vision service.
  * @param path - absolute path of the file to look at.
  * @param instruction - what to ask of it.
  * @param route - the model to look with.
- * @param timeoutMs - how long to wait; undefined waits for the provider's own timeout.
  * @param options - `maxSide` for the still, forwarded to the service;
  *   `background` for a look nobody waits for, which runs in the capped lane;
  *   `signal` for a caller that may stop waiting (the look is then aborted, or
  *   never started when it was still queued for a slot).
- * @returns the reply, or undefined when the model failed, said nothing or ran out of time.
+ * @returns the reply, or undefined when the model failed or said nothing.
  */
 export async function lookWith(
   vision: VisionCapable,
   path: string,
   instruction: string,
   route: ModelRoute,
-  timeoutMs?: number,
   options?: { maxSide?: number; background?: boolean; signal?: AbortSignal },
 ): Promise<{ text: string; provider?: string; model?: string } | undefined> {
-  // The clock starts once a slot is free: waiting behind other looks is not
-  // the model being slow.
   const { background = false, signal, ...look } = options ?? {}
   const release = await lookSlot(background)
   if (signal?.aborted === true) {
@@ -390,8 +347,6 @@ export async function lookWith(
   const controller = new AbortController()
   const stop = (): void => { controller.abort() }
   signal?.addEventListener('abort', stop, { once: true })
-  const timer = timeoutMs === undefined ? undefined : setTimeout(stop, timeoutMs)
-  timer?.unref()
   try {
     const result = await vision.analyzeImage(path, instruction, { provider: route.provider, model: route.model }, {
       signal: controller.signal,
@@ -409,7 +364,6 @@ export async function lookWith(
     return undefined
   } finally {
     release()
-    if (timer !== undefined) clearTimeout(timer)
     signal?.removeEventListener('abort', stop)
   }
 }

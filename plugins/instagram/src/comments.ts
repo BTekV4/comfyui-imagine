@@ -475,7 +475,7 @@ async function runCommentPass(dryRun = false): Promise<unknown> {
   counters.skipped = seen.length - batch.length
   if (batch.length > 0) {
     const recent = await readRecent(recentRepliesPath(), 12)
-    const written = await askModel(replyInstruction(batch, recent), TIMEOUTS.comments)
+    const written = await askModel(replyInstruction(batch, recent))
     if (written === undefined) {
       // No model, no replies. The alternative — a canned "grazie mille" —
       // is exactly the thing the rules above exist to prevent, so a pass

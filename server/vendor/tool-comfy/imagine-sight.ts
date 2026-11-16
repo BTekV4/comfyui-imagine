@@ -60,16 +60,6 @@ export interface SightOptions {
 }
 
 /**
- * How long one look at a still may take, here and in the montage's shot order.
- *
- * Equal to the video pass's budget: the auxiliary vision model on this
- * deployment (mimo-v2.5) takes 38-59 s on a 1080x1920 still, so a shorter
- * wait left every look unanswered and no description was ever filed (a 40 s
- * budget cut most photos of a montage unread).
- */
-export const SIGHT_TIMEOUT_MS = 90_000
-
-/**
  * How many background looks (see {@link lookSoon}) run side by side. The
  * vision lane of `lookWith` caps them as well; this keeps the backlog from
  * claiming files it is not yet looking at, which a chat line would then wait
@@ -377,7 +367,7 @@ async function describe(
   instruction: string,
   background: boolean,
 ): Promise<string | undefined> {
-  const result = await lookWith(auxiliary, path, instruction, route, SIGHT_TIMEOUT_MS, { background })
+  const result = await lookWith(auxiliary, path, instruction, route, { background })
   const text = result?.text.trim()
   return text === undefined || text.length === 0 ? undefined : text
 }

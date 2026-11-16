@@ -45,13 +45,6 @@ export interface SegmentSight {
   readonly texts: readonly SegmentText[]
 }
 
-/*
- * The default model took 157 s on one photo without a reasoning level, and
- * 150 s with "low" in a full run (2026-11-15); the studio-wide
- * SIGHT_TIMEOUT_MS (90 s) would leave it unanswered.
- */
-const SEGMENT_LOOK_TIMEOUT_MS = 300_000
-
 /** More concepts than this is the model listing pixels, not things. */
 export const MAX_CONCEPTS = 40
 /** Readable texts kept per photo. */
@@ -172,7 +165,7 @@ export async function lookForSegments(
 ): Promise<(SegmentSight & { readonly model: string }) | undefined> {
   const eyes = eyesOf(ctx)
   if (eyes === undefined) return undefined
-  const reply = await lookWith(eyes.vision, path, SEGMENT_CONCEPTS_INSTRUCTION, eyes.route, SEGMENT_LOOK_TIMEOUT_MS, {
+  const reply = await lookWith(eyes.vision, path, SEGMENT_CONCEPTS_INSTRUCTION, eyes.route, {
     background, ...signal === undefined ? {} : { signal },
   })
   const sight = parseSegmentSight(reply?.text)

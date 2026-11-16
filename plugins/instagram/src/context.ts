@@ -224,27 +224,26 @@ export function currentRoutes(): { readonly vision?: ModelRoute; readonly text?:
 /**
  * Run one text-only call on the text model.
  *
- * The same route the caption writer uses, and the same reason for a timeout:
- * the backend is shared, and a pass that hangs would hold the scheduler's
- * tick open behind it. `streamText` aborts the stream on the deadline, so a
- * slow route stops consuming the shared model instead of running on behind
- * the fallback.
+ * The same route the caption writer uses. No deadline of its own: a shared
+ * backend plus a thinking model means a pass can legitimately wait minutes
+ * for its first token, and the only bound is the silence clock in the model
+ * client (`server/src/llm.ts`), which gives up a connection that stops
+ * sending bytes. `hooks.signal` ends the call from outside.
  *
  * Until 2026-10-25 this read the model off `ctx.get('llm')`, which the host
  * no longer had after the old host context went: every caption fell back to the
  * templates and every comment pass wrote no reply.
  * @param instruction - the whole prompt.
- * @param timeoutMs - how long to wait before giving up.
- * @returns the model's reply, or undefined if it is unavailable or too slow.
+ * @param hooks - optional abort signal and progress observers.
+ * @returns the model's reply, or undefined if it is unavailable or failed.
  */
 export async function askModel(
   instruction: string,
-  timeoutMs: number,
-  hooks?: { readonly idleMs?: number },
+  hooks?: { readonly signal?: AbortSignal },
 ): Promise<string | undefined> {
   const target = currentRoutes().text
   if (target === undefined) return undefined
-  return streamText(socialHost().llm, target, instruction, timeoutMs, hooks)
+  return streamText(socialHost().llm, target, instruction, hooks)
 }
 
 /* ------------------------------------------------------------------ folders */

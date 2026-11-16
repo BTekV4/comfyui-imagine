@@ -14,16 +14,6 @@ import { lookWith, type VisionCapable } from './imagine-models.ts'
 import type { ModelRoute } from '../../../shared/imagine-types.ts'
 import { FPS, ffmpegTo, frameAt } from './media-tools.ts'
 
-/**
- * How long one vision read of the swap's texts pass may take.
- *
- * The photo and the strip of three frames are read at 1600 px, one call each,
- * and through the local 27B that takes a minute or two; this is long enough for
- * a slow host and short enough that a dead one costs a second try at 1024 px
- * instead of the whole run.
- */
-const SWAP_LOOK_TIMEOUT_MS = 180_000
-
 /** Where in the clip the strip's three frames are taken, as shares of its length. */
 const STRIP_MOMENTS = [0.1, 0.5, 0.9] as const
 
@@ -103,7 +93,7 @@ export async function readTwice(
   path: string,
   instruction: string,
 ): Promise<{ text: string } | undefined> {
-  return await lookWith(vision, path, instruction, route, SWAP_LOOK_TIMEOUT_MS, { maxSide: 1600 })
-    ?? await lookWith(vision, path, instruction, route, SWAP_LOOK_TIMEOUT_MS, { maxSide: 1024 })
+  return await lookWith(vision, path, instruction, route, { maxSide: 1600 })
+    ?? await lookWith(vision, path, instruction, route, { maxSide: 1024 })
 }
 

@@ -24,7 +24,6 @@ import { eyesOf } from './eyes.ts'
 import { lookWith } from './imagine-models.ts'
 import { jsonObjectOf } from './model-json.ts'
 import { textField } from './guards.ts'
-import { SIGHT_TIMEOUT_MS } from './imagine-sight.ts'
 import type { ModelRoute } from '../../../shared/imagine-types.ts'
 
 /** Which way the subject faces the camera, from the model's fixed vocabulary. */
@@ -48,10 +47,10 @@ export interface ShotSight {
 }
 
 /*
- * One look per photo is bounded by SIGHT_TIMEOUT_MS. The photos are read in
- * parallel and the first shot of the montage waits for all of them, so this is
- * the most the GPU sits idle for the reading; a photo the model does not answer
- * for in time is cut with nothing known about it.
+ * The photos are read in parallel and the first shot of the montage waits for
+ * all of them, so this is the most the GPU sits idle for the reading; a photo
+ * the model does not answer is cut with nothing known about it. No deadline of
+ * its own: the model's silence is the only bound (`server/src/llm.ts`).
  */
 
 /** Longest reply read; past this the model is not answering the question. */
@@ -147,7 +146,7 @@ export async function lookAtShots(
     const fresh = (async (): Promise<ShotSight> => {
       const safe = safeBasename(name)
       if (safe === undefined) return unseen(name)
-      const reply = await lookWith(eyes.vision, join(outputDir, safe), SHOT_SIGHT_INSTRUCTION, eyes.route, SIGHT_TIMEOUT_MS)
+      const reply = await lookWith(eyes.vision, join(outputDir, safe), SHOT_SIGHT_INSTRUCTION, eyes.route)
       return parseShotSight(reply?.text, name) ?? unseen(name)
     })()
     looks.set(name, fresh)

@@ -37,25 +37,6 @@ import type {
   ImagineChatAsk, ImagineChatEvent, ImagineChatIntent, ImagineChatReply, WorkflowField, WorkflowPlan,
 } from '../../../shared/imagine-chat.ts'
 
-/**
- * How long one route may stay silent before the line is handed to the next.
- *
- * Silent, not slow: until 2026-10-20 this was a flat ninety seconds for the
- * whole answer, and a model still thinking out loud over the look catalogue
- * was cut mid-thought and reported as "non ha risposto". Every streamed
- * delta, reasoning included, now pushes the deadline back. The wait is
- * legible (the column shows the thinking) and the stop button ends the call
- * on the server too.
- */
-const READ_IDLE_MS = 90_000
-
-/**
- * The ceiling on one route, thinking included: 0 is none (2026-11-06), the
- * reading waits for the model as long as it keeps streaming, and only
- * {@link READ_IDLE_MS} of silence hands the line on.
- */
-const READ_TIMEOUT_MS = 0
-
 /** Most runs one written line may queue, so a misread cannot fill the GPU. */
 const MAX_INTENTS = 4
 
@@ -864,7 +845,7 @@ function fallbackImagineChat(request: ImagineChatRequest, failed = false): Imagi
  * @param say - the turn's own event sink, which already swallows a watcher
  *   that throws.
  * @param signal - stops the call when the chat closes.
- * @returns the reply, or undefined when it failed or took too long.
+ * @returns the reply, or undefined when it failed or said nothing.
  */
 async function ask(
   llm: StreamCapable,
@@ -876,8 +857,7 @@ async function ask(
   // The reasoning is the thinking the studio never showed; the first write is
   // the only sign a route with no reasoning is answering at all, announced
   // once as a step.
-  return streamText(llm, target, instruction, READ_TIMEOUT_MS, {
-    idleMs: READ_IDLE_MS,
+  return streamText(llm, target, instruction, {
     ...signal === undefined ? {} : { signal },
     onReasoning: (text) => { say({ kind: 'reasoning', text }) },
     onWriting: () => { say({ kind: 'step', step: 'writing' }) },

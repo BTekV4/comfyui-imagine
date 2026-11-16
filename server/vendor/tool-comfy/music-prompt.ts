@@ -26,17 +26,6 @@ import { textField } from './guards.ts'
 import type { MusicClipRequest } from '../../../shared/imagine-types.ts'
 
 /**
- * How long the writing may take before the song runs on the user's own line.
- *
- * Two minutes, not one: this is three paragraphs of caption plus a tagged
- * lyric sheet, and a reasoning model spends most of the wait thinking — 15 s
- * measured on the route this deployment uses, 125 s on another one tried
- * beside it. The song itself costs minutes of GPU after this, so the wait is
- * cheap next to running it on a one-line caption.
- */
-const WRITE_TIMEOUT_MS = 120_000
-
-/**
  * New words a tagging pass may add before the sheet counts as invented.
  *
  * A few interjections are the model punctuating a chorus; a verse is dozens.
@@ -266,7 +255,7 @@ export async function writeMusicScore(
    * lyrics sung as one flat stream. Falling through to the deployment's own
    * text model costs one wait and saves the song.
    */
-  const score = await firstTextReply(ctx, chosen, musicScoreInstruction(line, lyrics, seconds), WRITE_TIMEOUT_MS,
+  const score = await firstTextReply(ctx, chosen, musicScoreInstruction(line, lyrics, seconds),
     written => parseMusicScore(written, lyrics), 'the song\'s caption')
   return score === undefined ? undefined : { ...score, caption: withSinger(score.caption, singer) }
 }

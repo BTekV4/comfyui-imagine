@@ -26,6 +26,13 @@ providers:
   local:
     baseURL: http://127.0.0.1:11434/v1     # Ollama, vLLM, LM Studio, llama.cpp…
     apiKeyEnv: LOCAL_API_KEY               # optional: omit for a keyless server
+    # How long one call may stay SILENT before it is given up: no byte
+    # received, not a deadline on the answer. Every delta — reasoning
+    # included — pushes it back, so a model that keeps working is never
+    # interrupted, however long it thinks (the studio puts no other clock on
+    # a model call: see the note in server/src/llm.ts). Raise it for a
+    # provider that thinks a long time before its first token. Absent or 0
+    # means the built-in ten minutes.
     timeoutMs: 600000
   openai:
     baseURL: https://api.openai.com/v1

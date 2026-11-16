@@ -20,7 +20,7 @@ test('background looks are capped, and a foreground look is not queued behind th
   }
   const route = { provider: 'p', model: 'm' }
   const tick = async (): Promise<void> => { await new Promise(resolve => setImmediate(resolve)) }
-  const background = ['b1', 'b2', 'b3', 'b4'].map(path => lookWith(vision, path, 'look', route, undefined, { background: true }))
+  const background = ['b1', 'b2', 'b3', 'b4'].map(path => lookWith(vision, path, 'look', route, { background: true }))
   await tick()
   // Two background slots, however many are asked for.
   assert.deepEqual(started, ['b1', 'b2'])

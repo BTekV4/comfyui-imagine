@@ -44,19 +44,95 @@ export interface StreamChunk {
 }
 
 /*
- * No ceiling, neither on time nor on tokens (user's request, 6/11/2026).
+ * No deadline and no token ceiling (user's request, 6/11/2026; the deadline
+ * removed from every caller on 16/11/2026).
  *
  * A token ceiling truncates the reasoning of a thinking model: on 28/10 a
  * vision call at 400 tokens came back empty (`finish_reason: length`,
- * `content: ""`) and text at 32k cut the longest answers. A time ceiling
- * kills a request that is still working: on 6/11 the comments round died at
- * 180 s just as the model was about to write.
+ * `content: ""`) and text at 32k cut the longest answers. A deadline kills a
+ * request that is still working, which is worse: the story planner died at
+ * 90 s while the provider in `config.yaml` was allowed 600, and the passes
+ * that write a song, a caption or a project name each carried their own
+ * ninety-to-three-hundred-second cap. A model that is still sending tokens —
+ * reasoning included — is not a model that failed, so the studio no longer
+ * puts a clock on the whole call.
  *
- * The price: a model stuck in a loop writes as long as the context holds, and
- * a hung request stays hung. It is stopped with the button (which aborts the
- * request), with a ceiling set in `config.yaml` (`providers.<name>.timeoutMs`)
- * or by closing the process.
+ * What is left is a clock on SILENCE: a connection that sends nothing for
+ * {@link MODEL_SILENCE_MS} (or for the provider's `timeoutMs`, when the
+ * config declares one) is dead rather than slow and is given up. Every byte
+ * that arrives pushes the deadline back. This is the only place a model call
+ * is bounded: the passes above pass no timeout at all.
+ *
+ * The price: a model stuck in a loop writes as long as the context holds. It
+ * is stopped with the button (which aborts the request), by the silence
+ * budget, or by closing the process.
  */
+
+/**
+ * How long a model call may stay silent before it is given up.
+ *
+ * A silence budget, not a deadline: the response headers, a reasoning delta,
+ * a token of the answer — every byte pushes it back, so a model that keeps
+ * working is never interrupted however long it thinks. Ten minutes: the
+ * longest wait measured on this deployment before the first byte is the
+ * ninety seconds of a cold 32B vision model, and a minute of thinking between
+ * two reasoning bursts is ordinary.
+ *
+ * The deployment's `providers.<name>.timeoutMs` replaces it when it is set;
+ * that knob is the user's, and this is the fallback so a config without one
+ * still cannot hang forever.
+ */
+export const MODEL_SILENCE_MS = 10 * 60_000
+
+/** The window one provider gets: its own, or {@link MODEL_SILENCE_MS}. */
+export function silenceWindowMs(provider: ProviderConfig): number {
+  return typeof provider.timeoutMs === 'number' && provider.timeoutMs > 0 ? provider.timeoutMs : MODEL_SILENCE_MS
+}
+
+/** One provider request's clock. */
+interface Silence {
+  /** Aborts the request when the provider goes quiet; also carries the caller's abort. */
+  readonly signal: AbortSignal
+  /** Something arrived: push the deadline back. */
+  touch(): void
+  /** The call is over: stop the clock and drop the listener. */
+  stop(): void
+}
+
+/**
+ * Start watching one provider request.
+ *
+ * One timer, re-armed on every byte, and the caller's own signal folded in so
+ * a closed chat still ends the call. `unref` so a pending call never holds the
+ * process open.
+ * @param provider - the provider being called, for its silence window.
+ * @param caller - the signal of whoever asked, when there is one.
+ * @returns the signal to hand to `fetch`, and the two functions around it.
+ */
+function silenceFor(provider: ProviderConfig, caller?: AbortSignal): Silence {
+  const window = silenceWindowMs(provider)
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const stop = (): void => {
+    if (timer !== undefined) clearTimeout(timer)
+    timer = undefined
+    caller?.removeEventListener('abort', cancel)
+  }
+  const cancel = (): void => {
+    stop()
+    controller.abort()
+  }
+  const touch = (): void => {
+    if (controller.signal.aborted) return
+    if (timer !== undefined) clearTimeout(timer)
+    timer = setTimeout(cancel, window)
+    timer.unref()
+  }
+  if (caller?.aborted === true) cancel()
+  else caller?.addEventListener('abort', cancel, { once: true })
+  touch()
+  return { signal: controller.signal, touch, stop }
+}
 
 /**
  * The longest side a still is given to the vision model.
@@ -205,16 +281,23 @@ export function createLlm(
   /** One `/models` request to a provider. */
   const fetchModelEntries = async (name: string): Promise<ModelEntryRaw[]> => {
     const provider = providerOf(name)
-    const response = await fetch(`${baseOf(provider)}/models`, {
-      headers: headersOf(provider),
-      signal: AbortSignal.timeout(20_000),
-    })
-    if (!response.ok) {
-      await response.body?.cancel().catch(() => undefined)
-      throw new Error(`HTTP ${String(response.status)}`)
+    const silence = silenceFor(provider)
+    try {
+      const response = await fetch(`${baseOf(provider)}/models`, {
+        headers: headersOf(provider),
+        signal: silence.signal,
+      })
+      silence.touch()
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined)
+        throw new Error(`HTTP ${String(response.status)}`)
+      }
+      const body = await response.json() as { data?: ModelEntryRaw[] }
+      silence.touch()
+      return Array.isArray(body.data) ? body.data : []
+    } finally {
+      silence.stop()
     }
-    const body = await response.json() as { data?: ModelEntryRaw[] }
-    return Array.isArray(body.data) ? body.data : []
   }
   const providerOf = (name: string): ProviderConfig => {
     const provider = providers()[name]
@@ -229,24 +312,14 @@ export function createLlm(
     return { ...key === undefined ? {} : { authorization: `Bearer ${key}` }, ...provider.headers }
   }
 
-  /** POST one chat completion to a provider, bounded by its timeout and the caller's signal. */
-  const post = (provider: ProviderConfig, body: unknown, signal?: AbortSignal): Promise<Response> => {
-    /*
-     * The time ceiling applies only if the config declares one: without it, the
-     * request waits as long as it takes.
-     */
-    const timeout = typeof provider.timeoutMs === 'number' && provider.timeoutMs > 0
-      ? AbortSignal.timeout(provider.timeoutMs)
-      : undefined
-    return fetch(`${baseOf(provider)}/chat/completions`, {
+  /** POST one chat completion to a provider, watched by the call's silence clock. */
+  const post = (provider: ProviderConfig, body: unknown, silence: Silence): Promise<Response> =>
+    fetch(`${baseOf(provider)}/chat/completions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...headersOf(provider) },
       body: JSON.stringify(body),
-      signal: signal === undefined
-        ? timeout
-        : timeout === undefined ? signal : AbortSignal.any([signal, timeout]),
+      signal: silence.signal,
     })
-  }
 
   async function* stream(options: {
     provider: string
@@ -254,7 +327,24 @@ export function createLlm(
     messages: readonly unknown[]
     signal?: AbortSignal
   }): AsyncIterable<StreamChunk> {
-    const response = await post(providerOf(options.provider), {
+    const provider = providerOf(options.provider)
+    const silence = silenceFor(provider, options.signal)
+    try {
+      yield* streamWatched(provider, options, silence)
+    } finally {
+      // The consumer can stop early (`[DONE]`, a closed chat): the clock must
+      // not outlive the call.
+      silence.stop()
+    }
+  }
+
+  /** The body of {@link stream}: one request, its clock pushed back per piece. */
+  async function* streamWatched(
+    provider: ProviderConfig,
+    options: { provider: string; model: string; messages: readonly unknown[] },
+    silence: Silence,
+  ): AsyncIterable<StreamChunk> {
+    const response = await post(provider, {
       model: options.model,
       stream: true,
       ...thinkingBody(thinkingLevel()),
@@ -262,7 +352,8 @@ export function createLlm(
         role: message.role === 'assistant' ? 'assistant' : message.role === 'system' ? 'system' : 'user',
         content: toOpenAiContent(message.content),
       })),
-    }, options.signal)
+    }, silence)
+    silence.touch()
     if (!response.ok || response.body === null) {
       const detail = await response.text().catch(() => '')
       throw new Error(`LLM ${options.provider}/${options.model}: HTTP ${String(response.status)} ${detail.slice(0, 300)}`)
@@ -270,6 +361,7 @@ export function createLlm(
     const decoder = new TextDecoder()
     let buffer = ''
     for await (const piece of response.body as unknown as AsyncIterable<Uint8Array>) {
+      silence.touch()
       buffer += decoder.decode(piece, { stream: true })
       // One cut per chunk: slicing the buffer at every line was quadratic
       // when a chunk carried many lines.
@@ -347,15 +439,25 @@ export function createLlm(
       const media = mime.startsWith('video/')
         ? { type: 'video_url', video_url: { url } }
         : { type: 'image_url', image_url: { url } }
-      const response = await post(providerOf(target.provider), {
-        model: target.model,
-        // Vision says how much to think too: a photo asks for no less
-        // reasoning than a text, and the two values are the same choice.
-        ...thinkingBody(thinkingLevel()),
-        messages: [{ role: 'user', content: [media, { type: 'text', text: prompt ?? 'Describe this image.' }] }],
-      }, options?.signal)
-      const body = await response.json().catch(() => undefined) as
-        { choices?: { message?: { content?: unknown } }[]; error?: { message?: string } } | undefined
+      const provider = providerOf(target.provider)
+      const silence = silenceFor(provider, options?.signal)
+      let response: Response
+      let body: { choices?: { message?: { content?: unknown } }[]; error?: { message?: string } } | undefined
+      try {
+        response = await post(provider, {
+          model: target.model,
+          // Vision says how much to think too: a photo asks for no less
+          // reasoning than a text, and the two values are the same choice.
+          ...thinkingBody(thinkingLevel()),
+          messages: [{ role: 'user', content: [media, { type: 'text', text: prompt ?? 'Describe this image.' }] }],
+        }, silence)
+        silence.touch()
+        // A dead connection is stopped by the clock while the body is read.
+        body = await response.json().catch(() => undefined) as typeof body
+        silence.touch()
+      } finally {
+        silence.stop()
+      }
       if (!response.ok) {
         throw new Error(`vision ${target.provider}/${target.model}: HTTP ${String(response.status)} ${body?.error?.message ?? ''}`)
       }

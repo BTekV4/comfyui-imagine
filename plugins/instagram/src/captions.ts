@@ -22,15 +22,6 @@ import {
 } from './context.ts'
 
 /**
- * How long the vision pass may take before the templates take over.
- *
- * The backend is shared, so a shrunk image that usually answers in 7-15s can
- * still queue behind other work; abandoning it early only starts a second
- * request behind the first, and the panel already says it is waiting.
- */
-const VISION_TIMEOUT = 90_000
-
-/**
  * The longest side the vision model is given.
  *
  * The gallery writes 1080x1920 PNGs of about 2.3MB; at that size one pass took
@@ -499,7 +490,7 @@ async function writeCaption(facts: SeenFacts, type: PostType, prompt: string | u
   if (currentRoutes().text === undefined) return undefined
   const [style, recent] = await Promise.all([readRecent(stylePath(), 4), readRecent(recentPath(), 6)])
   const started = Date.now()
-  const written = await askModel(captionInstruction(facts, type, prompt, style, recent, project), VISION_TIMEOUT)
+  const written = await askModel(captionInstruction(facts, type, prompt, style, recent, project))
   if (typeof written !== 'string') {
     log(`caption writer gave nothing after ${String(Date.now() - started)}ms`)
     return undefined
@@ -557,11 +548,11 @@ async function analyzeMedia(name: string | undefined, type: PostType, project: P
   }
   const started = Date.now()
   try {
-    // A still is shrunk by the vision service itself; lookWith aborts the
-    // request on the deadline instead of leaving the model answering.
-    const result = await lookWith(socialHost().auxiliary, target, factsInstruction(type === 'reel', project), route, VISION_TIMEOUT, { maxSide: VISION_MAX_SIDE })
+    // A still is shrunk by the vision service itself. No deadline: the only
+    // bound is the model's own silence (see `server/src/llm.ts`).
+    const result = await lookWith(socialHost().auxiliary, target, factsInstruction(type === 'reel', project), route, { maxSide: VISION_MAX_SIDE })
     if (result === undefined) {
-      log(`vision gave nothing on ${name} after ${String(Date.now() - started)}ms (timeout ${String(VISION_TIMEOUT)}ms)`)
+      log(`vision gave nothing on ${name} after ${String(Date.now() - started)}ms`)
       return undefined
     }
     const text = result.text

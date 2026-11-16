@@ -27,7 +27,6 @@ import { AAC_128K, FPS, SILENT_STEREO_INPUT, ffmpegTo, frameAt, h264Out, probeMe
 import { recallNote, type ImagineFileOrigin } from './imagine-notes.ts'
 import { eyesOf } from './eyes.ts'
 import { lookWith } from './imagine-models.ts'
-import { SIGHT_TIMEOUT_MS } from './imagine-sight.ts'
 import { snapToGrid } from './snap-size.ts'
 import type { ModelRoute } from '../../../shared/imagine-types.ts'
 
@@ -264,7 +263,6 @@ async function seenPrompt(
       + ' the subject, the framing, the clothes, the place and the light, as if the same shot had to be'
       + ' regenerated from your words.',
       eyes.route,
-      SIGHT_TIMEOUT_MS,
     )
     const text = result?.text.replace(/\s+/g, ' ').trim()
     // A very long description is a story: the graph reads a sentence, and the

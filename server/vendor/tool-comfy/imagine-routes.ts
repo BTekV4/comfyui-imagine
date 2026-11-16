@@ -692,6 +692,18 @@ const CHAT_BODY_BYTES = 4 * 1024 * 1024
 const SMALL_BODY_BYTES = 1024 * 1024
 
 /**
+ * How often an open chat stream says something while the model has not yet.
+ *
+ * The reading has no deadline of its own (see `server/src/llm.ts`), and a
+ * thinking model may spend minutes before its first token, during which
+ * nothing at all flows down the socket. The proxy in front of the studio
+ * closes a quiet connection (nginx's `proxy_read_timeout` is 60 s by default)
+ * and the page then reports a reading that failed while the model is still
+ * working. An SSE comment is ignored by the client and counts as traffic.
+ */
+const CHAT_KEEPALIVE_MS = 15_000
+
+/**
  * Read one line with the steps sent as they happen, as server-sent events.
  *
  * One `data:` frame per event, and a last one carrying the finished answer in
@@ -728,6 +740,8 @@ async function streamImagineChat(
   // thinking on, for nobody, until the ceiling.
   const stopped = new AbortController()
   res.on('close', () => { if (!res.writableEnded) stopped.abort() })
+  const beat = setInterval(() => { if (!res.writableEnded) res.write(': keep-alive\n\n') }, CHAT_KEEPALIVE_MS)
+  beat.unref()
   try {
     const answer = await readImagineChat(ctx, asked, inventory, outputDir, (event) => { send(event) }, stopped.signal)
     send({ kind: 'done', answer })
@@ -743,6 +757,8 @@ async function streamImagineChat(
         failed: true,
       },
     })
+  } finally {
+    clearInterval(beat)
   }
   res.end()
 }

@@ -21,15 +21,21 @@ import type { ModelRoute } from '../../../shared/imagine-types.ts'
  * @param ctx - plugin context, carrying `llm` when set up.
  * @param chosen - the model the studio is showing, when the caller has one.
  * @param instruction - the prompt.
- * @param timeoutMs - how long each route may take.
  * @param parse - turns a reply into the result, undefined when unusable.
+ *
+ * No clock of its own: every pass used to carry one (30 s for a project name,
+ * 90 s for the story plan and a look, 120 s for a song's caption, 300 s for a
+ * photo's parts), and each of them killed a model that was still working —
+ * the story plan died at 90 s while the provider in `config.yaml` was allowed
+ * 600 (2026-11-16). The only bound now is the silence clock in the model
+ * client (`server/src/llm.ts`, `MODEL_SILENCE_MS`): a connection that stops
+ * sending bytes is given up, a model that keeps sending tokens is not.
  * @returns the first usable result, or undefined when no route gave one.
  */
 export async function firstTextReply<T>(
   ctx: ImagineHost,
   chosen: ModelRoute | undefined,
   instruction: string,
-  timeoutMs: number,
   parse: (written: string | undefined) => T | undefined,
   what: string,
 ): Promise<T | undefined> {
@@ -42,9 +48,9 @@ export async function firstTextReply<T>(
   const routes = textRoutes(chosen)
   for (const route of routes) {
     const key = `${route.provider}/${route.model}`
-    const written = await streamText(llm, route, instruction, timeoutMs)
+    const written = await streamText(llm, route, instruction)
     if (written === undefined || written.trim().length === 0) {
-      console.warn(`[imagine] ${what}: ${key} did not answer within ${String(Math.round(timeoutMs / 1000))} s`)
+      console.warn(`[imagine] ${what}: ${key} did not answer`)
       continue
     }
     const result = parse(written)

@@ -5,7 +5,8 @@
  * a rail of "genera una foto di Ciri in armat…" entries. The reading model
  * that already reads every written line can do better — and the composer lane
  * (which never reads anything at all) gets a name for the projects it mints.
- * The call is short and bounded, and a name that never comes back is not a
+ * The call has no deadline of its own (the model's own silence is the only
+ * bound, see `server/src/llm.ts`), and a name that never comes back is not a
  * failure: the project keeps the provisional name and the next content asks
  * again.
  * @module tool-comfy/project-title
@@ -16,9 +17,6 @@ import type { ModelRoute } from '../../../shared/imagine-types.ts'
 import { languageName } from '../../../shared/locale-names.ts'
 import { fencedBody } from './model-json.ts'
 import { firstTextReply } from './text-pass.ts'
-
-/** How long a title may wait for: longer and the provisional name wins. */
-const TITLE_TIMEOUT_MS = 30_000
 
 /** Most content a title instruction may carry: a song's whole lyrics are not a title. */
 const TITLE_SOURCE_CHARS = 500
@@ -96,5 +94,5 @@ export async function readProjectTitle(
   chosen?: ModelRoute,
   language?: string,
 ): Promise<string | undefined> {
-  return firstTextReply(ctx, chosen, titleInstruction(source, language), TITLE_TIMEOUT_MS, cleanTitle, 'the project title')
+  return firstTextReply(ctx, chosen, titleInstruction(source, language), cleanTitle, 'the project title')
 }
