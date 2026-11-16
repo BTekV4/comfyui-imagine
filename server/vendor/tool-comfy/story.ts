@@ -31,21 +31,24 @@ import { firstTextReply } from './text-pass.ts'
  * scende" — a flat clip however good the pictures are. The movement is
  * assigned per shot and the beat is written around it.
  *
- * Plain Italian, no jargon: the director reads these and the video model
- * renders what the beat describes. Kept to movements a ten-second shot can
- * actually perform.
+ * Written in the vocabulary the video model was trained on, with the amplitude
+ * and the speed where they say something (MiniMax H3 prompt guide, "Camera
+ * Motion: Motion Type + Amplitude + Speed": a movement is a natural sentence
+ * with a type, an amplitude and a speed, never a stack of labels). The
+ * rotation is long enough that two cuts in a row never move the same way, and
+ * every movement is one a ten-second shot can perform.
  */
 const CAMERA_MOVEMENTS: readonly string[] = [
-  'slow push in towards the face',
-  'static framing, only the subject moves',
-  'lateral truck from left to right',
-  'arc shot: the camera orbits the subject',
-  'tilt up from the hands to the face',
-  'pull out that widens onto the background',
-  'slow pan to the right',
-  'forward tracking that follows the step',
-  'medium shot with the camera rising',
-  'slow pan to the left',
+  'Push In with small amplitude at slow speed',
+  'Static Shot: the camera stays fixed and only the subject moves',
+  'Truck Right with small amplitude',
+  'Arc Shot, orbiting the subject at slow speed',
+  'Tilt Up from the hands to the face',
+  'Pull Out that widens onto the background',
+  'Pan Right with small amplitude',
+  'Tracking Shot that follows the movement',
+  'Pedestal Up, the camera rising with the body',
+  'Pan Left with small amplitude',
 ]
 
 /**
@@ -57,15 +60,16 @@ const CAMERA_MOVEMENTS: readonly string[] = [
  * figure" left the face a few dozen pixels high in shots two and three, the
  * mouth probe lost it in 48 and 86 frames of 144, and those shots scored
  * -0.14 and 0.02 while the close shots scored 0.25 and 0.56. These keep the
- * face large and frontal and still give each shot a movement of its own.
+ * face large and frontal and still give each shot a movement of its own; the
+ * life of the shot comes from the performance inside that framing.
  */
 const FACE_CAMERA_MOVEMENTS: readonly string[] = [
-  'slow push in towards the face',
-  'static close-up, only the face and shoulders move',
-  'gentle drift to the side, the face stays centred and frontal',
-  'medium close-up with the camera breathing slightly',
-  'slow pull back from a close-up to a medium close-up',
-  'slight low angle on the face, the camera barely moves',
+  'Push In with small amplitude at slow speed',
+  'Static Shot, the face and shoulders carrying the movement',
+  'Truck Right with small amplitude, the face held centred and frontal',
+  'Static Shot with a slight low angle and the lens breathing',
+  'Pull Out with small amplitude, from a close-up to a medium close-up',
+  'Pan Left with very small amplitude, the face kept in the same place on screen',
 ]
 
 /**
@@ -77,7 +81,7 @@ export function faceCameraMovements(count: number): readonly string[] {
   const total = FACE_CAMERA_MOVEMENTS.length
   return Array.from(
     { length: Math.max(0, count) },
-    (_unused, index) => FACE_CAMERA_MOVEMENTS[index % total] ?? 'static close-up',
+    (_unused, index) => FACE_CAMERA_MOVEMENTS[index % total] ?? 'Static Shot, the face large and frontal',
   )
 }
 
@@ -212,7 +216,7 @@ export interface StoryPlanOptions {
  * @param opts - the song being cut to, and whether an opening frame is needed.
  * @returns the prompt sent to the planning model.
  */
-function storyPlanInstruction(
+export function storyPlanInstruction(
   intent: string,
   shots: readonly number[],
   opts: StoryPlanOptions = { opening: false },
@@ -256,70 +260,78 @@ function storyPlanInstruction(
     if (opts.continuous === true) {
       return planPrompt({
         ...asked,
-        header: `You are the director of a ${String(total)}-second music video in ${String(shots.length)} shots, one per photo, that CONTINUE each other without cuts: every shot starts from the last second of the previous one and from there carries the camera and the body towards the pose of its own photo.`,
+        header: `You are the director of a ${String(total)}-second video in ${String(shots.length)} shots that CONTINUE each other with no cut: every shot starts from the last moment of the one before it and carries the action forward, from the pose its own photo shows.`,
         lead: '',
         each: 'each shot',
         rules: [
-          '- NO cut, no abrupt change of framing: every beat opens HOLDING the framing the previous one ends on for a couple of seconds, with something small happening (a breath, a glance, a step), and only then do the camera and the body move towards the pose and the framing of that beat\'s photo, continuously.',
+          '- Every beat is an ACTION with a visible result, told in order: what the subject does, what changes because of it, and the state the shot ends on. A pose, a glance or a camera movement is not a beat on its own.',
+          '- No cut and no new framing: the opening the previous shot hands over is under a second. Start the new action at once and end it mid-motion, in a state the next beat can continue. Do not spend the first seconds holding the framing.',
           '- The first beat starts from its photo and holds nothing.',
           seen
-            ? '- The photo of every shot is described beside it: it is the ARRIVAL point of the beat, not the starting one. Do not describe the subject or the clothes: the photo already shows them. Write the MOVEMENT that carries from the previous framing to that pose in the seconds it has.'
+            ? '- The photo of every shot is described beside it: it is the ARRIVAL point of the beat, not the starting one. Do not describe the subject or the clothes: the photo already shows them. Write the MOVEMENT that carries the body and the camera from the previous framing to that pose, and what the person DOES there.'
             : RULE_UNSEEN_PHOTO,
-          RULE_ONE_ACTION,
-          ...opts.closeOnFace === true ? [RULE_CLOSE_ON_FACE] : [],
+          RULE_SUBJECT_AND_CAMERA,
+          RULE_SCENE_MOVES,
+          RULE_ARC,
+          RULE_HANDOVER,
+          ...opts.closeOnFace === true ? [RULE_CLOSE_ON_FACE] : [ruleSinging(false)],
           ruleOnlyWhatIs('"no glasses", "no shadows"'),
-          ruleSinging(false),
           RULE_NO_ABSTRACT,
         ],
         opening: '',
-        unit: 'in the shot',
+        unit: 'shot',
+        count: shots.length,
       })
     }
     return planPrompt({
       ...asked,
-      header: `You are the director of a ${String(total)}-second music video cut in HARD CUTS: ${String(shots.length)} different shots, one per photo, following one another as cuts.`,
+      header: `You are the director of a ${String(total)}-second video cut in HARD CUTS: ${String(shots.length)} different shots, one per photo, following one another as cuts.`,
       lead: 'Every shot is filmed on its own, starting from a photo of its own, and then they are edited one after the other. ',
       each: 'each shot',
       rules: [
         '- Every beat is a shot OF ITS OWN: the cut between one and the next is intended. Do not write transitions ("then she turns towards", "she continues to"), do not pick up the previous action.',
-        '- Every beat begins and ends INSIDE its own shot: the first word does not undo the pose of another photo ("keeps her arms open", "lowers her fist", "unclenches her hands", "gets out of bed") and the last one does not set up the next. Describe only what happens starting from the pose ITS photo shows.',
+        '- Every beat is an ACTION with a visible result, told in order: it opens on the pose its photo shows, the subject does something, the world around changes, and the state the shot ends on is never the state it started in. A pose or a camera movement alone is not a beat.',
+        '- The first word does not undo the pose of another photo ("keeps her arms open", "lowers her fist", "unclenches her hands", "gets out of bed") and the last one does not set up the next: the shot opens and closes inside itself.',
         '- Name only what is in the description of ITS own photo. An object that belongs to another shot — a sphere, a bed, a table — does not exist here, and naming it makes the video model animate something that is not in the photo.',
         seen
           ? '- Every shot starts from the photo described beside it: write a movement consistent with that pose, that place and that light. Do not change the place or the clothes, do not describe the subject: the photo already shows it. Write only the MOVEMENT and what the person does in the seconds it has.'
           : RULE_UNSEEN_PHOTO,
-        RULE_ONE_ACTION,
-        '- The camera movement of every beat is the one written beside its photo: use it, do not invent another and do not repeat the one of another beat. The variety is already decided: your job is to write the action that movement captures well.',
-        '- The action of every beat must leave the world in a state it was not in at the previous beat: an irreversible physical fact (she ate, she got up, she pushed him away), not an emotion and not a camera movement. If two beats can be swapped and the text still reads well, the model does not tell them apart and will render them the same.',
+        RULE_SUBJECT_AND_CAMERA,
+        RULE_SCENE_MOVES,
+        RULE_ARC,
+        '- A cut must bring new information — a new place, state, viewpoint or time. If only the distance or the angle would change, the shot stays one and the camera moves instead.',
         ruleOnlyWhatIs('"no glasses", "no shadows", "no on-screen text"'),
         ruleSinging(true),
         RULE_NO_ABSTRACT,
       ],
       opening: '',
-      unit: 'in the shot',
+      unit: 'shot',
+      count: shots.length,
     })
   }
   return planPrompt({
     ...asked,
     header: `You are the director of a ${String(total)}-second video shot in ONE SINGLE CONTINUOUS TAKE, with no cut at all.`,
     lead: 'The video is generated one piece at a time: every piece starts again from the last frame of the previous one and carries on its movement. ',
-    each: 'each beat',
+    each: 'beat',
     rules: [
-      '- One single continuous take: same scene, same people, same clothes, same light from the first moment to the last. NEVER a new place, a new character or an abrupt change of framing.',
-      '- Every beat CONTINUES the previous one: it is the moment after, not a scene of its own. The action and the camera movement must progress (moving closer, circling, rising, slowing down), not start over.',
-      RULE_ONE_ACTION,
-      '- Describe what CHANGES in that beat, not what is already visible.',
+      '- One single continuous take: same scene, same people, same clothes, same light from the first moment to the last. No new place, no new character, no new framing.',
+      '- Every beat CONTINUES the previous one: it is the moment after, and it is an ACTION with a visible result — what the subject does, what changes because of it, and the state the shot ends on — not a description of what is already on screen.',
+      RULE_SUBJECT_AND_CAMERA,
+      RULE_SCENE_MOVES,
+      RULE_ARC,
+      RULE_HANDOVER,
+      '- The camera never cuts: every change happens inside the frame, through movement, light and the action itself.',
       RULE_NO_ABSTRACT,
     ],
-    opening: opts.opening
-      ? `\nOpening line, before the beats:
-apertura: <prompt in English to generate the FIRST FRAME of the video: subject, clothes, place, light, framing. It is the image the whole take starts from, describe it in full.>\n`
-      : '',
-    unit: 'in the beat',
+    opening: opts.opening ? OPENING_IMAGE_LINE : '',
+    unit: 'beat',
+    count: shots.length,
   })
 }
 
 /** A take on one face that sings or speaks: the mouth has to stay in sight. */
-const RULE_CLOSE_ON_FACE = '- The person sings or speaks the track in EVERY beat: keep the face LARGE and FRONTAL in frame for the whole video (close-up or medium close-up, mouth always visible). NEVER a full figure, a wide shot, the person stepping back, turning away or leaving the frame, and never the camera moving off her onto something else. Whatever else moves in the scene moves around her, inside that framing. Use the camera movement written beside each shot.'
+const RULE_CLOSE_ON_FACE = '- One face sings or speaks the track, so the framing stays close: the face large, frontal and evenly lit in every frame, the mouth uncovered and readable, the eyes visible. All the movement goes inside that framing — the mouth and jaw on the words, the eyebrows, the hands, the shoulders, the hair and the cloth moving, the camera moving tight, the light and the space behind her changing. The face stays the subject of every frame.'
 
 /**
  * The close-on-face rule, put on a beat where the video model reads it.
@@ -342,11 +354,56 @@ export function closeOnFaceBeat(beat: string): string {
   return said.length === 0 ? RULE_CLOSE_ON_FACE : `${said} ${RULE_CLOSE_ON_FACE}`
 }
 
-/** The rule every film shares: one action, one camera move per beat. */
-const RULE_ONE_ACTION = '- One action and one camera movement per beat, plausible in the seconds it has.'
+/** The rule every film shares: the subject AND the camera move, with amplitude and speed. */
+const RULE_SUBJECT_AND_CAMERA = '- The subject moves in every beat — a gesture, a step, the hands, the posture, the breath — and so does the camera: one movement, written as a natural sentence with a type, an amplitude and a speed where they say something ("the camera pushes in with small amplitude at slow speed", "the camera holds a static shot"). Use the movement written beside the shot, and never repeat the previous beat\'s movement.'
+
+/**
+ * The rule that stops a shot reading as a photograph.
+ *
+ * A portrait on a still set is what the model renders when nothing in the
+ * frame moves but the mouth: the H3 guide asks for environment and lighting,
+ * actions and state changes, and the official example prompts carry steam,
+ * rain, wind and passing people through every shot. Movement in the world is
+ * also what makes the camera's own movement read as movement.
+ */
+const RULE_SCENE_MOVES = '- The world moves too: wind in hair and cloth, smoke, steam, dust, rain, traffic, people passing, a light that flickers, a shadow crossing the frame. Name one or two and say how they change during the beat.'
+
+/**
+ * The rule that turns a row of shots into a film.
+ *
+ * The H3 guide's rule is per shot ("every shot must leave the world in a state
+ * it was not in"), and the official example prompts escalate across shots — a
+ * fleet charging, then a flash, then an emptied space. A plan without an arc
+ * renders as the same shot repeated, which is what the studio was getting.
+ */
+const RULE_ARC = '- Build an arc across the whole video: the first beat opens the world, the middle beats escalate (a bigger action, a closer or bolder framing, a harder light), the last one lands an end state. Each beat leaves the world in a state the previous one was not in.'
+
+/**
+ * The rule that makes a chain invisible: end on a handover, not on a stop.
+ *
+ * Taken from the Context Loop example scenes, which end a shot with "End while
+ * he is crossing the threshold so the motion can continue" and open the next
+ * with "begin new action only after the carried overlap": the join is a motion
+ * that was already going, not a pose that resumes.
+ */
+const RULE_HANDOVER = '- End every beat in motion, at a moment the next beat can pick up and carry on (a step not yet landed, a head still turning, a door still swinging). Never end on a settled pose.'
 
 /** The rule every film shares: no abstract words, no numbered shots. */
 const RULE_NO_ABSTRACT = '- No abstract words ("cinematic", "beautiful"), no numbered shots, no [Shot 2].'
+
+/**
+ * The first frame the whole video starts from, when there is no photo.
+ *
+ * Written as a Krea 2 photograph, the way that model's guide asks for it: the
+ * medium first (unnamed, it picks one on its own and changes it every time),
+ * then the subject and what they are already doing, the framing, the light
+ * with a direction and a quality, two or three named colours, the texture and
+ * the background. The last clause is what the video needs from it: a frame
+ * caught mid-motion, not a finished portrait, so the first beat has somewhere
+ * to go. No negations — H3 samples at cfg 1 and a noun names a thing to draw.
+ */
+const OPENING_IMAGE_LINE = `\nOpening line, before the beats, in English:
+apertura: <one paragraph for the FIRST FRAME of the video, written as a photograph for Krea 2: name the medium first ("35mm film photograph", "cinematic still", "documentary photograph"), then the subject and what they are already doing, the framing and angle, the light with its direction and quality, two or three named colours, the texture and grain, the background, the lens. A frame caught mid-motion, not a finished portrait, so the action has somewhere to go. Only what is in the frame: no negations ("no people", "no shadows"), no "4K", "beautiful" or "cinematic" on its own.>\n`
 
 /** A montage whose photos nobody looked at: the photo decides subject and place. */
 const RULE_UNSEEN_PHOTO = '- Do not describe the subject or the place: they are decided by the photo of that shot, which you have not seen. Write only the MOVEMENT and what the person does in the seconds it has.'
@@ -367,7 +424,7 @@ function ruleOnlyWhatIs(examples: string): string {
  * @returns the rule line.
  */
 function ruleSinging(framed: boolean): string {
-  return `- When the person sings, say that the face is in full, even light, the eyes open and clearly visible with catchlights${framed ? ', the features sharp' : ''}: while singing, the mouth and the face must stay readable${framed ? ' (medium or close shot)' : ''}, not hidden by objects, hair or shadows.`
+  return `- When the person sings, the face is in full, even light, the eyes open and clearly visible with catchlights${framed ? ', the features sharp' : ''}: while singing the mouth and the face stay readable${framed ? ' (medium or close shot)' : ''}, with the hair and the cloth moving around them.`
 }
 
 /**
@@ -388,6 +445,8 @@ function planPrompt(parts: {
   readonly rules: readonly string[]
   readonly opening: string
   readonly unit: string
+  /** How many beats the reply must carry: the shots of the film. */
+  readonly count: number
 }): string {
   return `${parts.header}
 
@@ -400,12 +459,14 @@ ${parts.list}
 Binding rules:
 ${parts.rules.join('\n')}
 ${parts.opening}
-Write every beat in Italian, the language of the interface; only the opening line is an English image prompt.
+Write every beat in English: the video model is trained on English and reads the beat directly when the prompt pass is skipped. Dialogue, singing and on-screen text stay in their own language, word for word.
 
-Reply ONLY with the lines, with no preamble, one per beat, numbered like this:
-1. <what happens ${parts.unit} 1>
-2. <what happens ${parts.unit} 2>
-...`
+Reply ONLY with the lines, with no preamble: ${parts.count === 1 ? 'ONE line for the shot' : `exactly ${String(parts.count)} lines, one per shot`}, numbered like this:
+1. <what happens in ${parts.unit} 1>
+${parts.count === 1 ? '' : `2. <what happens in ${parts.unit} 2>
+...`}${parts.count === 1 ? `Inside that one line, the shot's own timeline, in order: first ..., then ..., finally .... The reply carries no second line.
+
+` : ''}`
 }
 
 /** Longest beat accepted; past this the model is writing the whole prompt. */

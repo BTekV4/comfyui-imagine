@@ -33,8 +33,8 @@ test('the close-on-face rule goes on a beat, after whatever the beat already say
   const beat = 'the dragon behind her lowers its head past her shoulder'
   const written = closeOnFaceBeat(beat)
   assert.ok(written.startsWith(beat))
-  assert.match(written, /keep the face LARGE and FRONTAL/)
-  assert.match(written, /never the camera moving off her/)
+  assert.match(written, /face large, frontal and evenly lit/)
+  assert.match(written, /face stays the subject/)
   // An empty beat is the rule and nothing before it.
   assert.equal(closeOnFaceBeat('   '), written.slice(beat.length + 1))
 })
@@ -54,10 +54,10 @@ test('a plan that never answered still renders every shot with the face in frame
   })
   assert.equal(spoken.beats.length, 3)
   for (const beat of spoken.beats) {
-    assert.match(beat, /keep the face LARGE and FRONTAL/)
-    assert.match(beat, /never the camera moving off her/)
+    assert.match(beat, /face large, frontal and evenly lit/)
+    assert.match(beat, /face stays the subject/)
   }
   // The same montage cut without a face keeps the beats as written.
   const other = await planMontage(host, '/tmp', 'a landscape at dawn', [6, 6, 6], photos, { song: { seconds: 18 } })
-  for (const beat of other.beats) assert.doesNotMatch(beat, /keep the face LARGE and FRONTAL/)
+  for (const beat of other.beats) assert.doesNotMatch(beat, /face large, frontal and evenly lit/)
 })
