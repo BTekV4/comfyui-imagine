@@ -40,11 +40,39 @@ jobs:
             release/comfyui-imagine-*.tar.gz.sha256
           fail_on_unmatched_files: true
           body: |
-            The studio, already built: unpack it and run `./install.sh`.
+            The studio, already built. Unpack it, run `./install.sh`, start it —
+            no `npm install`, no build step, no compiler.
 
-            Node 24 and ffmpeg are required; ComfyUI can be anywhere on the
-            network. The node pack in `comfyui-nodes/comfyui-imagine` is the one
-            thing to copy into ComfyUI by hand, and the page offers the weights
-            on the first request that needs them.
+            ```sh
+            tar xzf comfyui-imagine-*.tar.gz      # the asset attached to this release
+            cd comfyui-imagine-*/
+            ./install.sh
+            node dist/server.mjs
+            ```
 
-            See the README for the step-by-step.
+            **What you need:** Node 24 or newer, `ffmpeg` on the PATH, and a
+            ComfyUI the studio can reach over HTTP (0.45+). The weights are not
+            in this repository: the first request that needs them offers to
+            download them, and the weights stay in ComfyUI's own folders.
+
+            **First run.** `install.sh` checks Node, ffmpeg and your ComfyUI
+            address, asks three questions (ComfyUI's address, the text endpoint,
+            the model id) and writes `config.yaml`. On a machine where something
+            is still missing, the home page shows a first-run card listing what
+            and how to fix it — no more a chat that silently does not answer.
+
+            **What is in the tarball.** `dist/` (server, MCP server, the built
+            page), the plugin bundles, the graphs, the ComfyUI node pack, the
+            Italian language pack, and the five runtime packages. The source is
+            not included: this archive is the built form, and the repository is
+            where the source lives (and where `docker compose up --build` builds
+            it, if you prefer containers).
+
+            **One manual step.** Copy the node pack into ComfyUI once:
+
+            ```sh
+            cp -r comfyui-nodes/comfyui-imagine <ComfyUI>/custom_nodes/
+            ```
+
+            See the [README](https://github.com/BTekV4/comfyui-imagine#start-here)
+            for the downloads table, Docker and the from-source path.
