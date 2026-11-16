@@ -36,6 +36,7 @@ import { allowOnly, HttpError, languageOf, methods, readBody, readObject, restOf
 import { createLocalePacks, createLocalePacksRoutes } from './locales.ts'
 import { createHostSettings } from './settings.ts'
 import { liveSetupStatus } from './setup-status.ts'
+import { ensureConfig } from './first-run.ts'
 import { configureComfySetup } from '../vendor/tool-comfy/comfy-setup.ts'
 import { serveStatic } from './static.ts'
 import { createNotifyBus } from './notify-bus.ts'
@@ -66,6 +67,16 @@ interface HostConfig {
 const studioVersion: string | undefined = __IMAGINE_VERSION__ === '' ? undefined : __IMAGINE_VERSION__
 
 const configPath = process.env.IMAGINE_CONFIG ?? 'config.yaml'
+/*
+ * A first run has no config.yaml, and the portable packages cannot ask the
+ * questions `install.sh` asks (Windows has no bash): the studio writes one
+ * from the example beside it, and the page's first-run card asks for the rest
+ * — a ComfyUI address that does not answer, no model, no ffmpeg.
+ */
+const firstRun = ensureConfig(configPath, join(dirname(configPath), 'config.example.yaml'))
+if (firstRun.created) {
+  console.log(`[imagine] first run: ${firstRun.path} written${firstRun.from === undefined ? '' : ` from ${firstRun.from}`}`)
+}
 const raw = parseYaml(readFileSync(configPath, 'utf8')) as HostConfig
 
 /*
