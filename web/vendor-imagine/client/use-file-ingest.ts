@@ -74,7 +74,15 @@ export function useFileIngest(ctx: FileIngestContext) {
          * it used to override a mode the user had chosen, and a preset chosen
          * before the file was gone by the time the line was read (2026-10-17).
          */
-        if (mode === 'image' || mode === 'video') composer.set({ mode: modeForKind(last.kind) })
+        /*
+         * A photo or a clip with a track, sent in Video, is a video on that
+         * track (2026-11-16): the track uploaded last used to turn the
+         * composer to Music, and the video the files were for was lost.
+         */
+        const sungVideo = mode === 'video' && uploaded.some(item => item.kind === 'audio')
+          && uploaded.some(item => item.kind === 'image' || item.kind === 'video')
+        if (sungVideo) composer.set({ mode: 'video' })
+        else if (mode === 'image' || mode === 'video') composer.set({ mode: modeForKind(last.kind) })
       }
       const names = uploaded.map(item => item.name)
       const base = openOrCreate(translate('imagine.uploads'))

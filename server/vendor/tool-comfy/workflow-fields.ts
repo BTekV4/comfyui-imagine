@@ -267,7 +267,7 @@ export const WORKFLOW_ROWS = [
       songPrerollDuration: PIN,
       lipsync: {
         kind: 'object',
-        members: { probe: TEXT, min: { kind: 'number', min: 0, max: 1 }, retries: { kind: 'number', min: 0, max: 3 } },
+        members: { probe: TEXT, min: { kind: 'number', min: 0, max: 1 }, retries: { kind: 'number', min: 0, max: 3 }, faceCrop: TEXT },
       },
       chain: { kind: 'object', members: { loadNodeId: TEXT, saveNodeId: TEXT } },
       chainShotSeconds: { kind: 'number', min: 3, max: 15 },

@@ -138,12 +138,22 @@ export async function lookAtShots(
 ): Promise<readonly ShotSight[]> {
   const eyes = eyesOf(ctx, chosen)
   if (eyes === undefined) return photos.map(unseen)
-  return Promise.all(photos.map(async (name) => {
-    const safe = safeBasename(name)
-    if (safe === undefined) return unseen(name)
-    const reply = await lookWith(eyes.vision, join(outputDir, safe), SHOT_SIGHT_INSTRUCTION, eyes.route, SIGHT_TIMEOUT_MS)
-    return parseShotSight(reply?.text, name) ?? unseen(name)
-  }))
+  // A photo that comes back in several shots (a take on one face cycles its
+  // close-up) is looked at once.
+  const looks = new Map<string, Promise<ShotSight>>()
+  const look = (name: string): Promise<ShotSight> => {
+    const known = looks.get(name)
+    if (known !== undefined) return known
+    const fresh = (async (): Promise<ShotSight> => {
+      const safe = safeBasename(name)
+      if (safe === undefined) return unseen(name)
+      const reply = await lookWith(eyes.vision, join(outputDir, safe), SHOT_SIGHT_INSTRUCTION, eyes.route, SIGHT_TIMEOUT_MS)
+      return parseShotSight(reply?.text, name) ?? unseen(name)
+    })()
+    looks.set(name, fresh)
+    return fresh
+  }
+  return Promise.all(photos.map(look))
 }
 
 /** The words of a short phrase, lowercased, for comparing two of them. */

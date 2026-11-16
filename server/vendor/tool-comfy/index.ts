@@ -973,6 +973,13 @@ interface ComfyLipsyncCheck {
   readonly min?: number
   /** How many new seeds a weak shot gets; default 1. */
   readonly retries?: number
+  /**
+   * Executable: `faceCrop <photo> <out.png>` → JSON with `ok`. Writes a
+   * close-up of the one face in a photo at the photo's ratio; a take sung on
+   * one photo arrives at it in every shot after the first, so the mouth stays
+   * large enough to follow the voice. Without it the photo itself is used.
+   */
+  readonly faceCrop?: string
 }
 
 /** One shot's place in a chain of continued shots. */

@@ -10,7 +10,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { readFile, rename, stat, unlink } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { basename, extname, join } from 'node:path'
 import type { ImagineHost } from '../../src/host.ts'
 import { message, withLanguage } from '../../src/messages.ts'
 import { runWorkflow } from './index.ts'
@@ -30,7 +30,7 @@ import { adoptJobFiles, adoptJobsInto, loadImagineStore, renameInProjects } from
 import { resumePlan } from './story-resume.ts'
 import type { ImagineWorkflows } from './workflow-fields.ts'
 import {
-  LIPSYNC_ARTICULATION, LIPSYNC_FACE_LOST, cameraMovements, laySongOver,
+  LIPSYNC_ARTICULATION, LIPSYNC_FACE_LOST, cameraMovements, faceCameraMovements, laySongOver,
   storyLength, storyShots, writeStoryPlan, type StoryPlan, type StorySong,
 } from './story.ts'
 import type { MediaKind, ModelRoute } from '../../../shared/imagine-types.ts'
@@ -237,7 +237,7 @@ async function planMontage(
   intent: string,
   shots: readonly number[],
   photos: readonly string[],
-  opts: { song?: StorySong; model?: ModelRoute; continuous?: boolean },
+  opts: { song?: StorySong; model?: ModelRoute; continuous?: boolean; closeOnFace?: boolean },
 ): Promise<StoryPlan> {
   const sights = await lookAtShots(ctx, outputDir, photos, opts.model)
   const ordered = opts.song === undefined ? orderShots(sights) : sights
@@ -249,8 +249,9 @@ async function planMontage(
     opening: false,
     cuts: true,
     shots: notes,
-    camera: cameraMovements(shots.length),
+    camera: opts.closeOnFace === true ? faceCameraMovements(shots.length) : cameraMovements(shots.length),
     ...opts.continuous === true ? { continuous: true } : {},
+    ...opts.closeOnFace === true ? { closeOnFace: true } : {},
     ...opts.model === undefined ? {} : { model: opts.model },
     ...opts.song === undefined ? {} : { song: opts.song },
   })
@@ -278,13 +279,15 @@ type StoryRequest = Pick<ImagineJobRequest,
   | 'megapixels' | 'hardCuts' | 'model' | 'clipId'>
 
 /** A story request's files, checked: the opening still or clip, the montage's photos, the track. */
-interface StoryFiles {
+export interface StoryFiles {
   readonly intent: string
   readonly source: string | undefined
   readonly sourceKind: MediaKind | undefined
   readonly photos: readonly string[]
   /** A montage: one shot per photo, cut together. */
   readonly cuts: boolean
+  /** One photo sung or spoken over a track: one face, kept close. */
+  readonly faceTake?: boolean
   readonly song: string | undefined
 }
 
@@ -327,9 +330,12 @@ export async function startStory(
   outputDir: string,
   request: StoryRequest,
 ): Promise<ImagineJob> {
-  const files = storyFiles(request)
-  const graphs = storyGraphs(workflows, files)
-  const timing = await storyTiming(outputDir, request, files, graphs.clips)
+  const asked = storyFiles(request)
+  const graphs = storyGraphs(workflows, asked)
+  const take = sungTakeAsMontage(asked, graphs.clips)
+  const timing = await storyTiming(outputDir, request, take, graphs.clips)
+  // After the timing: the close-up gives every shot a photo, not more shots.
+  const files = await withFaceCloseUp(outputDir, take, graphs.clips, timing.shots.length)
   const storyId = randomUUID()
   const storySong = planStory(ctx, outputDir, request, files, timing, storyId)
   // One timestamp for the whole chain: the studio lists jobs newest first, and
@@ -380,6 +386,61 @@ function storyFiles(request: StoryRequest): StoryFiles {
     throw new Error(message('story.invalidSong'))
   }
   return { intent, source, sourceKind, photos, cuts: photos.length > 1, song }
+}
+
+/**
+ * One photo sung over a track becomes a montage of that one photo.
+ *
+ * As a take, every shot after the first was an `extend` on the continuation
+ * graph, which has no audio input: the vocal slice was dropped, the model
+ * animated without hearing it, and the song was only laid over the cut — the
+ * mouth followed the voice for the first six seconds and never again
+ * (measured 2026-11-16 on a 45-second spoken track: 0.95 envelope match on
+ * shot one, none of the seven continuations listening). As a montage every
+ * shot renders on the graph that is given the track, continues the previous
+ * shot's latent through the chain, and goes through the lipsync probe and its
+ * retakes like any music-video shot.
+ * @param files - the story's checked files.
+ * @param clips - the graph the shots render on.
+ * @returns the files, as a one-photo montage when the graph can sing a chain.
+ */
+export function sungTakeAsMontage(files: StoryFiles, clips: LoadedWorkflow): StoryFiles {
+  if (files.cuts || files.song === undefined || files.source === undefined || files.sourceKind !== 'image') return files
+  if (clips.songAudio === undefined || clips.chain === undefined) return files
+  return { ...files, cuts: true, photos: [files.source], faceTake: true }
+}
+
+/**
+ * The photos of a take on one face: the photo, then its close-up.
+ *
+ * Every shot of a montage travels towards its own photo, and with the one
+ * photo a wide one that is where each shot went back to: measured 2026-11-16,
+ * with the director told to keep the face large, shots two and three still
+ * returned to the half figure of the photo and scored -0.25 and 0.15. The first
+ * shot opens on the photo and moves to the close-up; every later one stays on it.
+ * @param outputDir - the validated media output directory.
+ * @param files - the story's files, a one-photo montage.
+ * @param clips - the graph the shots render on, carrying the crop tool.
+ * @param shots - how many shots the story has.
+ * @returns the files with one photo per shot, or unchanged without a close-up.
+ */
+async function withFaceCloseUp(
+  outputDir: string,
+  files: StoryFiles,
+  clips: LoadedWorkflow,
+  shots: number,
+): Promise<StoryFiles> {
+  const tool = clips.lipsync?.faceCrop
+  const photo = files.photos[0]
+  if (files.faceTake !== true || tool === undefined || photo === undefined || shots < 2) return files
+  const name = `closeup-${basename(photo, extname(photo))}.png`
+  const out = join(outputDir, name)
+  const ready = await stat(out).then(() => true, () => false)
+  if (!ready) {
+    const answer = await runProbe('volto', tool, [join(outputDir, photo), out], 120_000)
+    if (answer?.['ok'] !== true) return files
+  }
+  return { ...files, photos: [photo, ...Array.from({ length: shots - 1 }, () => name)] }
 }
 
 /**
@@ -486,6 +547,8 @@ function planStory(
   storyPlans.set(storyId, cuts
     ? planMontage(ctx, outputDir, intent, timing.shots, photos, {
       ...timing.chained ? { continuous: true } : {},
+      // One photo on a track is one face singing or speaking it throughout.
+      ...timing.chained && files.faceTake === true && storySong !== undefined ? { closeOnFace: true } : {},
       ...request.model === undefined ? {} : { model: request.model },
       ...storySong === undefined ? {} : { song: storySong },
     })

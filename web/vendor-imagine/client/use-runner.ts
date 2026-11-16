@@ -720,10 +720,16 @@ export function useRunner(ctx: RunnerContext) {
      * (createVideoChain). The story is for a video cut on a song, from
      * several pictures, or from nothing.
      */
-    const cutOrSung = intent.song !== undefined || (intent.sources?.length ?? 0) > 1
-      || composer.get().sources.some(item => item.kind === 'audio')
+    const sung = intent.song !== undefined || composer.get().sources.some(item => item.kind === 'audio')
+    const cutOrSung = sung || (intent.sources?.length ?? 0) > 1
+    /*
+     * A track staged or named is the video's length (2026-11-16), whatever
+     * the sentence or the reading said: the story is cut to the song and
+     * sings it. Before, a reading that wrote no length (or a short one) sent a
+     * single six-second clip and the rest of the track was never animated.
+     */
     const chained = intent.action === 'video'
-      && ((asked !== undefined && asked >= STORY_MIN_SECONDS && cutOrSung) || startsFrom === undefined)
+      && (sung || (asked !== undefined && asked >= STORY_MIN_SECONDS && cutOrSung) || startsFrom === undefined)
     const over: RunOverride = {
       prompt: intent.prompt,
       quiet: true,

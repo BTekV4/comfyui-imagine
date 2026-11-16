@@ -540,3 +540,21 @@
     transition: none !important;
   }
 }
+
+/*
+ * The length a staged track sets (2026-11-16): where the length buttons were,
+ * as tall as the groups beside it, read-only.
+ */
+.trackLength {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: var(--imagine-radius-pill);
+  corner-shape: round;
+  box-shadow: 0 0 0 1px var(--imagine-line);
+  color: var(--imagine-ink);
+  font-size: 13px;
+  white-space: nowrap;
+}

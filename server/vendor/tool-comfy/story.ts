@@ -52,6 +52,39 @@ const CAMERA_MOVEMENTS: readonly string[] = [
 ]
 
 /**
+ * The movements of a take where one face sings or speaks to the track.
+ *
+ * The montage rotation widens on purpose — a pull out, an arc, a truck — and
+ * with one photo the face goes with it: measured 2026-11-16 on an 18-second
+ * spoken track over one photo, the director's "she steps back" and "full
+ * figure" left the face a few dozen pixels high in shots two and three, the
+ * mouth probe lost it in 48 and 86 frames of 144, and those shots scored
+ * -0.14 and 0.02 while the close shots scored 0.25 and 0.56. These keep the
+ * face large and frontal and still give each shot a movement of its own.
+ */
+const FACE_CAMERA_MOVEMENTS: readonly string[] = [
+  'slow push in towards the face',
+  'static close-up, only the face and shoulders move',
+  'gentle drift to the side, the face stays centred and frontal',
+  'medium close-up with the camera breathing slightly',
+  'slow pull back from a close-up to a medium close-up',
+  'slight low angle on the face, the camera barely moves',
+]
+
+/**
+ * One camera movement per shot for a take on one face, in a fixed rotation.
+ * @param count - how many shots the take has.
+ * @returns one movement per shot, in shot order.
+ */
+export function faceCameraMovements(count: number): readonly string[] {
+  const total = FACE_CAMERA_MOVEMENTS.length
+  return Array.from(
+    { length: Math.max(0, count) },
+    (_unused, index) => FACE_CAMERA_MOVEMENTS[index % total] ?? 'static close-up',
+  )
+}
+
+/**
  * One camera movement per shot, in a fixed rotation.
  *
  * Adjacent shots never share a movement, so no two cuts in a row move the same
@@ -160,6 +193,11 @@ export interface StoryPlanOptions {
    * instant a shot begins, or the model cuts to it on its own.
    */
   continuous?: boolean
+  /**
+   * One face sings or speaks the track for the whole video: the framing stays
+   * close enough for the mouth to be rendered on the voice, and read.
+   */
+  closeOnFace?: boolean
   /** Whether the story starts from no photo and needs an opening frame. */
   opening: boolean
 }
@@ -231,6 +269,7 @@ function storyPlanInstruction(
             ? '- The photo of every shot is described beside it: it is the ARRIVAL point of the beat, not the starting one. Do not describe the subject or the clothes: the photo already shows them. Write the MOVEMENT that carries from the previous framing to that pose in the seconds it has.'
             : RULE_UNSEEN_PHOTO,
           RULE_ONE_ACTION,
+          ...opts.closeOnFace === true ? [RULE_CLOSE_ON_FACE] : [],
           ruleOnlyWhatIs('"no glasses", "no shadows"'),
           ruleSinging(false),
           RULE_NO_ABSTRACT,
@@ -281,6 +320,9 @@ apertura: <prompt in English to generate the FIRST FRAME of the video: subject, 
     unit: 'in the beat',
   })
 }
+
+/** A take on one face that sings or speaks: the mouth has to stay in sight. */
+const RULE_CLOSE_ON_FACE = '- The person sings or speaks the track in EVERY beat: keep the face LARGE and FRONTAL in frame for the whole video (close-up or medium close-up, mouth always visible). NEVER a full figure, a wide shot, the person stepping back, turning away or leaving the frame, and never the camera moving off her onto something else. Whatever else moves in the scene moves around her, inside that framing. Use the camera movement written beside each shot.'
 
 /** The rule every film shares: one action, one camera move per beat. */
 const RULE_ONE_ACTION = '- One action and one camera movement per beat, plausible in the seconds it has.'

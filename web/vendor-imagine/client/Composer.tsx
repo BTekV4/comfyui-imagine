@@ -19,7 +19,7 @@ import { memo, useEffect, useRef, useState } from 'react'
 import {
   IconCheck, IconDots, IconPlusOutlineRegular, IconSendOutlineRegular,
 } from '../../shims/primitives/index.ts'
-import { thumbUrlOf, THUMB_SMALL } from './gallery-api.ts'
+import { mediaUrlOf, thumbUrlOf, THUMB_SMALL } from './gallery-api.ts'
 import type { GalleryItem, ImagineQuality, ImagineSpeed, ModelRoute } from '../../../shared/imagine-types.ts'
 import {
   VIDEO_RESOLUTIONS, clampResolution, clampSeconds, clipSecondsFor, type ImagineMode,
@@ -46,6 +46,38 @@ const PROMPT_MAX_HEIGHT = 120
  * pressing that card.
  */
 const MORE_MODES: readonly ImagineMode[] = ['loop', 'look', 'style', 'music', 'speak', 'recreate', 'regenerate']
+
+/**
+ * How long a staged track lasts, in whole seconds, once it is known.
+ *
+ * The gallery reads the length of MP4 containers only (an .m4a has it, an
+ * .mp3 or a .wav does not), so the browser reads the rest from the file's
+ * metadata, without downloading the track.
+ * @param item - the staged track, if there is one.
+ * @returns the seconds, or undefined while unknown.
+ */
+function useTrackSeconds(item: GalleryItem | undefined): number | undefined {
+  const [read, setRead] = useState<{ name: string; seconds: number } | undefined>(undefined)
+  const name = item?.name
+  const known = item?.duration
+  useEffect(() => {
+    if (name === undefined || known !== undefined) return undefined
+    const audio = new Audio()
+    audio.preload = 'metadata'
+    const done = (): void => {
+      if (Number.isFinite(audio.duration) && audio.duration > 0) setRead({ name, seconds: audio.duration })
+    }
+    audio.addEventListener('loadedmetadata', done)
+    audio.src = mediaUrlOf(name)
+    return () => {
+      audio.removeEventListener('loadedmetadata', done)
+      audio.removeAttribute('src')
+      audio.load()
+    }
+  }, [name, known])
+  const seconds = known ?? (read !== undefined && read.name === name ? read.seconds : undefined)
+  return seconds === undefined ? undefined : Math.round(seconds)
+}
 
 /** The prompt box with its mode seats, staged files and options. */
 function Composer({
@@ -86,6 +118,9 @@ function Composer({
   const moreBox = useRef<HTMLDivElement>(null)
   const [more, setMore] = useState<'modes' | undefined>(undefined)
   useDismiss(moreBox, () => { setMore(undefined) }, more !== undefined)
+  // A staged track sets the video's length: see the length group below.
+  const track = sources.find(item => item.kind === 'audio')
+  const trackSeconds = useTrackSeconds(track)
   // A one-row textarea keeps its initial height for good unless something
   // measures the content: the CSS max-height alone never applies, and the
   // field stays a single line however much is typed into it.
@@ -332,15 +367,34 @@ function Composer({
                 group={css.seg}
                 pill={undefined}
               />
-              <Segmented
-                label={translate('imagine.duration')}
-                values={clipSecondsFor(resolution)}
-                value={seconds}
-                onPick={onSeconds}
-                format={entry => `${String(entry)} s`}
-                group={css.seg}
-                pill={undefined}
-              />
+              {/*
+                * A staged track is the video's length (2026-11-16): the clip is
+                * cut to it and sings it, so a length of its own would be a
+                * choice the run ignores. The buttons give way to the track's.
+                */}
+              {track === undefined
+                ? (
+                  <Segmented
+                    label={translate('imagine.duration')}
+                    values={clipSecondsFor(resolution)}
+                    value={seconds}
+                    onPick={onSeconds}
+                    format={entry => `${String(entry)} s`}
+                    group={css.seg}
+                    pill={undefined}
+                  />
+                )
+                : (
+                  <span
+                    className={css.trackLength}
+                    data-imagine-track-length={trackSeconds ?? ''}
+                    title={translate('imagine.durationFromAudioHint')}
+                  >
+                    {trackSeconds === undefined
+                      ? translate('imagine.durationFromAudio')
+                      : translate('imagine.durationFromAudioSeconds', { seconds: String(trackSeconds) })}
+                  </span>
+                )}
             </>
           )}
               {(mode === 'image' || mode === 'video') && (
