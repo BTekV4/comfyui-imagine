@@ -87,22 +87,24 @@ export function useCustomWorkflowList(): CustomWorkflowList {
   return useMemo(() => ({ list, loaded, error, reload, remove }), [list, loaded, error, reload, remove])
 }
 
-export interface CustomWorkflowsProps {
+export interface AddWorkflowPanelProps {
   /** The list the grid shows too: adding one reads it again. */
   readonly workflows: CustomWorkflowList
+  /** Back to the grid of cards. */
+  readonly onBack: () => void
 }
 
 /**
- * The strip under the grid that adds an uploaded workflow; its card then
- * appears in the grid.
- * @param props - the shared list.
- * @returns the section.
+ * The form that adds an uploaded workflow: it stands where the grid was, so
+ * adding one is a card of the grid and not a strip under it. Its card lands
+ * in the grid like any other, and the panel goes back to it.
+ * @param props - the shared list and the way back.
+ * @returns the panel.
  */
-export function CustomWorkflows({ workflows }: CustomWorkflowsProps) {
+export function AddWorkflowPanel({ workflows, onBack }: AddWorkflowPanelProps) {
   const { list, reload: load } = workflows
-  const [formError, setError] = useState<string>()
+  const [formError, setFormError] = useState<string>()
   const error = formError ?? workflows.error
-  const [adding, setAdding] = useState(false)
   const form = useRef<HTMLFormElement>(null)
   /*
    * The inputs of the graph just picked, so the user can choose which ones the
@@ -116,7 +118,7 @@ export function CustomWorkflows({ workflows }: CustomWorkflowsProps) {
    * first to find out. Links are left out — a value is what a control can set.
    */
   const readGraph = async (file: File | undefined): Promise<void> => {
-    setError(undefined)
+    setFormError(undefined)
     setPicked([])
     if (file === undefined) return
     try {
@@ -138,14 +140,14 @@ export function CustomWorkflows({ workflows }: CustomWorkflowsProps) {
       if (rows.length === 0) throw new Error(translate('imagine.noValuesToExpose'))
       setPicked(rows)
     } catch (failure: unknown) {
-      setError(messageOf(failure))
+      setFormError(messageOf(failure))
     }
   }
 
   const submit = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
-    setError(undefined)
+    setFormError(undefined)
     try {
       const graphFile = data.get('graph')
       if (!(graphFile instanceof File) || graphFile.size === 0) throw new Error(translate('imagine.pickGraphFile'))
@@ -167,24 +169,21 @@ export function CustomWorkflows({ workflows }: CustomWorkflowsProps) {
         }),
       }, 'workflow')
       form.current?.reset()
-      setAdding(false)
       await load()
+      onBack()
     } catch (failure: unknown) {
-      setError(messageOf(failure))
+      setFormError(messageOf(failure))
     }
   }
 
   return (
     <section className={own.wrap} aria-label={translate('imagine.customWorkflows')}>
       <div className={own.head}>
-        <h2 className={own.title}>{translate('imagine.custom.yours')}</h2>
-        <button type="button" className={own.add} onClick={() => { setAdding(value => !value) }}>
-          {adding ? translate('imagine.custom.close') : translate('imagine.custom.add')}
-        </button>
+        <button type="button" className={own.add} onClick={onBack}>{translate('imagine.allTools')}</button>
+        <h2 className={own.title}>{translate('imagine.custom.new')}</h2>
       </div>
 
-      {adding && (
-        <form ref={form} className={own.form} onSubmit={(event) => { void submit(event) }}>
+      <form ref={form} className={own.form} onSubmit={(event) => { void submit(event) }}>
           <label className={own.field}>
             <span>{translate('imagine.custom.formTitle')}</span>
             <input name="title" required placeholder="Lookbook" />
@@ -268,18 +267,14 @@ export function CustomWorkflows({ workflows }: CustomWorkflowsProps) {
               <input name="outputExt" defaultValue="png" />
             </label>
           </div>
-          <button type="submit" className={own.save}>{translate('imagine.save')}</button>
-        </form>
-      )}
+        <button type="submit" className={own.save}>{translate('imagine.save')}</button>
+      </form>
 
       {error !== undefined && <p className={own.error} role="status">{error}</p>}
 
-      {list.length === 0 && !adding && (
-        <p className={own.empty}>
-          {translate('imagine.custom.emptyState')}
-        </p>
+      {list.length === 0 && (
+        <p className={own.empty}>{translate('imagine.custom.emptyState')}</p>
       )}
-
     </section>
   )
 }

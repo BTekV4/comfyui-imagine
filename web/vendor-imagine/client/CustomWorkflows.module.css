@@ -15,6 +15,12 @@
 .save { align-self: flex-start; }
 .save:disabled { opacity: 0.5; cursor: default; }
 .form { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--imagine-line); border-radius: 14px; }
+/*
+ * A field grows only beside its neighbours in a `.row` (a flex row). Used
+ * straight in the form — a column — the same `flex: 1 1 160px` read as a
+ * 160px height, and the panel came out as four tall empty boxes.
+ */
+.form > .field, .form > .row, .form > .pick { flex: 0 0 auto; }
 .row { display: flex; gap: 10px; flex-wrap: wrap; }
 .field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 160px; font-size: 12px; }
 .field input, .field select, .field textarea {

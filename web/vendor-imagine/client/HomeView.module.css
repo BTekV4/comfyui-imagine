@@ -208,6 +208,46 @@
   background: linear-gradient(135deg, #1b1b22, #26262f);
 }
 
+/*
+ * The last card of «All»: the way to add an uploaded workflow. It is a tile
+ * of the grid, not a strip under it — the user's workflows are cards here,
+ * so making one belongs with them. Dashed and shorter than a card, because
+ * it holds a button and not a cover.
+ */
+.addTile {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 112px;
+  padding: 12px;
+  border: 1px dashed var(--imagine-line);
+  border-radius: 18px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-family: var(--imagine-font-text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.addTile:hover {
+  background: var(--imagine-hover);
+}
+
+.addTile:focus-visible {
+  outline: 2px solid currentcolor;
+  outline-offset: 2px;
+}
+
+/* The plus of the tile, a size above the words so the card reads at a glance. */
+.addGlyph {
+  font-size: 22px;
+  line-height: 1;
+  opacity: 0.8;
+}
+
 /* An uploaded workflow's card: the same face, with its delete in a corner. */
 .ownCard {
   position: relative;

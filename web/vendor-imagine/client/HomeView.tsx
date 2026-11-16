@@ -18,7 +18,7 @@ import { clampSeconds } from './imagine-settings.ts'
 import { CoverMedia } from './cover-media.tsx'
 import { CARD_MOTION, JOB_CARDS, slotsOf, type JobCardId } from './job-cards.ts'
 import {
-  CustomWorkflows, coverOf, type CustomWorkflow, type CustomWorkflowList,
+  AddWorkflowPanel, coverOf, type CustomWorkflow, type CustomWorkflowList,
 } from './custom-workflows-view.tsx'
 import { CustomWorkflowPanel, type CustomBatchRequest, type CustomRunRequest } from './custom-workflow-panel.tsx'
 import { TemplatePanel } from './TemplatePanel.tsx'
@@ -165,9 +165,11 @@ function HomeCard({ entry, tall, order, custom, actions }: {
  * user's uploaded workflows together (as on Grok Imagine, one set of tools),
  * with a row of chips that keeps one group. The chip is remembered per viewer.
  */
-const HomeCards = memo(function HomeCards({ custom, actions }: {
+const HomeCards = memo(function HomeCards({ custom, actions, onAdd }: {
   custom: readonly CustomWorkflow[]
   actions: HomeCardActions
+  /** Open the form that adds an uploaded workflow. */
+  onAdd: () => void
 }) {
   const [filter, setFilter] = useState<HomeFilter>(storedHomeFilter)
   const byId = useMemo(() => new Map(custom.map(workflow => [workflow.id, workflow])), [custom])
@@ -208,6 +210,25 @@ const HomeCards = memo(function HomeCards({ custom, actions }: {
                 actions={actions}
               />
             ))}
+            {/*
+              * Adding a workflow is one more card, not a strip under the
+              * grid: the user's workflows are cards of this same grid, so
+              * the way to make one belongs here too. Only under «All» —
+              * a chip is a filter, and «Add» is not a photo or a clip.
+              */}
+            {filter === 'all' && gi === CARD_COLUMNS - 1 && (
+              <button
+                type="button"
+                className={css.addTile}
+                // The cards carry their place as `order`; without one of its
+                // own the tile would sort first, above the grid's first card.
+                style={{ order: entries.length }}
+                onClick={onAdd}
+              >
+                <span className={css.addGlyph} aria-hidden="true">+</span>
+                {translate('imagine.custom.add')}
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -339,6 +360,14 @@ export interface HomeViewProps extends PanelActions {
 export function HomeView(props: HomeViewProps) {
   const { store, busy, panelCard, items, composer, homeRef, onCard, onTemplate, onOpenCustom, customWorkflows } = props
   const { remove: removeCustom } = customWorkflows
+  /*
+   * The add form stands where the grid was, as a card's panel does. It is
+   * local to the home: nothing else on the page opens it, and the address
+   * of a card is the only thing the URL carries.
+   */
+  const [adding, setAdding] = useState(false)
+  const startAdding = useEvent(() => { setAdding(true) })
+  const stopAdding = useEvent(() => { setAdding(false) })
   const cardActions = useMemo((): HomeCardActions => ({
     onCard,
     onTemplate,
@@ -400,6 +429,13 @@ export function HomeView(props: HomeViewProps) {
       </div>
     )
   }
+  if (adding) {
+    return (
+      <div className={css.home} ref={homeRef}>
+        <AddWorkflowPanel workflows={customWorkflows} onBack={stopAdding} />
+      </div>
+    )
+  }
   return (
     <div className={css.home} ref={homeRef}>
       <div className={css.hero}>
@@ -428,8 +464,7 @@ export function HomeView(props: HomeViewProps) {
         */}
         <div className={css.heroComposer}>{composer}</div>
         </div>
-        <HomeCards custom={customWorkflows.list} actions={cardActions} />
-        <CustomWorkflows workflows={customWorkflows} />
+        <HomeCards custom={customWorkflows.list} actions={cardActions} onAdd={startAdding} />
       </div>
     </div>
   )
