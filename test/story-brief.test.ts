@@ -79,6 +79,19 @@ test('beats are written in English, in the number the film has', () => {
   assert.match(oneTake, /first \.\.\., then \.\.\., finally \.\.\./)
 })
 
+test('a beat carries a performance, its objects and the seconds it has', () => {
+  // From Openjutsu's from-picture describer: body, hands, head and mouth named
+  // one by one, the objects touched and what happens to each, one visible
+  // change per second, in the present tense.
+  for (const brief of [chained, montage, oneTake]) {
+    assert.match(brief, /The body, the hands, the head and the mouth each do something/)
+    assert.match(brief, /Name the objects the person touches and what happens to each one/)
+    assert.match(brief, /Three to five sentences, about fifty to ninety words/)
+    assert.match(brief, /in the present tense/i)
+  }
+  assert.match(chained, /already leaving the pose in the first frames/)
+})
+
 test('the opening frame is written the way Krea 2 asks for it', () => {
   assert.match(oneTake, /written as a photograph for Krea 2/)
   assert.match(oneTake, /name the medium first/)

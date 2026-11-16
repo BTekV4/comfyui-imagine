@@ -266,12 +266,15 @@ export function storyPlanInstruction(
         rules: [
           '- Every beat is an ACTION with a visible result, told in order: what the subject does, what changes because of it, and the state the shot ends on. A pose, a glance or a camera movement is not a beat on its own.',
           '- No cut and no new framing: the opening the previous shot hands over is under a second. Start the new action at once and end it mid-motion, in a state the next beat can continue. Do not spend the first seconds holding the framing.',
-          '- The first beat starts from its photo and holds nothing.',
+          '- The first beat starts from its photo and holds nothing: the body is already leaving the pose in the first frames.',
           seen
             ? '- The photo of every shot is described beside it: it is the ARRIVAL point of the beat, not the starting one. Do not describe the subject or the clothes: the photo already shows them. Write the MOVEMENT that carries the body and the camera from the previous framing to that pose, and what the person DOES there.'
             : RULE_UNSEEN_PHOTO,
+          RULE_PERFORMANCE,
           RULE_SUBJECT_AND_CAMERA,
           RULE_SCENE_MOVES,
+          RULE_OBJECTS,
+          RULE_DENSITY,
           RULE_ARC,
           RULE_HANDOVER,
           ...opts.closeOnFace === true ? [RULE_CLOSE_ON_FACE] : [ruleSinging(false)],
@@ -296,8 +299,11 @@ export function storyPlanInstruction(
         seen
           ? '- Every shot starts from the photo described beside it: write a movement consistent with that pose, that place and that light. Do not change the place or the clothes, do not describe the subject: the photo already shows it. Write only the MOVEMENT and what the person does in the seconds it has.'
           : RULE_UNSEEN_PHOTO,
+        RULE_PERFORMANCE,
         RULE_SUBJECT_AND_CAMERA,
         RULE_SCENE_MOVES,
+        RULE_OBJECTS,
+        RULE_DENSITY,
         RULE_ARC,
         '- A cut must bring new information — a new place, state, viewpoint or time. If only the distance or the angle would change, the shot stays one and the camera moves instead.',
         ruleOnlyWhatIs('"no glasses", "no shadows", "no on-screen text"'),
@@ -317,8 +323,11 @@ export function storyPlanInstruction(
     rules: [
       '- One single continuous take: same scene, same people, same clothes, same light from the first moment to the last. No new place, no new character, no new framing.',
       '- Every beat CONTINUES the previous one: it is the moment after, and it is an ACTION with a visible result — what the subject does, what changes because of it, and the state the shot ends on — not a description of what is already on screen.',
+      RULE_PERFORMANCE,
       RULE_SUBJECT_AND_CAMERA,
       RULE_SCENE_MOVES,
+      RULE_OBJECTS,
+      RULE_DENSITY,
       RULE_ARC,
       RULE_HANDOVER,
       '- The camera never cuts: every change happens inside the frame, through movement, light and the action itself.',
@@ -356,6 +365,37 @@ export function closeOnFaceBeat(beat: string): string {
 
 /** The rule every film shares: the subject AND the camera move, with amplitude and speed. */
 const RULE_SUBJECT_AND_CAMERA = '- The subject moves in every beat — a gesture, a step, the hands, the posture, the breath — and so does the camera: one movement, written as a natural sentence with a type, an amplitude and a speed where they say something ("the camera pushes in with small amplitude at slow speed", "the camera holds a static shot"). Use the movement written beside the shot, and never repeat the previous beat\'s movement.'
+
+/**
+ * The rule that gives a beat a performance, not a pose.
+ *
+ * Taken from Openjutsu's from-picture describer, which found that a video model
+ * redoing a performance needs the body, the hands, the head and the mouth named
+ * one by one, and the moment an expression changes: a beat that says "she looks
+ * at the camera" renders a photograph, while one that says what her hands do,
+ * where her gaze goes and when the smile drops renders a performance.
+ */
+const RULE_PERFORMANCE = '- The body, the hands, the head and the mouth each do something in the beat — a step, a turn, a touch, a syllable — and the expression and the gaze change at least once, with the moment they change.'
+
+/**
+ * The rule that makes an action leave a trace.
+ *
+ * Same source: the describer names every object the person holds or touches
+ * with its colour and material and what happens to it ("candles going out, a
+ * lid opening"), because the model animates what is named and leaves the rest
+ * as it found it.
+ */
+const RULE_OBJECTS = '- Name the objects the person touches and what happens to each one: a cup tips and the coffee spreads, a curtain falls, a candle goes out, a door swings shut.'
+
+/**
+ * The rule that sizes the beat to the seconds it has.
+ *
+ * Openjutsu asks its describer for 80-180 words over a five-second clip and
+ * rewrites it to 60-160, one visible change after another; our beats were 40-60
+ * words of framing. The video model reads a timeline, and a thin beat comes
+ * back as a thin shot.
+ */
+const RULE_DENSITY = '- Three to five sentences, about fifty to ninety words, in the present tense: one visible change for every second of the shot, in the order it happens.'
 
 /**
  * The rule that stops a shot reading as a photograph.
@@ -459,7 +499,7 @@ ${parts.list}
 Binding rules:
 ${parts.rules.join('\n')}
 ${parts.opening}
-Write every beat in English: the video model is trained on English and reads the beat directly when the prompt pass is skipped. Dialogue, singing and on-screen text stay in their own language, word for word.
+Write every beat in English and in the present tense: the video model is trained on English and reads the beat directly when the prompt pass is skipped. Dialogue, singing and on-screen text stay in their own language, word for word.
 
 Reply ONLY with the lines, with no preamble: ${parts.count === 1 ? 'ONE line for the shot' : `exactly ${String(parts.count)} lines, one per shot`}, numbered like this:
 1. <what happens in ${parts.unit} 1>
