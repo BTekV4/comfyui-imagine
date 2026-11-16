@@ -74,7 +74,7 @@ export function h3Canvas(width: number, height: number): { width: number; height
  * multiple of 32.
  *
  * Computed here rather than left to the graph because the plugin writes it
- * straight into the graph's scale node («Ricrea video»). The default is the
+ * straight into the graph's scale node («Recreate video»). The default is the
  * model's native canvas of 0.98 megapixels: the ComfyUI H3 guide says "frames
  * well above the native canvas do not hold detail", so a soft frame is a
  * resolution problem first.

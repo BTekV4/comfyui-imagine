@@ -13,7 +13,7 @@ cp manifest.json index.mjs <data>/plugins/telegram/
 systemctl restart imagine            # or POST /comfy-plugins/telegram/refresh
 ```
 
-`<data>` is the studio's data folder — `$IMAGINE_HOME` (default `~/.imagine`). Then open **Impostazioni → Studio → Plugin**, paste the bot token
+`<data>` is the studio's data folder — `$IMAGINE_HOME` (default `~/.imagine`). Then open **Settings → Studio → Plugin**, paste the bot token
 (from @BotFather) and the chat id, save, and press **Send a test**.
 
 The token and the chat id are kept in `<data>/plugins/telegram/config.json`

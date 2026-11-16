@@ -511,7 +511,7 @@ function buildServer(): McpServer {
 
   server.registerTool('imagine_generate_image', {
     title: 'Generate an image',
-    description: 'Draw a new picture from a prompt with the studio\'s Krea 2 graph (the one behind «Nuova generazione», with its LoRAs).',
+    description: 'Draw a new picture from a prompt with the studio\'s Krea 2 graph (the one behind «New generation», with its LoRAs).',
     inputSchema: {
       prompt: z.string().min(1).describe('What to draw, in English.'),
       aspect,
@@ -706,7 +706,7 @@ function buildServer(): McpServer {
 
   server.registerTool('imagine_custom_workflows', {
     title: 'Custom workflows',
-    description: 'The workflows the user uploaded (cards under «I tuoi workflow»), with their inputs; run one with imagine_run_action action "custom".',
+    description: 'The workflows the user uploaded (cards under «Your workflows»), with their inputs; run one with imagine_run_action action "custom".',
     inputSchema: {},
     annotations: { readOnlyHint: true },
   }, async () => guarded(async () => (await api<{ workflows: Record<string, unknown>[] }>('/comfy-custom-workflows')).workflows

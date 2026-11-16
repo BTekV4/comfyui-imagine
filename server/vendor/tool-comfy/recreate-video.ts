@@ -1,5 +1,5 @@
 /**
- * «Ricrea video»: a clip is read, redrawn and shot again.
+ * «Recreate video»: a clip is read, redrawn and shot again.
  *
  * The three steps are the ones a person did by hand before this existed: pull
  * the reference clip's frames out and read them, draw the opening frame again

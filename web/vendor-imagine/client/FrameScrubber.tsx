@@ -2,7 +2,7 @@
  * The frame scrubber: a clip in a player, a time slider, and the buttons that
  * move by a second or by a frame.
  *
- * «Estrai fotogrammi» (FrameExtractor) and an uploaded card's frame control
+ * «Extract frames» (FrameExtractor) and an uploaded card's frame control
  * (custom-workflow-panel) each had their own copy of it, with the same clamp,
  * the same slider and the same five buttons; this is the one both draw.
  * Controlled: the caller owns the time, so the extractor can save the frame on

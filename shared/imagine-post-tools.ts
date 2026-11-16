@@ -1,5 +1,5 @@
 /**
- * «Colori» and «Disegna», the post page's last two tools, as Grok Imagine's
+ * «Colors» and «Draw», the post page's last two tools, as Grok Imagine's
  * (read from its code 2026-11-15, docs/note/imagine-grok-post-riferimento.md):
  * the palettes and the sentence a palette is applied with, the drawing
  * styles and the sentence a sketch is finished with.
@@ -70,7 +70,7 @@ export function palettePrompt(colors: readonly string[]): string {
   return `Restyle this design so that every colour in it comes from this ${palette}. Keep the layout, artwork, typography and wording exactly as they are, and do not add any swatches, labels or extra text.`
 }
 
-/** The drawing styles «Disegna» finishes a sketch in; Grok keeps its own on the server. */
+/** The drawing styles «Draw» finishes a sketch in; Grok keeps its own on the server. */
 export const DRAW_STYLES = [
   { id: 'photo', words: 'in the same style, light and texture as the photo around it' },
   { id: 'manga', words: 'as clean black-and-white manga line art with screentone shading' },

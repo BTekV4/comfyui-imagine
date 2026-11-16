@@ -1,7 +1,7 @@
 /**
  * Cut the thumbnails nobody has asked for yet, newest first.
  *
- * All media ("Tutti i media") shows hundreds of files on its first screen, and a missing
+ * All media shows hundreds of files on its first screen, and a missing
  * thumbnail costs a quarter of a second of ffmpeg on first request: on a cold
  * cache the page queued them and the full picture opened from it waited
  * behind the queue (2026-10-17). Cut in advance, every one is a file read.

@@ -1,6 +1,6 @@
 /**
- * Likes ("Mi piace") on gallery files, for the Liked ("Apprezzati") tab of
- * All media ("Tutti i media"), as Grok Imagine has (2026-10-17). One JSON
+ * Likes on gallery files, for the Liked tab of All media, as Grok Imagine
+ * has (2026-10-17). One JSON
  * list of names beside the studio's data; a name whose file is gone is
  * dropped the next time the list is read.
  */
@@ -18,7 +18,7 @@ export function createLikesRoute(file: string, outputDir: string): Handler {
     GET: async (_req, res) => { sendJson(res, 200, { names: await present(await list.read()) }) },
     POST: async (req, res) => {
       // One file from the viewer's heart, or several from the selection's
-      // "Aggiungi al Tag" → Apprezzati.
+      // "Add to Tag" → Liked.
       const body = await readObject<{ name?: unknown; names?: unknown; liked?: unknown }>(req)
       const asked = Array.isArray(body.names) ? body.names : [body.name]
       const chosen = asked.flatMap(entry => {

@@ -1,9 +1,8 @@
 /**
- * Tags of All media ("Tutti i media"), as Grok Imagine has (read off
- * /imagine/saved 2026-10-18): named sets of files the user makes with
- * "New Tag" ("Nuovo Tag") and fills from the selection's "Add to Tag"
- * ("Aggiungi al Tag"). One JSON list beside the studio's data, like the
- * likes; a name whose file is gone is dropped on read.
+ * Tags of All media, as Grok Imagine has (read off /imagine/saved
+ * 2026-10-18): named sets of files the user makes with "New Tag" and fills
+ * from the selection's "Add to Tag". One JSON list beside the studio's data,
+ * like the likes; a name whose file is gone is dropped on read.
  */
 import { message } from './messages.ts'
 import { randomUUID } from 'node:crypto'

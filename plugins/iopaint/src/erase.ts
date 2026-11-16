@@ -1,5 +1,5 @@
 /**
- * «Rimuovi oggetto»: the photo and the painted mask (white where to remove,
+ * «Remove object»: the photo and the painted mask (white where to remove,
  * at the photo's own size, as the dialog paints it) go to IOPaint's
  * /api/v1/inpaint, which answers the photo with the zone filled in and in the
  * photo's own format. About 7-15 s for 1080×1920 on a CPU (LaMa, 2026-10-18).
@@ -17,7 +17,7 @@ import type { Handler } from '../../../server/src/host.ts'
 const ERASED_EXT: Readonly<Record<string, string>> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/webp': 'webp' }
 
 /**
- * The route of «Rimuovi oggetto».
+ * The route of «Remove object».
  * @param outputDir - the gallery's folder.
  * @param iopaintUrl - IOPaint's address, read at every call.
  * @returns the handler.

@@ -21,7 +21,7 @@ export interface RenderOver {
   readonly path?: string
   /** A segment's own length (an animated background's). */
   readonly seconds?: number
-  /** The clip this render reads instead of the job's (a «Rigenera dettaglio» window's draft). */
+  /** The clip this render reads instead of the job's (a «Regenerate detail» window's draft). */
   readonly video?: ResolvedInputVideo
 }
 

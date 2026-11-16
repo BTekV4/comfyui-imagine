@@ -1,8 +1,8 @@
 /**
- * Drawing with the Krea 2 graph of «Ricrea video»: the canvas a picture is drawn
+ * Drawing with the Krea 2 graph of «Recreate video»: the canvas a picture is drawn
  * on, the draw itself, and the persona's hair pinned in the text.
  *
- * Used by «Ricrea video» for its opening frame and the candidates of its scan.
+ * Used by «Recreate video» for its opening frame and the candidates of its scan.
  * Who the drawn person is comes from the deployment's persona file (see
  * `persona.ts`). Split out of the scan of the character swap, removed on
  * 2026-11-13.
@@ -16,7 +16,7 @@ import { formatSize, snapToGrid } from './snap-size.ts'
 import type { ImagineQuality, ImagineSpeed } from '../../../shared/imagine-types.ts'
 
 /**
- * The short side the opening frame of «Ricrea video», which H3 is
+ * The short side the opening frame of «Recreate video», which H3 is
  * conditioned on for the whole clip, is drawn at.
  *
  * 1080, not the megapixel the clip renders at: the frame is read again by the
@@ -50,7 +50,7 @@ export function scanCanvas(width: number, height: number): { width: number; heig
  * One Krea 2 picture, filed under its declared name.
  *
  * The one way the studio draws with Krea 2 outside a plain generation: each
- * candidate of a «Ricrea video» scan and the opening frame of a recreation.
+ * candidate of a «Recreate video» scan and the opening frame of a recreation.
  * The job's prompt-id callback and cancellation
  * always travel with it: without them a cancelled or expired job left ComfyUI
  * drawing, and the column had no bar.

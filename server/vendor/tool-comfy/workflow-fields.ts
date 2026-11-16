@@ -55,7 +55,7 @@ export const BASE_FIELDS: Readonly<Record<string, FieldSpec>> = {
    * Where the sampler steps sit in the graph, and the count the high recipe
    * asks for: `quality: 'high'` on a photo, `speed: 'slow'` on a clip
    * (2026-11-03). Without the pin the graph keeps the count it was saved with,
-   * which is what «Standard» and «Veloce» mean.
+   * which is what «Standard» and «Fast» mean.
    */
   steps: { kind: 'object', members: { nodeId: TEXT, field: TEXT, high: { kind: 'number', min: 1, max: 200 } } },
   /**
@@ -74,7 +74,7 @@ const CLIP_FIELDS = {
 } as const satisfies Readonly<Record<string, FieldSpec>>
 
 /**
- * The fields of a «Modifica oggetto» graph: what the tracker follows, what it
+ * The fields of an «Edit object» graph: what the tracker follows, what it
  * becomes, the placement box and the plan's resolution.
  *
  * In a single block because the five rows (change, remove, background, add,
@@ -126,7 +126,7 @@ export const WORKFLOW_ROWS = [
   /** Image-to-image: the "remix" action. */
   { config: 'editImage', run: 'edit', key: 'edit', label: 'image editing', fields: {} },
   /**
-   * «Componi con riferimenti»: Qwen-Image 2.1 takes two photos — the person
+   * «Compose with references»: Qwen-Image 2.1 takes two photos — the person
    * and a reference (costume, setting) — and makes one of them. The graph
    * wants them in `image_1` and `image_2` of its encoder, which is also the
    * prompt node.
@@ -139,7 +139,7 @@ export const WORKFLOW_ROWS = [
    */
   { config: 'editImageRegion', run: 'editRegion', key: 'edit-region', label: 'precise edit', fields: {} },
   /**
-   * «Illumina la foto»: openjutsu's relight recipe, on a FLUX.3 Klein graph
+   * «Relight the photo»: openjutsu's relight recipe, on a FLUX.3 Klein graph
    * that relights the photo. All the pins are the basic ones — the image, the
    * text (`promptNodeId`), the seed and the output prefix — and the text is
    * the sentence of the chosen look, written by `readJobRequest`.
@@ -199,7 +199,7 @@ export const WORKFLOW_ROWS = [
     fields: { ...CLIP_FIELDS, planJson: PIN, runName: PIN },
   },
   /**
-   * «Modifica oggetto»: the object tracked in the clip is changed, removed,
+   * «Edit object»: the object tracked in the clip is changed, removed,
    * or its background replaced (2026-11-06), or an object added.
    *
    * The whole clip goes to an Openjutsu chain graph that plans and cuts its
@@ -232,7 +232,7 @@ export const WORKFLOW_ROWS = [
     label: 'object swap (add from a photo)', fields: OBJECT_SWAP_FIELDS,
   },
   /**
-   * «Cambio personaggio»: Openjutsu's one-click graph, sent once with the
+   * «Character swap»: Openjutsu's one-click graph, sent once with the
    * whole clip (it cuts its own windows). The photo goes on `imageNodeId`.
    */
   { config: 'swapPerson', run: 'swapPerson', key: 'swap-person', label: 'character swap', fields: { noLipSync: PIN, planResolution: PIN } },
@@ -287,7 +287,7 @@ export const WORKFLOW_ROWS = [
    */
   { config: 'upscaleVideoLong', run: 'upscaleVideoLong', key: 'upscale-video-long', label: 'long video upscale', fields: {} },
   /**
-   * «Rigenera dettaglio»: the Open-H3 refiner (NVlabs) on the source clip.
+   * «Regenerate detail»: the Open-H3 refiner (NVlabs) on the source clip.
    *
    * The graph reads the clip with `LoadVideo`, raises its latent with a 3D
    * convolution (`MinimaxH3LatentUpscaler3D`) and redraws it in three Euler
@@ -350,7 +350,7 @@ export type ImagineWorkflows = { [R in WorkflowRow as R['run']]?: LoadedWorkflow
 /**
  * The graphs, plus the high-quality ones, by the name of the run that uses
  * them (`video`, `loopVideo`, ...). An entry with `pathHigh` loads a second
- * one, with the same pins: «Velocita: Veloce» and «Qualita: Alta» pick the
+ * one, with the same pins: «Speed: Fast» and «Quality: High» pick the
  * graph instead of raising the steps, which buy no detail on distilled
  * weights. An entry whose one graph carries both recipes (`highInputs`) has
  * nothing here.
@@ -424,7 +424,7 @@ export const OPTION_PINS = [
   { option: 'subjectText', pin: 'subjectText' },
   { option: 'referenceText', pin: 'referenceText' },
   /*
-   * The box of «aggiungi un oggetto»: the graph wants it as a JSON string
+   * The box of «add an object»: the graph wants it as a JSON string
    * (`H3ObjectPlacementMask.placement`), and the text arrives already
    * serialised from the job's plan, so its shape is checked in one place.
    */

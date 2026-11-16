@@ -1,10 +1,10 @@
 /**
- * «Segmenti» in the viewer, copied from Grok Imagine's photo page as studied
+ * «Segments» in the viewer, copied from Grok Imagine's photo page as studied
  * live on 2026-11-15 (docs/note/imagine-grok-segmenti-riferimento.md):
  *
  * - the column: parts grouped by name, cut-out thumbnails, a check that
  *   appears on every row once something is picked, download on hover and
- *   download + bin on a picked row, «Scarica tutto»;
+ *   download + bin on a picked row, «Download all»;
  * - over the photo: white 2px boxes for the part under the pointer and the
  *   picked ones, and the part's name following the cursor;
  * - the edit box floating under what is picked, in frosted glass; Enter
@@ -309,7 +309,7 @@ export function SegmentLabel({ label, frame, start }: {
   )
 }
 
-/** A short hint over the photo («Maiusc + clic…»). */
+/** A short hint over the photo («Shift + click…»). */
 export function SegmentHint({ drawn, text }: { drawn: Box; text: string }) {
   return createPortal(
     <div className={css.hint} style={{ left: drawn.left + drawn.width / 2, top: drawn.top + 12 }}>{text}</div>,
@@ -460,7 +460,7 @@ export function SegmentEditBox({ picked, place, prompt, onPrompt, busy, error, o
   )
 }
 
-/** The text part's own fields, as Grok's «Modifica testo». */
+/** The text part's own fields, as Grok's «Edit text». */
 function TextEditor({ draft, onChange }: { draft: TextEditDraft; onChange: (next: TextEditDraft) => void }) {
   const set = (patch: Partial<TextEditDraft>): void => { onChange({ ...draft, ...patch }) }
   const unset = (key: 'color' | 'font' | 'align'): void => {

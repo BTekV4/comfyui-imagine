@@ -167,7 +167,7 @@ const ASKED = /\?\s*$|^\s*(?:perch[eé]|cosa|quanto|quanti|quante|quale|quali|ch
  * Actions the chat may queue: every studio action but the one nobody asks for
  * by name.
  *
- * `scanFrame` is the half of «Ricrea video» that draws the candidates and
+ * `scanFrame` is the half of «Recreate video» that draws the candidates and
  * stops for a choice: a written line queues the whole recipe, which draws its
  * one opening frame and goes on, because a chat turn cannot wait for a click.
  * The choice belongs to the card, where the candidates are on screen

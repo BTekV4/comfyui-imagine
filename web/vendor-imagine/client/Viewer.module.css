@@ -136,7 +136,7 @@ video.viewerMedia {
 
 .viewerFrame[data-zoomed] .viewerMedia { transition: none; }
 
-/* «Modifica precisa»: the strokes over the photo, white and see-through,
+/* «Precise edit»: the strokes over the photo, white and see-through,
    painted with Grok's round brush pointer. */
 .paint {
   position: absolute;
@@ -188,7 +188,7 @@ video.viewerMedia {
   .viewerStage { padding: 0 10px 6px; }
 }
 
-/* «Disegna»: the sketch in its own colours over the photo, and Grok's
+/* «Draw»: the sketch in its own colours over the photo, and Grok's
    undo / redo / clear at the top right of the stage. */
 .sketch {
   position: absolute;

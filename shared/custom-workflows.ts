@@ -65,10 +65,10 @@ export interface CustomWorkflowMeta {
   /**
    * The high-quality recipe, for an uploaded card.
    *
-   * «Velocità» stays the value saved in the graph — the card's panel edits it
+   * «Speed» stays the value saved in the graph — the card's panel edits it
    * like any other field — and this is the second number, the one the
-   * composer writes when «Qualità: Alta» is chosen. Without it the pill had no
-   * effect on a card: a card saved at ten steps still did ten with «Qualità»
+   * composer writes when «Quality: High» is chosen. Without it the pill had no
+   * effect on a card: a card saved at ten steps still did ten with «Quality»
    * on (2026-11-05).
    */
   readonly steps?: { readonly nodeId: string; readonly field: string; readonly high: number }

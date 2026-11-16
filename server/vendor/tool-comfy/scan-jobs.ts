@@ -1,5 +1,5 @@
 /**
- * The scan of «Ricrea video»: it draws the opening frame before anything is
+ * The scan of «Recreate video»: it draws the opening frame before anything is
  * rendered — a set to choose from when the job is only the scan, one picture
  * when the run goes on to the render.
  * @module tool-comfy/scan-jobs
@@ -20,7 +20,7 @@ import { isSettled, patchJob, setJobPromptId, type ImagineJob } from './job-queu
 import type { ImagineFileOrigin } from './imagine-notes.ts'
 
 /**
- * How many opening frames a «Ricrea video» scan draws when nobody says.
+ * How many opening frames a «Recreate video» scan draws when nobody says.
  *
  * Four: a frame is one draw of the clip's own opening — the scene cannot
  * move, only the take does — so the choice is narrow and each one costs ~20 s.
@@ -38,7 +38,7 @@ export interface ScanRun {
 
 /**
  * What the vision pass read in a reference clip, by the name of each opening
- * frame a «Ricrea video» scan drew from that reading.
+ * frame a «Recreate video» scan drew from that reading.
  *
  * The recreation that starts from one of those frames is written from the
  * same reading: without this it read the clip again — about a minute of
@@ -142,7 +142,7 @@ async function readClip(run: ScanRun, sourceVideo: string): Promise<{
 }
 
 /**
- * The scan half of «Ricrea video»: the reference clip is read once, the
+ * The scan half of «Recreate video»: the reference clip is read once, the
  * paragraph of its opening frame is written from that reading, and Krea 2
  * draws that frame N times. The job ends there, the pictures are on the
  * board, and the recreation starts from the one the user clicks.
@@ -192,7 +192,7 @@ export async function runScanFrame(run: ScanRun, frameWorkflow: LoadedWorkflow, 
 }
 
 /**
- * «Ricrea video», first half: the reference clip is read moment by moment
+ * «Recreate video», first half: the reference clip is read moment by moment
  * and Krea 2 draws its opening frame again. The picture is what the render
  * starts from, and the reading stays in hand because the prompt written for
  * that render is built from the action it described.

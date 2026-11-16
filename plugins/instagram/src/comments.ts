@@ -469,7 +469,7 @@ async function runCommentPass(dryRun = false): Promise<unknown> {
       recorded.likePending = true
       recorded.likeError = undefined
     }
-    log(`like in attesa (${String(n)} commenti): ${problem.slice(0, 200)}`)
+    log(`likes pending (${String(n)} comments): ${problem.slice(0, 200)}`)
   }
   const batch = replyCandidates(seen)
   counters.skipped = seen.length - batch.length

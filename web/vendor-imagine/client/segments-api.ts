@@ -1,5 +1,5 @@
 /**
- * «Segmenti» on the page: the analysis of the open photo, the masks the
+ * «Segments» on the page: the analysis of the open photo, the masks the
  * pointer is tested against, and the mask of what is selected.
  * @module segments-api
  */
@@ -183,7 +183,7 @@ export function segmentUnder(segments: readonly ImagineSegment[], bits: Readonly
 
 /**
  * The masks of the chosen segments as one PNG at the photo's own size, white
- * where they are: what «Modifica precisa» takes.
+ * where they are: what «Precise edit» takes.
  * @param index - the photo's analysis.
  * @param chosen - the segments to join.
  * @returns a `data:image/png;base64,…` URL.

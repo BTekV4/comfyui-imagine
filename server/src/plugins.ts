@@ -3,7 +3,7 @@
  *
  * An installation that has no plugins behaves exactly as before — no route, no
  * section in the settings page, no timer — because everything here is created
- * from what is on disk. A folder under `<dati>/plugins/<id>/` with a
+ * from what is on disk. A folder under `<data>/plugins/<id>/` with a
  * `manifest.json` and an `entry` module becomes a plugin; deleting the folder
  * removes it at the next restart.
  *
@@ -206,7 +206,7 @@ export type PluginSetupFunction = (ctx: PluginContext) => PluginSetup | void | P
 
 /** What `createPlugins` needs from the host. */
 export interface PluginsOptions {
-  /** `<dati>/plugins`; it may not exist. */
+  /** `<data>/plugins`; it may not exist. */
   readonly dir: string
   /**
    * Where the plugins the repository ships live (`plugins/`): the ones the page
@@ -214,7 +214,7 @@ export interface PluginsOptions {
    */
   readonly repoDir?: string
   /**
-   * `<dati>/plugins-state.json`: which plugins are switched off. Outside the
+   * `<data>/plugins-state.json`: which plugins are switched off. Outside the
    * plugin's own folder, so removing a plugin does not lose the choice to keep
    * it off next time.
    */

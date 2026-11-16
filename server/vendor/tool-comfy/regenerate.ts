@@ -1,5 +1,5 @@
 /**
- * «Rigenera dettaglio»: the clip redone at 1.5× by the Open-H3 refiner.
+ * «Regenerate detail»: the clip redone at 1.5× by the Open-H3 refiner.
  *
  * It is not an upscale: the graph takes the clip, raises its latent with a 3D
  * convolution and redraws it in three Euler steps, so the detail is invented

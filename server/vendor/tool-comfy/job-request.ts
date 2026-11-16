@@ -111,7 +111,7 @@ export function invalidChoiceReason(body: {
     return message('job.objectMode', { list: IMAGINE_OBJECT_MODES.join(', ') })
   }
   /*
-   * The box of «aggiungi un oggetto»: normalized coordinates, inside the
+   * The box of «add an object»: normalized coordinates, inside the
    * frame. It is a mask, not a preference, so an impossible box is refused
    * instead of being silently corrected.
    */
@@ -119,7 +119,7 @@ export function invalidChoiceReason(body: {
     return message('job.placement')
   }
   /*
-   * The light of «illumina la foto» is a closed choice: an invented sentence
+   * The light of «relight the photo» is a closed choice: an invented sentence
    * would give a different photo, and the refusal names the looks that exist.
    */
   if (body.light !== undefined && relightLookOf(typeof body.light === 'string' ? body.light : '') === undefined) {
@@ -302,14 +302,14 @@ export const ACTION_RUNS: Partial<Record<ImagineAction, {
   voice: { workflow: 'changeVoice', tool: 'change_voice', output: outputKindOf('voice') },
   music: { workflow: 'generateMusic', tool: 'generate_music', output: outputKindOf('music') },
   /*
-   * The scan half of «Ricrea video»: the same Krea 2 graph draws the opening
+   * The scan half of «Recreate video»: the same Krea 2 graph draws the opening
    * frame (the pin `recreateFrame` points at the scan's own file), so the graph
    * is the one the recreation already uses for its first frame.
    */
   scanFrame: { workflow: 'recreateFrame', tool: 'recreate_frame', output: outputKindOf('scanFrame') },
   recreate: { workflow: 'recreateVideo', tool: 'recreate_video', output: outputKindOf('recreate') },
   /*
-   * «Rigenera dettaglio»: the Open-H3 refiner redraws the clip at 1.5×. The
+   * «Regenerate detail»: the Open-H3 refiner redraws the clip at 1.5×. The
    * file comes out as `regenerate_detail-…mp4`, which is the prefix the
    * gallery reads the origin from (gallery.ts).
    */
@@ -330,7 +330,7 @@ export const ACTION_RUNS: Partial<Record<ImagineAction, {
    */
   swapPerson: { workflow: 'swapPerson', tool: 'swap_person', output: outputKindOf('swapPerson') },
   /*
-   * «Illumina la foto»: the photo relit with one of the light looks. The
+   * «Relight the photo»: the photo relit with one of the light looks. The
    * look's text IS the prompt (written by `readJobRequest`), so the file comes
    * from an image and not from a sentence of the user's.
    */
@@ -368,19 +368,19 @@ function needMessages(): Partial<Record<ImagineAction, NeedMessages>> {
    */
   const plate = { missing: () => message('job.plateRequired') } as const
   /*
-   * «Ricrea video» and its scan read ONE file: the reference clip. The opening
+   * «Recreate video» and its scan read ONE file: the reference clip. The opening
    * frame is drawn by the run with Krea 2 from the clip's own frames, so there
    * is no second file to ask for.
    */
   const reference = { missing: () => message('job.recreateVideoRequired') } as const
   /*
-   * «Rigenera dettaglio» reads ONE clip and nothing else: the prompt is
+   * «Regenerate detail» reads ONE clip and nothing else: the prompt is
    * optional (without it, the run fetches the one the clip was born from —
    * regenerate.ts), and the clip decides the canvas, not the composer.
    */
   const refiner = { missing: () => message('job.regenerateVideoRequired') } as const
   /*
-   * «Illumina la foto» wants ONE photo. A video here is not «continue the
+   * «Relight the photo» wants ONE photo. A video here is not «continue the
    * clip» (that is `extend`): it is simply the wrong file, and the message
    * says what is needed without sending the user to another action.
    */
@@ -497,7 +497,7 @@ function upscaleWorkflowFor(
  * starting it on another mode's graph — the clip would come back with the
  * wrong thing changed and nobody would notice until they watched it.
  *
- * «Aggiungi un oggetto» has two graphs because the photo is optional: one
+ * «Add an object» has two graphs because the photo is optional: one
  * without an image branch (the sentence describes the object) and one with
  * the photo that gives its look. The choice is not a user preference: it is
  * which of the two can render that request, so the graph is resolved from
@@ -510,7 +510,7 @@ const OBJECT_SWAP_GRAPHS: Readonly<Record<ImagineObjectMode, keyof ImagineWorkfl
   add: 'objectSwapAdd',
 }
 
-/** The graph of the «aggiungi» mode when the request carries a photo. */
+/** The graph of the «add» mode when the request carries a photo. */
 const OBJECT_SWAP_ADD_PHOTO = 'objectSwapAddPhoto' as const
 
 /**
@@ -548,7 +548,7 @@ function objectSwapKey(mode: ImagineObjectMode | undefined, withPhoto: boolean):
 /**
  * The second recipe of a mode, when the deployment declares one (`pathHigh`,
  * or `highInputs` on the same graph):
- * «Qualità: Alta» / «Velocità: Lenta» render the mode with that graph instead
+ * «Quality: High» / «Speed: Slow» render the mode with that graph instead
  * of raising the step count of the one it ships, as every other clip action
  * does since 2026-11-05.
  *
@@ -572,7 +572,7 @@ function highObjectSwap(
 }
 
 /**
- * The request as it will run: a «Rigenera dettaglio» on the canvas its clip
+ * The request as it will run: a «Regenerate detail» on the canvas its clip
  * decides.
  * @param outputDir - the validated media output directory.
  * @param request - the studio request.
@@ -583,7 +583,7 @@ export async function routeRequest(
   request: ImagineJobRequest,
 ): Promise<ImagineJobRequest> {
   /*
-   * «Rigenera dettaglio»: the CLIP decides the canvas, not the composer —
+   * «Regenerate detail»: the CLIP decides the canvas, not the composer —
    * 1.5× its sides, aligned to 32, long side never above 1920
    * (regenerate.ts). The sizes that come out: 720x1280 → 1088x1920,
    * 1280x720 → 1920x1088, 960x960 → 1440x1440. The request already carries
@@ -704,7 +704,7 @@ export async function readJobRequest(
     ? noLipSyncGraph
     : swapGraph === undefined
     ? await workflowOf(workflows, request, edit, sourceKind, sourcePath, pixelsOf)
-    // «Object swap»: the mode decides the graph, and so does the «Alta»
+    // «Object swap»: the mode decides the graph, and so does the «High»
     // recipe when the entry declares a second one like all the others.
     : highObjectSwap(workflows, request.objectMode, request.reference !== undefined, request) ?? swapGraph
   return {
@@ -733,7 +733,7 @@ function promptOf(request: ImagineJobRequest): { prompt: string; lightLook: Reli
   const action = request.action
   const need = NEEDS[action]
   /*
-   * «Illumina la foto»: the user's line is not the prompt — the prompt is the
+   * «Relight the photo»: the user's line is not the prompt — the prompt is the
    * sentence of the chosen look, picked by the panel (or the chat). The
    * default is the recipe's first look, so a run without a choice is still a
    * real light and not an empty text.
@@ -748,7 +748,7 @@ function promptOf(request: ImagineJobRequest): { prompt: string; lightLook: Reli
     ? request.prompt.trim() || (ACTION_TABLE[action].untitled ?? '')
     : relightPromptOf(lightLook)
   /*
-   * A recreation, its scan and «Rigenera dettaglio» are described by their clip, and what the sampler is given is written from it:
+   * A recreation, its scan and «Regenerate detail» are described by their clip, and what the sampler is given is written from it:
    * the line the user typed is a brief for that pass, so an empty one is a run
    * with a default scene and not a refusal. They are the actions that read a
    * clip and nothing else.
@@ -864,7 +864,7 @@ function referencesOf(request: ImagineJobRequest): RequestFiles {
    * clip for every path that already reads it, and the photo travels beside it.
    */
   /*
-   * «Componi con riferimenti» reads TWO photos, and they are not
+   * «Compose with references» reads TWO photos, and they are not
    * interchangeable: the source is the person, the reference is the costume
    * or setting to take. The reference travels beside the source and reaches
    * the graph as `image_2`.
@@ -885,7 +885,7 @@ function referencesOf(request: ImagineJobRequest): RequestFiles {
    * «one more reference»: it does not reach the render and the client would
    * believe it had used it. It is refused with the message naming the mode
    * (2026-11-06: the case of background, whose graph has no `ref_images`, and
-   * of the «togli» mode, which never had one). When a graph gains the image
+   * of the «remove» mode, which never had one). When a graph gains the image
    * branch, the mode is added in `objectSwapUsesPhoto`.
    */
   const objectMode: ImagineObjectMode | undefined = action === 'objectSwap'
@@ -897,7 +897,7 @@ function referencesOf(request: ImagineJobRequest): RequestFiles {
   if (objectMode !== undefined && !objectSwapUsesPhoto(objectMode) && request.reference !== undefined) {
     // A client that sends a photo believing it is needed: tell it so, instead
     // of silently dropping it and rendering a video that does not use that
-    // file. «Aggiungi» does use it: it is the new object's look, and its graph
+    // file. «Add» does use it: it is the new object's look, and its graph
     // has the branch.
     throw new Error(message('job.objectPhotoNotAllowed', { mode: objectMode }))
   }
@@ -906,14 +906,14 @@ function referencesOf(request: ImagineJobRequest): RequestFiles {
     throw new Error(message('job.objectReferenceRequired'))
   }
   // A name that is not a gallery file is refused like a file of the wrong kind:
-  // dropped in silence, it would leave «aggiungi» on the graph with the photo
+  // dropped in silence, it would leave «add» on the graph with the photo
   // branch and no photo.
   if (action === 'objectSwap' && request.reference !== undefined
     && (objectReference === undefined || kindOf(objectReference) !== 'image')) {
     throw new Error(message('job.referenceNotGallery'))
   }
   /*
-   * «Aggiungi un oggetto»: the box is the mask the graph regenerates. A
+   * «Add an object»: the box is the mask the graph regenerates. A
    * request that does not name one gets the one in the centre of the frame, so
    * the chat adds an object without anybody drawing on the video.
    */
@@ -1079,7 +1079,7 @@ async function workflowOf(
         : workflows.upscaleImage
       : isCustom ? customGraph(workflows, request.customWorkflowId)
       /*
-       * «Velocita: Veloce» and «Qualita: Alta» pick the GRAPH, when the entry
+       * «Speed: Fast» and «Quality: High» pick the GRAPH, when the entry
        * declares a second one (`pathHigh`, or `highInputs` on the same graph),
        * instead of
        * raising the steps of the same one: on distilled weights steps buy no

@@ -45,7 +45,7 @@ const PANEL_KEY = 'imagine.viewer.panel'
 /** A pointer that moved less than this between press and release clicked. */
 const CLICK_SLOP = 4
 
-/** The long side «Modifica precisa» paints at; the host scales the mask to the photo. */
+/** The long side «Precise edit» paints at; the host scales the mask to the photo. */
 const PAINT_SIDE = 1024
 
 /** Whether the column was left folded; storage may be off. */
@@ -73,9 +73,9 @@ export function Viewer({
   onRegion: (photo: GalleryItem, prompt: string, zone: { mask: string }, reference?: File) => void
   /** Edit the whole photo with the words in the bar, and the reference photo when one was added. */
   onEdit: (photo: GalleryItem, prompt: string, reference?: File) => void
-  /** «Ritaglia» made a new file. */
+  /** «Crop» made a new file. */
   onCropped: (item: GalleryItem) => void
-  /** «Disegna»: the photo with the sketch on it, the sketch's zone and the words. */
+  /** «Draw»: the photo with the sketch on it, the sketch's zone and the words. */
   onSketch: (photo: GalleryItem, sketch: Blob, mask: string, prompt: string) => void
 }) {
   const transport = useMediaTransport(0)
@@ -123,7 +123,7 @@ export function Viewer({
   const drawn = useDrawnBox(imageRef, `${String(zoom)} ${String(pan.x)} ${String(pan.y)} ${String(folded)} ${tool} ${current.name}`)
 
   /*
-   * «Segmenti», as on Grok (docs/note/imagine-grok-segmenti-riferimento.md):
+   * «Segments», as on Grok (docs/note/imagine-grok-segmenti-riferimento.md):
    * white boxes over the photo, the part's name following the cursor and
    * the edit box under what is picked. A click picks one part, Shift+click
    * adds or removes, a click on nothing or outside lets go.
@@ -189,7 +189,7 @@ export function Viewer({
   }
 
   /*
-   * «Modifica precisa», as on Grok: a brush whose size is set in the column,
+   * «Precise edit», as on Grok: a brush whose size is set in the column,
    * painted straight onto the photo; the bar under it then edits that zone.
    */
   const [brush, setBrush] = useState(44)
@@ -202,16 +202,16 @@ export function Viewer({
     erase: false,
   })
 
-  /* «Ritaglia» on the photo: a new file beside the original. */
+  /* «Crop» on the photo: a new file beside the original. */
   const crop = useHostEdit<GalleryItem>('/api/crop-copy', 'HTTP')
   const cropOn = image && !folded && tool === 'crop'
 
-  /* «Colori»: the photo's own four colours to start from, or one of ten palettes. */
+  /* «Colors»: the photo's own four colours to start from, or one of ten palettes. */
   const colorsOn = image && !folded && tool === 'colors'
   const [colors, setColors] = useState<readonly string[]>([])
   useEffect(() => { if (colorsOn) setColors(photoColors(imageRef.current)) }, [colorsOn, current.name])
 
-  /* «Disegna»: a sketch in colour over the photo, finished in a style. */
+  /* «Draw»: a sketch in colour over the photo, finished in a style. */
   const drawOn = image && !folded && tool === 'draw'
   const sketch = useSketch()
   /*

@@ -1,5 +1,5 @@
 /**
- * «Segmenti»: cut a gallery photo into its parts and keep them.
+ * «Segments»: cut a gallery photo into its parts and keep them.
  *
  * Three steps, the first two slow: the vision model lists what is in the
  * photo (segment-concepts.ts, about 50 s with the default model), the

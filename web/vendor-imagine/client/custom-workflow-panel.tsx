@@ -335,7 +335,7 @@ export function CustomWorkflowPanel({ workflow, items, busy, onBack, onRun, onRu
             {input.kind === 'frame'
               ? (
                 /*
-                 * The scrubber «Estrai fotogrammi» shows, shorter here among
+                 * The scrubber «Extract frames» shows, shorter here among
                  * the other fields. The value sent is the time, in seconds;
                  * the graph turns it into the frame index with the clip's
                  * own fps.

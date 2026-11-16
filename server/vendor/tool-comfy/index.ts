@@ -93,7 +93,7 @@ export interface WorkflowConfig {
   /** Absolute path of the API-format workflow JSON. */
   path: string
   /**
-   * The graph of the «Qualita: Alta» recipe, with the same pins as `path`.
+   * The graph of the «Quality: High» recipe, with the same pins as `path`.
    * When present, Veloce and Qualita pick the graph instead of raising the steps.
    * A graph that carries both recipes declares `highInputs` instead.
    */
@@ -178,7 +178,7 @@ export interface WorkflowExtras {
    * Where the sampler steps sit, and the count the high recipe asks for.
    *
    * `quality: 'high'` (a photo) or `speed: 'slow'` (a clip) writes `high` into
-   * that node's `field`; «Standard» and «Veloce» leave the graph at the count
+   * that node's `field`; «Standard» and «Fast» leave the graph at the count
    * it was saved with, so a deployment can tune the base recipe in the file
    * itself. A workflow without this pin ignores both settings.
    */
@@ -210,7 +210,7 @@ export interface WorkflowExtras {
    * the object to add, as a short phrase.
    */
   referenceText?: ComfyExtraInput
-  /** The placement keyframes of «aggiungi un oggetto», as JSON. */
+  /** The placement keyframes of «add an object», as JSON. */
   placementText?: ComfyExtraInput
   /** A character swap's «no lip-sync» switch: true when the people do not sing or talk along. */
   noLipSync?: ComfyExtraInput
@@ -516,7 +516,7 @@ const KNOWN_SEED_FIELDS = ['seed', 'noise_seed'] as const
  * Two names, because the two recipes of one configuration entry are two
  * GRAPHS: `path` and `pathHigh` are written by different nodes, and `KSampler`
  * takes `seed` while the noise nodes (`RandomNoise`) take `noise_seed`. With
- * one pinned name and no fallback, the «Qualità» graph of an H3 clip
+ * one pinned name and no fallback, the «Quality» graph of an H3 clip
  * silently received no seed at all and its renders were not reproducible
  * (measured 2026-11-06, from the mannequin A/B). So the pinned name comes
  * first and the other of the two is tried after it; a pinned name that is
@@ -568,7 +568,7 @@ export interface RunOpts {
   subjectText?: string | undefined
   /** What the tracked object becomes in an object swap, as a short phrase. */
   referenceText?: string | undefined
-  /** The placement box of «aggiungi un oggetto», already serialised as JSON. */
+  /** The placement box of «add an object», already serialised as JSON. */
   placementText?: string | undefined
   /** A character swap without lip-sync: H3 hears silence and is told nobody sings. */
   noLipSync?: boolean | undefined
@@ -703,8 +703,8 @@ function parameterize(
   }
 
   /*
-   * The high recipe of 2026-11-03: «Qualità: Alta» on a photo and «Velocità:
-   * Lenta» on a clip both mean "more steps on the graph that would run
+   * The high recipe of 2026-11-03: «Quality: High» on a photo and «Speed:
+   * Slow» on a clip both mean "more steps on the graph that would run
    * anyway". The count is the workflow's own pin, so the base recipe stays
    * whatever the file was saved with and a deployment tunes it there.
    */
@@ -1150,7 +1150,7 @@ export function apply(ctx: ImagineHost, config: Config, host: ApplyOptions = {})
    */
   const settings = loadImagineOverrides()
   if (settings.problem !== undefined) {
-    console.warn(`[imagine] imagine-settings.json ignorato: ${settings.problem}`)
+    console.warn(`[imagine] imagine-settings.json ignored: ${settings.problem}`)
   }
   ctx.comfy.applyOverrides(settings.overrides.server ?? {})
   const composedOutputDir = config.outputDir ?? dataPath('comfy', 'outputs')

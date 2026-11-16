@@ -2,7 +2,7 @@
  * IOPaint inside the studio (a plugin since 2026-11-15; before, the host
  * called it itself).
  *
- * Two things: «Rimuovi oggetto» on photos (`/plugin/iopaint/erase`, see
+ * Two things: «Remove object» on photos (`/plugin/iopaint/erase`, see
  * `erase.ts`), and IOPaint's own page, passed through under `/apps/iopaint`
  * behind Imagine's login. IOPaint answers at its root, and its built frontend
  * is patched to call `/apps/iopaint/…`: the pass drops the prefix on the way

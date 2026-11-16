@@ -133,7 +133,7 @@ function detectCharacterHashtags(text: string): string[] {
 }
 
 function generateHashtags(type: PostType, prompt: string, proposed: readonly string[] = []): string {
-  // The fixed tags are the account's (settings «Hashtag fissi»), cut to the ceiling.
+  // The fixed tags are the account's (settings «Fixed hashtags»), cut to the ceiling.
   const fixed = socialSettings().fixedHashtags(type).slice(0, MAX_HASHTAGS)
   const maxDyn = Math.max(0, MAX_HASHTAGS - fixed.length)
   const tags = [...fixed]

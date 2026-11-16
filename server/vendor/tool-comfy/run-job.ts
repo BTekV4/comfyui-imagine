@@ -196,7 +196,7 @@ interface RunState {
   /** The tracker phrase and the reference document of an object swap. */
   subjectText?: string
   referenceText?: string
-  /** The placement box of «aggiungi un oggetto», as the graph's JSON. */
+  /** The placement box of «add an object», as the graph's JSON. */
   placementText?: string
   /** A song's lyrics with their structure tags, and its length. */
   musicLyrics?: string
@@ -436,7 +436,7 @@ async function runImagineJob(
       state.job = { ...job, frame: recreation.frame }
     }
     /*
-     * «Rigenera dettaglio» usually comes without a line, and the prompt is
+     * «Regenerate detail» usually comes without a line, and the prompt is
      * what guides the refiner's redraw: with a generic line the neckline and
      * lips change (measured 31/10/2026). The order is regenerate.ts's — the
      * user's line when there is one, the note the clip was born with, vision,
@@ -588,7 +588,7 @@ async function readInputs(
   let inputVideo = upscaleInput === undefined || sourceKind !== 'video'
     || job.action === 'extend' || job.action === 'voice' || job.action === 'recreate'
     /*
-     * «Rigenera dettaglio» uploads its own draft window by window: the whole
+     * «Regenerate detail» uploads its own draft window by window: the whole
      * file is not needed here, and a long clip would be a wasted upload.
      */
     || job.action === 'regenerate'
@@ -812,7 +812,7 @@ function applySwapTexts(
 async function writeObjectSwapPrompt({ ctx, state, workflow, outputDir, inputs }: PromptPass): Promise<void> {
   const job = state.job
   /*
-   * The box of «aggiungi un oggetto»: it is the graph's mask, so it must be
+   * The box of «add an object»: it is the graph's mask, so it must be
    * written even when the vision model does not answer — it is not a text, it
    * is the geometry of the edit. The centre of the frame is the default.
    */
@@ -1239,7 +1239,7 @@ interface CustomFile {
  * once the finished file is in place — and stay if anything threw, which is
  * where they are still worth something.
  *
- * `fade` is the seconds each join dissolves over: «Rigenera dettaglio»
+ * `fade` is the seconds each join dissolves over: «Regenerate detail»
  * dissolves its windows over their one-second overlap; the loop brings no
  * overlap and keeps the default.
  */
@@ -1283,7 +1283,7 @@ interface RenderSetup {
  *
  * `over` carries what one segment of an animated background changes
  * against the job's own values: its own length and its own file. A window
- * of «Rigenera dettaglio» adds the draft it renders from. Every other
+ * of «Regenerate detail» adds the draft it renders from. Every other
  * action renders once and leaves it out.
  */
 function rendererFor(setup: RenderSetup): Render {
@@ -1292,7 +1292,7 @@ function rendererFor(setup: RenderSetup): Render {
   const effectivePrompt = state.prompt
   const { resolutionMax, inputImage, lastImage, refImage } = inputs
   /*
-   * The clip one render reads: a window of «Rigenera dettaglio» brings its
+   * The clip one render reads: a window of «Regenerate detail» brings its
    * own draft, every other render reads the job's input.
    */
   const renderVideo = (video?: ResolvedInputVideo): { bytes: Uint8Array; name: string } | undefined => {
@@ -1313,7 +1313,7 @@ function rendererFor(setup: RenderSetup): Render {
          */
         ...job.action === 'custom' && effectivePrompt === '' ? {} : { prompt: effectivePrompt },
         seed,
-        // «Qualità: Alta» / «Velocità: Lenta»: the graph was already chosen
+        // «Quality: High» / «Speed: Slow»: the graph was already chosen
         // (`pathHigh` when the entry has one); here they write the entry's
         // `highInputs` and raise the step count to `steps.high` when the
         // graph that runs declares them. Absent, the file's own recipe.
@@ -1504,7 +1504,7 @@ async function renderLoop(run: RenderRun): Promise<readonly ComfyProducedFile[]>
 }
 
 /**
- * «Rigenera dettaglio»: the clip is redone in 124-frame windows.
+ * «Regenerate detail»: the clip is redone in 124-frame windows.
  *
  * The refiner on the 5070 Ti holds 124 frames at ~2.1 MP (135 s per pass,
  * 13.9 GB peak) and goes OOM at 2K: a longer clip is not a single pass. The

@@ -106,7 +106,7 @@ export async function readJsonFile(path: string, label?: string): Promise<unknow
     return JSON.parse(await readFile(path, 'utf8')) as unknown
   } catch (error: unknown) {
     const missing = (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT'
-    if (label !== undefined && !missing) console.warn(`${label} ${path} ignorato: ${error instanceof Error ? error.message : String(error)}`)
+    if (label !== undefined && !missing) console.warn(`${label} ${path} ignored: ${error instanceof Error ? error.message : String(error)}`)
     return undefined
   }
 }

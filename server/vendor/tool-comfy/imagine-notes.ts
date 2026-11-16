@@ -28,7 +28,7 @@ export interface ImagineFileOrigin {
   readonly prompt: string
   /**
    * @deprecated Legacy lookbook: no run writes it any more. Still read from
-   * older notes on disk, which media search and «Dettagli» show.
+   * older notes on disk, which media search and «Details» show.
    */
   readonly pose?: string
   readonly aspect?: string

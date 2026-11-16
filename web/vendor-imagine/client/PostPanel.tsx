@@ -2,7 +2,7 @@
  * The column on the right of the viewer, as Grok Imagine's post page has it
  * (studied 2026-11-15, docs/note/imagine-grok-post-riferimento.md): the tools
  * as icons along the top, the tool's own content, then the file's actions —
- * «Rimuovi lo sfondo», «Crea un video», «Pubblica» on white — and a row of
+ * «Remove background», «Create a video», «Publish» on white — and a row of
  * small icons at the foot (like, copy, download, more).
  *
  * Grok's five tools, in its order: Segmenti, Modifica precisa, Colori,
@@ -28,7 +28,7 @@ const BIG: readonly MediaActionKind[] = ['bg', 'video', 'extend', 'publish']
 /** The small icons at the foot, before «more». */
 const SMALL: readonly MediaActionKind[] = ['like', 'copy', 'download']
 
-/** Grok's «Colori»: a full colour wheel. */
+/** Grok's «Colors»: a full colour wheel. */
 const IconColors = () => <span aria-hidden="true" style={{ display: 'block', width: 20, height: 20, borderRadius: '50%', background: 'conic-gradient(from 180deg, #6155f5, #cb30e0, #ff383c, #ff8d28, #ffcc00, #34c759, #0088ff, #6155f5)' }} />
 
 export function PostPanel({
@@ -144,7 +144,7 @@ export function PostPanel({
   )
 }
 
-/** «Modifica precisa»'s own content: the brush size, as Grok's (12-66). */
+/** «Precise edit»'s own content: the brush size, as Grok's (12-66). */
 export function PreciseTool({ brush, onBrush, painted, onClear }: {
   brush: number
   onBrush: (size: number) => void

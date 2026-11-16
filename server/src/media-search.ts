@@ -1,5 +1,5 @@
 /**
- * «Cerca nei media» (search the media): the words of the History's files.
+ * Search the media: the words of the History's files.
  *
  * Grok Imagine has search in `/imagine/saved` (`media_search_enabled`, and
  * `enable_imagine_search_index_on_demand` for the index). We only had the

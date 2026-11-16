@@ -353,7 +353,7 @@ export const stamp = (): string => Date.now().toString(36)
  * The gallery entry of a file a route just wrote, as the canvas places it:
  * the listing's own entry (`galleryItemOf`), so it carries the `tool` its
  * name declares and the listing's mtime (until 2026-10-25 a copy here left
- * `tool` out, and «Duplica» made a tile without its origin).
+ * `tool` out, and «Duplicate» made a tile without its origin).
  * @param outputDir - the media directory.
  * @param name - the new file's basename.
  * @throws when the file is missing or is not gallery media.

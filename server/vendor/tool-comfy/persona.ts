@@ -11,7 +11,7 @@
  * prompt text and nothing else: it describes the person, it does not activate
  * anything.
  *
- * Two parts are read: the whole paragraph, which «Ricrea video» puts in front
+ * Two parts are read: the whole paragraph, which «Recreate video» puts in front
  * of the frame it redraws, and the hair, pinned in the Krea 2 prompt so the
  * source frame cannot win. The `opening` and `closing` a persona file may still
  * carry were for the person swap, removed on 2026-11-13, and are ignored.

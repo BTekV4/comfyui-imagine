@@ -1,11 +1,11 @@
 /**
- * «Segmenti» over HTTP.
+ * «Segments» over HTTP.
  *
  * - `GET /api/segments?name=<photo>`: where the photo's analysis stands.
  * - `POST /api/segments` `{ name, again? }`: start it (or start it over with
  *   `again`); answers at once, the page asks the state until it is ready.
  * - `GET /api/segments/file/<photo>/<file>`: a mask or a cut-out.
- * - `GET /api/segments/zip?name=<photo>`: every cut-out, as one ZIP («Scarica tutto»).
+ * - `GET /api/segments/zip?name=<photo>`: every cut-out, as one ZIP («Download all»).
  * @module segments-route
  */
 import { readFile } from 'node:fs/promises'

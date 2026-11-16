@@ -37,7 +37,7 @@ const SURFACES: Readonly<Record<MediaSurface, readonly MediaActionKind[]>> = {
   menu: ['details', 'open', 'remix', 'region', 'crop', 'erase', 'duplicate', 'video', 'copy', 'extend', 'trim', 'frames', 'cover', 'download', 'publish', 'delete'],
   // As Grok's post column (2026-11-15): the big actions, the foot icons, then the «…» menu.
   // No 'region' or 'crop': the viewer has its own in-place tools for both
-  // («Modifica precisa» and PostCrop), so the list never drew them.
+  // («Precise edit» and PostCrop), so the list never drew them.
   viewer: ['bg', 'video', 'extend', 'publish', 'like', 'copy', 'download', 'remix', 'erase', 'trim', 'frames', 'upscale', 'duplicate', 'cover', 'details', 'delete'],
 }
 
@@ -181,7 +181,7 @@ export function MediaActionIcon({ kind, liked }: { kind: MediaActionKind; liked?
     case 'frames': return <IconFrame />
     case 'voice': return <IconSparkleRegular size={16} />
     case 'upscale': return <IconUpscale />
-    // Two sheets, one over the other, as Grok's «Copia immagine».
+    // Two sheets, one over the other, as Grok's «Copy image».
     case 'copy': return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.5" /><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8" /></svg>
     case 'download': return <IconDownloadOutlineRegular size={16} />
     case 'publish': return <IconShareOutlineRegular size={16} />

@@ -75,7 +75,7 @@ function loadedField(spec: FieldSpec, value: unknown): unknown {
  * The file behind a workflow path: `custom:<id>` is a graph the user uploaded
  * (`<data>/custom-workflows/<id>/graph.json`), anything else is a file path.
  * Writes go here too: until 2026-11-07 the settings page wrote to a file named
- * literally `custom:<id>` and every «Applica» on a personal graph failed.
+ * literally `custom:<id>` and every «Apply» on a personal graph failed.
  * @param path - the path as the configuration writes it.
  * @returns the file to read and write.
  * @throws {ComfyError} for a `custom:` path whose id is not one the studio
@@ -191,7 +191,7 @@ export function loadWorkflows(workflows: WorkflowMap): {
   /*
    * The second graph of every entry that declares one (`pathHigh`): the same
    * action rendered with the high-quality recipe, with the same pins, so
-   * «Velocità» and «Qualità: Alta» pick the graph instead of raising the
+   * «Speed» and «Quality: High» pick the graph instead of raising the
    * steps. An entry without `pathHigh` has none: quality stays the usual graph
    * (raised by `steps.high` or rewritten by `highInputs`). The second graph
    * already is the high recipe, so it never takes `highInputs`.

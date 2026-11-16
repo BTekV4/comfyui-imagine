@@ -1,5 +1,5 @@
 /**
- * The host's own settings page («Generale», GET/POST /api/host-settings): the
+ * The host's own settings page («General», GET/POST /api/host-settings): the
  * LLM gateway, the models the chip offers, the one model every pass talks to,
  * login and the resume at boot. The Instagram scheduler and Telegram's chat
  * used to be here too: both are plugin settings now.

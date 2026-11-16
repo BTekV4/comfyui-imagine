@@ -391,7 +391,7 @@ const own: WebRoute[] = [
   { kind: 'exact', path: '/api/crop-copy', handler: createCropRoute(outputDir) },
   ...createSegmentsRoutes(ctx, outputDir),
   /*
-   * Openjutsu and IOPaint (pages of the rail, and IOPaint's «Rimuovi oggetto»)
+   * Openjutsu and IOPaint (pages of the rail, and IOPaint's «Remove object»)
    * are plugins since 2026-11-15: plugins/openjutsu and plugins/iopaint mount
    * their app under /apps/<id> and IOPaint answers /plugin/iopaint/erase.
    */

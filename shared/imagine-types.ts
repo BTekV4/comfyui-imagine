@@ -32,7 +32,7 @@ export interface ModelEntry {
   readonly name?: string
 }
 
-/** One tag of «Tutti i media» (GET/POST /api/tags). */
+/** One tag of «All media» (GET/POST /api/tags). */
 export interface MediaTag {
   readonly id: string
   readonly name: string
@@ -89,7 +89,7 @@ export const IMAGINE_ACTIONS = [
 export type ImagineAction = typeof IMAGINE_ACTIONS[number]
 
 /**
- * The speeds a clip can be rendered at, as the composer's «Velocità» pill
+ * The speeds a clip can be rendered at, as the composer's «Speed» pill
  * shows them (2026-11-03).
  *
  * `fast` is the graph as it ships, distilled to the few steps its LoRA was
@@ -110,7 +110,7 @@ export const IMAGINE_SPEEDS = ['fast', 'slow'] as const
 export type ImagineSpeed = typeof IMAGINE_SPEEDS[number]
 
 /**
- * The image recipe the composer's «Qualità» pill chooses: the graph as it
+ * The image recipe the composer's «Quality» pill chooses: the graph as it
  * ships (`standard`), or the same graph at the higher step count each
  * workflow declares as `steps.high` (Krea 2 draws at sixteen instead of ten).
  *
@@ -249,7 +249,7 @@ export interface ImagineJobFields {
   readonly source?: string
   /**
    * The second photo, when the run has one: the object of an object swap, or
-   * the reference of «Componi con riferimenti».
+   * the reference of «Compose with references».
    */
   readonly reference?: string
   /** `custom` only: the uploaded workflow this job runs. */
@@ -263,7 +263,7 @@ export interface ImagineJobFields {
   readonly light?: string
   /**
    * The opening frame of a recreation, once the run has one: drawn by the run
-   * itself, or one of the candidates a «Ricrea video» scan left on the board.
+   * itself, or one of the candidates a «Recreate video» scan left on the board.
    *
    * The page reads it to know which candidate was already used, so the block
    * that offers them can say so instead of looking untouched.
@@ -319,7 +319,7 @@ export interface ImagineJobFields {
    */
   readonly notice?: string
   /**
-   * How far a «Ricrea video» scan has got with its candidate frames.
+   * How far a «Recreate video» scan has got with its candidate frames.
    *
    * A scan draws a set — several renders, each with its own percentage — so the
    * column counts the set off ("fotogramma 3 di 4") instead of following a

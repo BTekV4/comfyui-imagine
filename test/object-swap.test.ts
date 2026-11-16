@@ -126,7 +126,7 @@ test('add with a photo resolves to the photo graph, add without one to its own',
 })
 
 test('the high recipe of add follows the photo too', async () => {
-  // «Qualità alta» picks the mode's second graph: an «add» with a photo must
+  // «Quality: high» picks the mode's second graph: an «add» with a photo must
   // take the high graph of the photo branch, never the one without it.
   const high = { graph: { high: true } }
   const highPhoto = { graph: { highPhoto: true } }

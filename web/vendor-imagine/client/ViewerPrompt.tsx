@@ -2,7 +2,7 @@
  * The bar under the full-screen view, as Grok Imagine's post page has it
  * (studied 2026-11-15). On a photo it is an edit box — «Describe the edit» —
  * with the prompt the photo was made with offered above it to reuse; what is
- * sent edits this photo (only the painted zone when «Modifica precisa» is
+ * sent edits this photo (only the painted zone when «Precise edit» is
  * on: the viewer decides). On a clip it is still the prompt the clip was made
  * with, editable, and a button that makes it again. A file with no run behind
  * it gets a plain line that goes to the project chat.
@@ -44,7 +44,7 @@ export function ViewerPrompt({ item, busy, placeholder, onEdit, onRerun, onAsk }
         if (cancelled) return
         setOrigin(body.origin)
         // A clip's bar holds its own prompt; a photo's starts empty, its
-        // prompt offered above to reuse, as Grok's «Usa».
+        // prompt offered above to reuse, as Grok's «Use».
         if (!editing) setText(wordsOf(body.origin) ?? '')
       })
       .catch(() => undefined)

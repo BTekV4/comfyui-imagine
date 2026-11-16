@@ -1204,9 +1204,9 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
             }}
             onCropped={(item) => { placeOnBoard(item); setSelected(item) }}
             onSketch={(photo, sketch, mask, prompt) => {
-              // «Disegna»: the photo with the sketch on it goes up as a file of
+              // «Draw»: the photo with the sketch on it goes up as a file of
               // its own (Grok uploads its drawing.png too), then the sketch's
-              // zone of it is finished by «Modifica precisa».
+              // zone of it is finished by «Precise edit».
               setSelected(undefined)
               const name = `sketch-${photo.name.replace(/\.[^.]+$/, '').slice(0, 40)}-${Date.now().toString(36)}.png`
               uploadGalleryItem(new File([sketch], name, { type: 'image/png' })).then(

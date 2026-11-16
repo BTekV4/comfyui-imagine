@@ -1,5 +1,5 @@
 /**
- * «Segmenti»: the parts of a photo, as the server keeps them and the page
+ * «Segments»: the parts of a photo, as the server keeps them and the page
  * draws them (the panel of Grok Imagine's photo page, 2026-11-14).
  * @module shared/imagine-segments
  */
@@ -133,7 +133,7 @@ export function textEditPrompt(original: string, draft: TextEditDraft, extra: st
 }
 
 /**
- * The names the cut-outs take in «Scarica tutto», as Grok's `segments.zip`:
+ * The names the cut-outs take in «Download all», as Grok's `segments.zip`:
  * `<label>.png` for a part alone, `<label>/<label>-N.png` for a group; the
  * label is lower-case, letters and digits joined by dashes ("object" when
  * nothing is left), and a name already taken gets `-2`, `-3`…

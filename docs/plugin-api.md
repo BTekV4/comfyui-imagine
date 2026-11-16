@@ -29,7 +29,7 @@ cp plugins/my-plugin/{manifest.json,index.mjs} <data>/plugins/my-plugin/
 systemctl restart imagine             # or: POST /comfy-plugins/my-plugin/refresh
 ```
 
-Open **Impostazioni → Studio → Plugin**: the fields the manifest declares are
+Open **Settings → Studio → Plugin**: the fields the manifest declares are
 there, with a Save button, the status line, and a button per action. Then to
 remove it:
 
@@ -368,7 +368,7 @@ host for more. Two consequences worth knowing:
 
 ## On the page
 
-**Impostazioni → Studio** no longer holds the plugins: they have a page of their
+**Settings → Studio** no longer holds the plugins: they have a page of their
 own, **Plugin** in the rail. It reads one directory and one file:
 
 - `<data>/plugins/<id>/` — what is installed. Each card has a switch: switched
@@ -460,5 +460,5 @@ export default function setup(ctx) {
 ```
 
 Then `curl http://127.0.0.1:3090/plugin/hello/greet` answers
-`{"hello":"world"}`, and changing the field in Impostazioni → Studio → Plugin
+`{"hello":"world"}`, and changing the field in Settings → Studio → Plugin
 changes it without a restart.

@@ -1,5 +1,5 @@
 /**
- * The studio's «Generale» settings: the LLM gateway, the model list and the
+ * The studio's «General» settings: the LLM gateway, the model list and the
  * model every pass talks to, the thinking level, login and the boot-time
  * resume. (Instagram and Telegram keep theirs in their plugins' config.)
  *

@@ -3,7 +3,7 @@
 The smallest useful plugin, and the template to copy: it forwards the studio's
 notices (a scheduled publication that failed, anything another plugin wants the
 owner to know) to an address of yours, as a JSON `POST` of `{ "text": "…" }`,
-with an optional `x-webhook-secret` header. **Impostazioni → Studio → Plugin**
+with an optional `x-webhook-secret` header. **Settings → Studio → Plugin**
 then draws its three fields and a "Send a test" button.
 
 ## Install

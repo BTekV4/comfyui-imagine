@@ -277,7 +277,7 @@ export async function frameAt(
   /*
    * Some clips carry an index the fast seek lands past: VP9 inside MP4, which
    * is what a browser recording uploads, made ffmpeg exit 0 and write nothing
-   * (measured 2026-11-08: «Estrai frame» saved no image at any time). The same
+   * (measured 2026-11-08: «Extract frames» saved no image at any time). The same
    * frame is taken again with the seek on the output side, which decodes from
    * the start and is right even when the index is not.
    */
@@ -305,8 +305,8 @@ export async function dropScratch(paths: readonly string[]): Promise<void> {
  * A render guided by a clip's soundtrack writes audio of its own on top of
  * it — a guess about a room it only saw. What the user filmed is the track
  * they expect back, so it replaces the generated one over the whole file;
- * a silent source leaves the picture alone. Used by «Rigenera dettaglio»
- * and «Ricrea video».
+ * a silent source leaves the picture alone. Used by «Regenerate detail»
+ * and «Recreate video».
  * @param video - absolute path of the finished picture.
  * @param plate - absolute path of the clip whose track goes back on.
  * @param dir - the output directory the copy is written into.

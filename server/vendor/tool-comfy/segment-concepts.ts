@@ -1,5 +1,5 @@
 /**
- * «Segmenti»: what is in a photo, named so SAM 3 can cut each thing out.
+ * «Segments»: what is in a photo, named so SAM 3 can cut each thing out.
  *
  * Grok Imagine opens a photo with a list of its parts — "man with sunglasses",
  * "coffee cup", "ring", "white clouds" — and the readable text on it as parts

@@ -113,7 +113,7 @@ function stepsOf(raw: Partial<CustomWorkflowMeta>): CustomWorkflowMeta['steps'] 
 /**
  * A card's steps, kept only if the graph really has that node with a numeric
  * field: a pin pointing at nothing would make the save a silent no-op, and
- * «Qualità» inert again without anyone saying so.
+ * «Quality» inert again without anyone saying so.
  * @param graph - the graph just saved.
  * @param steps - the declared steps, already cleaned.
  * @returns the same steps, or undefined when the graph cannot hold them.
@@ -524,7 +524,7 @@ export async function saveCustomWorkflow(input: CustomWorkflowInput, options: Cu
      * The high-quality recipe survives a re-upload of the card: the module
      * reuses the folder when the title is the same and the meta is rewritten
      * from scratch — without this line a re-uploaded graph lost the pin and
-     * «Qualità» went back to doing nothing, silently.
+     * «Quality» went back to doing nothing, silently.
      */
     const steps = validSteps(nodes, existing?.steps)
     const id = existing?.id ?? randomUUID()

@@ -101,14 +101,14 @@ const TOOL_PREFIXES: readonly (readonly [string, GalleryTool])[] = [
   // A recreation's first frame is drawn by Krea 2: it is a generated image
   // like the others, and the history lists it there.
   ['recreate_frame-', 'generate_image'],
-  // «Rigenera dettaglio» writes its files with this prefix: without this row
-  // they would all end up under «Altri» in the history.
+  // «Regenerate detail» writes its files with this prefix: without this row
+  // they would all end up under «Others» in the history.
   ['regenerate_detail-', 'regenerate_detail'],
   // «Object swap»: the object changed, removed or added in the clip (2026-11-06).
   ['object_swap-', 'object_swap'],
   // «Character swap»: the main person of the clip played by the one in a photo.
   ['swap_person-', 'swap_person'],
-  // «Illumina la foto»: the photo re-lit with one of the light looks (2026-11-06).
+  // «Relight the photo»: the photo re-lit with one of the light looks (2026-11-06).
   ['relight-', 'relight'],
 ]
 

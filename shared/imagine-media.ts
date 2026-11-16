@@ -18,7 +18,7 @@
  * what the video and lookbook workflows write, so a still and a clip can ask
  * for the same ratio.
  *
- * `21:9` («Cinematico») and `5:2` («Banner») came in on 2026-11-03, as in
+ * `21:9` («Cinematic») and `5:2` («Banner») came in on 2026-11-03, as in
  * Grok's v2 set (read from its bundle: `{v1: 5 ratios, v2: 8}` chosen by the
  * `imagine-aspect-ratio-versions` flag). `5:2` stays on stills only: the video
  * node has no such label and a clip would be refused in validation, which is
@@ -82,7 +82,7 @@ const ASPECT_NAMES_PHOTO: Readonly<Partial<Record<ImagineAspect, string>>> = {
  *
  * Grok has no single list: video shows five, the quality model's images
  * eight (with `4:3`, `21:9` and `5:2`), the fast model's images the same five
- * as video. Here too the recipe decides: «Velocità» five, «Qualità» every one
+ * as video. Here too the recipe decides: «Speed» five, «Quality» every one
  * the graph can draw.
  * @param mode - the composer mode, image or video.
  * @param quality - the recipe the composer is showing.

@@ -45,8 +45,8 @@
 .error { margin: 0; font-size: 13px; color: var(--imagine-danger); }
 
 /*
- * The exposed controls of an uploaded card: the frame number of «Ricrea
- * fotogramma» and anything else a graph lets the user set. They sit above the
+ * The exposed controls of an uploaded card: the frame number of «Recreate
+ * frame» and anything else a graph lets the user set. They sit above the
  * graph's LoRAs, in the same box, because both belong to the card's recipe.
  */
 .inputs { display: flex; flex-direction: column; gap: 8px; }

@@ -49,7 +49,7 @@ function uploadRejection(filename: string, bytes: Uint8Array): string {
   const accepted = [...IMAGE_EXTENSIONS, ...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS].join(', ')
   const ext = uploadExt(filename)
   // The extension comes first: a file refused on its name alone was never
-  // read, so its head is empty and would otherwise read as "è vuoto".
+  // read, so its head is empty and would otherwise read as "is empty".
   if (kindOf(`x.${ext}`) === undefined) {
     return message('upload.unsupportedFormat', { file: filename, accepted })
   }

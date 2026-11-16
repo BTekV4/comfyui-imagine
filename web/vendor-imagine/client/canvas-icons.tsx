@@ -30,7 +30,7 @@ export const IconExtend = (p: P) => <S {...p}><rect x="3" y="6" width="10" heigh
 export const IconCutout = (p: P) => <S {...p}><rect x="3" y="3" width="18" height="18" rx="3" strokeDasharray="3 3" /><circle cx="12" cy="10" r="3" /><path d="M6.5 19c1-3 3.2-4.5 5.5-4.5s4.5 1.5 5.5 4.5" /></S>
 /** A dashed zone with a pencil: "Precise edit". */
 export const IconRegion = (p: P) => <S {...p}><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M4 15v4a1 1 0 0 0 1 1h4" /><path d="m13 20 1-3 5.5-5.5a1.4 1.4 0 0 1 2 2L16 19l-3 1Z" /></S>
-/** Two boxes and a small one: «Segmenti», as Grok draws it. */
+/** Two boxes and a small one: «Segments», as Grok draws it. */
 export const IconSegments = (p: P) => <S {...p}><rect x="2" y="9" width="8" height="7" rx="1.5" /><rect x="12" y="3" width="9" height="8" rx="2" /><rect x="13" y="15" width="6" height="6" rx="1.5" /></S>
 /** Stacked cards: the Library. */
 export const IconLibrary = (p: P) => <S {...p}><rect x="4" y="8" width="16" height="12" rx="2" /><path d="M6 5h12M8 2.5h8" /></S>
@@ -66,9 +66,9 @@ export const IconGrid = (p: P) => <S {...p}><rect x="4" y="4" width="7" height="
 
 /* ── The viewer's post panel and its tools ────────────────────────────────── */
 
-/** Grok's «Modifica precisa»: a brush over a dotted zone. */
+/** Grok's «Precise edit»: a brush over a dotted zone. */
 export const IconPrecise = (p: P) => <S {...p}><path d="M4 20c1.5 0 3-1 3-3a2 2 0 1 0-4 0" /><path d="m7 15 9.5-9.5a2.1 2.1 0 0 1 3 3L10 18" /><path d="M14 4.5 15.5 3M19.5 9 21 7.5" /></S>
-/** A pencil: «Disegna», the tool and its own buttons. */
+/** A pencil: «Draw», the tool and its own buttons. */
 export const IconPencil = (p: P) => <S {...p}><path d="m15 5 4 4" /><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19l-4 1Z" /></S>
 /** An arrow up: send what is written (the viewer's bars). */
 export const IconArrowUp = ({ size = 16, strokeWidth = 2 }: P) => <S size={size} strokeWidth={strokeWidth}><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" /></S>

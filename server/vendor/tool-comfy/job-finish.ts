@@ -88,7 +88,7 @@ async function deliveredFiles(run: FinishRun): Promise<readonly ComfyProducedFil
   const { ctx, workflows, outputDir, job, files, sourceKind, sourceVideo } = run
   let finalFiles = files
   /*
-   * «Ricrea video» can keep the soundtrack that was filmed.
+   * «Recreate video» can keep the soundtrack that was filmed.
    *
    * The video model writes audio of its own under the new picture — a guess
    * about a room it only saw through one frame — while a recreation of a
@@ -360,7 +360,7 @@ async function writeResult(run: FinishRun, files: readonly ComfyProducedFile[]):
   const producedStills = files.filter(file => file.kind === 'image').map(file => basename(file.path))
   if (producedStills.length > 0) {
     lookSoon(ctx, outputDir, producedStills)
-    // «Segmenti», as on Grok: ready before the photo is opened.
+    // «Segments», as on Grok: ready before the photo is opened.
     segmentSoon(ctx, outputDir, producedStills)
   }
   patchJob(job.id, {

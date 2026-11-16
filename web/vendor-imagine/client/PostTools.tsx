@@ -1,5 +1,5 @@
 /**
- * «Colori» and «Disegna» in the viewer's column, as Grok's post page
+ * «Colors» and «Draw» in the viewer's column, as Grok's post page
  * (2026-11-15): a palette taken from the photo or picked from ten, applied
  * as one edit; a sketch drawn over the photo in colour, finished in a style.
  * @module PostTools
@@ -12,7 +12,7 @@ import { Segmented } from './Pills.tsx'
 import { IconPencil } from './canvas-icons.tsx'
 import css from './PostPanel.module.css'
 
-/* ── «Colori» ─────────────────────────────────────────────────────────────── */
+/* ── «Colors» ─────────────────────────────────────────────────────────────── */
 
 /** The main colours of the shown photo, read off a small copy of it. */
 export function photoColors(image: HTMLImageElement | null): string[] {
@@ -76,7 +76,7 @@ export function ColorsTool({ colors, onColors, onExtract, onApply, busy }: {
   )
 }
 
-/* ── «Disegna» ────────────────────────────────────────────────────────────── */
+/* ── «Draw» ────────────────────────────────────────────────────────────── */
 
 /** The two drawing tools of the switch. */
 const DRAW_TOOLS = ['brush', 'eraser'] as const
@@ -96,7 +96,7 @@ interface Stroke {
 const SKETCH_SIDE = 1024
 
 /**
- * A sketch over the photo, kept as strokes so «annulla» and «ripeti» work,
+ * A sketch over the photo, kept as strokes so «undo» and «redo» work,
  * flattened onto the photo when it is sent.
  */
 export function useSketch() {

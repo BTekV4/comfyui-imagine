@@ -46,7 +46,7 @@ export async function startImagineJob(
 ): Promise<ImagineJob> {
   if (request.action === 'speak') return startSpeak(speak, outputDir, request.prompt)
   /*
-   * «Cambia voce» through the speech service when the deployment asks for it
+   * «Change voice» through the speech service when the deployment asks for it
    * (`tts.voiceChange: tts`): the track is transcribed and read back out. Taken
    * before the request checks, which look for the RVC graph's pins and have
    * nothing to hold this path to.

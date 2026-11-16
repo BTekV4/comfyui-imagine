@@ -75,7 +75,7 @@
   transform: translateY(-50%);
 }
 
-/* Grok's «Azioni del pannello»: at the canvas's top right, 10px in. */
+/* Grok's «Panel actions»: at the canvas's top right, 10px in. */
 .headCanvasRight {
   position: absolute;
   right: 10px;

@@ -1,8 +1,8 @@
 /**
- * «Ritaglia» on the photo itself, as Grok's post page (2026-11-15): the whole
+ * «Crop» on the photo itself, as Grok's post page (2026-11-15): the whole
  * photo framed to start with, the rest of the page dimmed, a rule-of-thirds
- * grid, corner and edge handles, the frame dragged from inside, and «Annulla»
- * / «✓ Ritaglia» under the photo. The crop is a new file beside the original
+ * grid, corner and edge handles, the frame dragged from inside, and «Cancel»
+ * / «✓ Crop» under the photo. The crop is a new file beside the original
  * (`/api/crop-copy`), as the old dialog made it.
  * @module PostCrop
  */

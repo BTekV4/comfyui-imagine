@@ -20,7 +20,7 @@ export const INSTAGRAM_PLUGIN = 'instagram'
 /** The plugins that bring an app into the rail (2026-11-15), by the view that shows it. */
 export const APP_PLUGINS = { openjutsu: 'openjutsu', iopaint: 'iopaint' } as const
 
-/** The id of the IOPaint plugin, which also does «Rimuovi oggetto». */
+/** The id of the IOPaint plugin, which also does «Remove object». */
 export const IOPAINT_PLUGIN = APP_PLUGINS.iopaint
 
 /** What this module reads of one row of the plugin list. */

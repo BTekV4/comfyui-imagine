@@ -108,7 +108,7 @@ export function withoutMarkdown(text: string): string {
 }
 
 /**
- * The lighter cleaning «Ricrea video» reads its reply with: only the marks at
+ * The lighter cleaning «Recreate video» reads its reply with: only the marks at
  * the start of each line (quote, heading, emphasis), so a bold label still
  * reads as a label while the text after it — which Krea 2 is given as it is —
  * keeps everything else the model wrote.
