@@ -4,6 +4,26 @@ Notable changes, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project's
 versions follow [semantic versioning](https://semver.org/).
 
+## 0.1.2 — 2026-11-16
+
+### Added
+
+- **An AppImage for Linux** — `Imagine-<version>-linux-x64.AppImage`: one file,
+  `chmod +x`, double-click. Mounted read-only, so on the first start it copies
+  itself into `~/.local/share/imagine` (`IMAGINE_DATA`) and works from there; a
+  second launch reopens the page, and `IMAGINE_PORT` puts two copies side by side.
+- The AppImage is built by the same script in CI, on every push, and attached to
+  every release.
+
+### Fixed
+
+- A package built from a `dist/` older than `package.json` shipped the previous
+  version inside (0.1.1 saying 0.1.0): the packaging script now rebuilds when the
+  manifest is newer.
+- The AppImage launcher reads its port from `config.yaml` instead of assuming
+  3090, which made it believe a copy was already running whenever another
+  installation used that port.
+
 ## 0.1.1 — 2026-11-16
 
 The release that does not need a terminal.
