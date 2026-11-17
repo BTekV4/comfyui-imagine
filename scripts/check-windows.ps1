@@ -207,8 +207,14 @@ function Assert-PackagedFfmpeg([object]$Report, [string]$Dir) {
   $exe = Join-Path $plugins 'ffmpeg.exe'
   if (-not (Test-Path $exe)) { Fail "the package has no ffmpeg at $exe" }
   if (-not (Test-Path (Join-Path $plugins 'ffprobe.exe'))) { Fail "the package has no ffprobe in $plugins" }
-  $version = (& $exe -version 2>&1 | Select-Object -First 1 | Out-String).Trim()
-  if ($LASTEXITCODE -ne 0 -or $version -notmatch 'ffmpeg version') { Fail "the bundled ffmpeg does not start: $version" }
+  # The whole output is collected before it is cut: `Select-Object -First 1`
+  # alone stops the pipeline, and the exit code of a native command that was cut
+  # short is not set at all (reading it under StrictMode is an error).
+  $output = @(& $exe -version 2>&1)
+  $version = ($output | Select-Object -First 1 | Out-String).Trim()
+  $code = Get-Variable LASTEXITCODE -ValueOnly -ErrorAction SilentlyContinue
+  if ($null -eq $code) { $code = 0 }
+  if ($code -ne 0 -or $version -notmatch 'ffmpeg version') { Fail "the bundled ffmpeg does not start: $version ($($output -join ' '))" }
   if ($Report.pathHead -ne $Report.ffmpegDir) { Fail "the server's PATH does not start with the package's ffmpeg: '$($Report.pathHead)'" }
   if (-not $Report.ffmpegDir.Equals($plugins, [StringComparison]::OrdinalIgnoreCase)) {
     Fail "the studio runs $($Report.ffmpegDir), not the installed ffmpeg ($plugins)"
