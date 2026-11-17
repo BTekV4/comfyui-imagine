@@ -391,7 +391,17 @@ current ones do). Details in [the pack's README](comfyui-nodes/comfyui-imagine/R
 in, so on a shared network set a password in **Settings → Access** and switch on
 **Ask for the password**. It works over plain `http://` too; behind an HTTPS
 reverse proxy the login cookie is also marked `Secure` (the proxy must send
-`X-Forwarded-Proto`, as nginx and Nginx Proxy Manager do).
+`X-Forwarded-Proto`, as nginx and Nginx Proxy Manager do). The page warns while
+the studio listens on a non-loopback address with the login off.
+
+**Behind a reverse proxy, check the loopback bypass.** Requests that appear to
+come from this machine (a loopback address and no `X-Forwarded-For`) skip the
+password. A proxy **on the same machine** that does not add `X-Forwarded-For`
+makes every visitor look local, and then the login protects nothing. nginx and
+Nginx Proxy Manager add it by default; a proxy that strips it does not. A proxy
+on another host is not affected. `trustedProxies` only decides whose
+`X-Forwarded-For` the brute-force brake believes, not this bypass. What is
+protected, and how to report a problem, is in [SECURITY.md](SECURITY.md).
 
 The files live in two places:
 
