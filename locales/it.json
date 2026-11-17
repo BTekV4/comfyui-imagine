@@ -246,6 +246,7 @@
   "imagine.noticeVideoRatio": "La foto e il video hanno formati diversi: il video e' stato reso nel formato piu' vicino alla foto, cosi' non si deforma. Se il soggetto e' tagliato, genera il video da una foto dello stesso formato.",
   "imagine.noticeRecreateAudioFailed": "Non sono riuscito a mettere l'audio originale: la clip ha quello generato.",
   "imagine.noticeComfyRestart": "OOM: riavvio ComfyUI in corso, poi rifaccio questa generazione.",
+  "imagine.noticeSeparatingVoice": "Sto separando la voce della traccia, poi partono gli spezzoni.",
   "imagine.noticeSongFailed": "Non sono riuscito a mettere la canzone sul video: resta l'audio generato.",
   "imagine.noticeVoiceMuxFailed": "Non sono riuscito a rimontare il video: la traccia convertita è in galleria.",
   "imagine.noticeMontageFailed": "Non sono riuscito a montare le inquadrature insieme: le trovi una per una sulla board.",

@@ -16,6 +16,7 @@ import { message, withLanguage } from '../../src/messages.ts'
 import { runWorkflow } from './index.ts'
 import type { LoadedWorkflow } from './index.ts'
 import { AAC_192K, FASTSTART, ffmpegTo, h264Out, probeMedia, runProbe } from './media-tools.ts'
+import { loudnessOf, voicedShare, VOICED_SHARE_MIN } from './vocal-silence.ts'
 import { kindOf, probePixels, safeBasename } from './gallery.ts'
 import { GUIDE_SECONDS } from './extend-video.ts'
 import { CHAIN_SCENE_SECONDS } from './video-prompt.ts'
@@ -30,11 +31,14 @@ import { adoptJobFiles, adoptJobsInto, loadImagineStore, renameInProjects } from
 import { resumePlan } from './story-resume.ts'
 import type { ImagineWorkflows } from './workflow-fields.ts'
 import {
-  LIPSYNC_ARTICULATION, LIPSYNC_FACE_LOST, cameraMovements, closeOnFaceBeat, faceCameraMovements, laySongOver,
+  LIPSYNC_ARTICULATION, LIPSYNC_FACE_LOST, LIPSYNC_LAG_MAX, cameraMovements, closeOnFaceBeat,
+  faceCameraMovements, laySongOver,
   storyLength, storyShots, writeStoryPlan, type StoryPlan, type StorySong,
 } from './story.ts'
 import type { MediaKind, ModelRoute } from '../../../shared/imagine-types.ts'
-import { jobThatProduced, patchJob, putJob, renameJobFiles, type ImagineJob } from './job-queue.ts'
+import {
+  getImagineJob, jobThatProduced, patchJob, putJob, renameJobFiles, setJobPromptId, type ImagineJob,
+} from './job-queue.ts'
 import type { ImagineJobRequest } from './job-request.ts'
 import { enqueueJob } from './run-job.ts'
 
@@ -136,7 +140,7 @@ export async function vocalsOf(
  * before it: the pinned head of a chained shot, which the join removes.
  * @returns the offset in seconds, never past the end of the track.
  */
-function songStartOf(shots: readonly number[], index: number, songSeconds?: number, overlap = 0): number {
+export function songStartOf(shots: readonly number[], index: number, songSeconds?: number, overlap = 0): number {
   const before = shots.slice(0, index).reduce((sum, seconds) => sum + renderedSeconds(seconds), 0)
   const start = fadedStart(before, index, overlap)
   /*
@@ -151,6 +155,9 @@ function songStartOf(shots: readonly number[], index: number, songSeconds?: numb
   if (songSeconds === undefined || songSeconds <= length) return start
   return Math.min(start, Math.max(0, songSeconds - length))
 }
+
+/** How far into a track the voice is measured: past any story's length. */
+const VOICE_SCAN_SECONDS = 600
 
 /**
  * Seconds of new material each clip of a story adds, unless told otherwise.
@@ -337,18 +344,100 @@ export async function startStory(
   workflows: ImagineWorkflows,
   outputDir: string,
   request: StoryRequest,
+  voiceOf: VoiceProbe = sungVoiceOf,
 ): Promise<ImagineJob> {
   const asked = storyFiles(request)
   const graphs = storyGraphs(workflows, asked)
   const take = sungTakeAsMontage(asked, graphs.clips)
-  const timing = await storyTiming(outputDir, request, take, graphs.clips)
-  // After the timing: the close-up gives every shot a photo, not more shots.
-  const files = await withFaceCloseUp(outputDir, take, graphs.clips, timing.shots.length)
-  const storyId = randomUUID()
-  const storySong = planStory(ctx, outputDir, request, files, timing, storyId)
   // One timestamp for the whole chain: the studio lists jobs newest first, and
   // a clip stamped a millisecond later would sit above the clip it follows.
   const now = Date.now()
+  const storyId = randomUUID()
+  /*
+   * A montage on the song graph has to know whether the track carries a voice
+   * before its shots can exist: that answer decides the chain, and the chain
+   * decides the length of every shot and its second of the track. Measuring it
+   * is a ComfyUI job of its own, and a request that waited for it sat for the
+   * length of whatever the card was doing with nothing on the board — so the
+   * request answers at once with a preparation job that says what it is doing,
+   * and the shots are queued the moment the answer is in. Every other story
+   * answers the way it always did.
+   */
+  if (!awaitsVoice(take, graphs.clips, request)) {
+    const queued = await queueStory(ctx, workflows, outputDir, request, take, graphs, storyId, now, 'no-voice')
+    return queued.first
+  }
+  const prep: ImagineJob = {
+    id: randomUUID(),
+    action: 'story',
+    prompt: take.intent,
+    status: 'running',
+    createdAt: now,
+    startedAt: now,
+    storyId,
+    notice: 'separating-voice',
+    ...request.clipId === undefined ? {} : { clipId: request.clipId },
+  }
+  putJob(prep.id, prep)
+  void withLanguage(undefined, () => voiceOf(ctx, workflows, outputDir, take.song ?? '', (promptId) => {
+    setJobPromptId(ctx, prep.id, promptId)
+  }))
+    // A probe that throws is a probe with no answer: the shots are cut, which is
+    // the safe side, and the log has said why.
+    .catch((): SungVoice => 'unknown')
+    .then(async (voice) => {
+      // A preparation the user stopped queues nothing: the whole story stops
+      // with it, the way cancelling a shot stops the rest of the chain.
+      if (getImagineJob(prep.id)?.status === 'cancelled') return
+      const queued = await queueStory(ctx, workflows, outputDir, request, take, graphs, storyId, now, voice)
+      patchJob(prep.id, { status: 'done', notice: '', storyCount: queued.count, updatedAt: Date.now() })
+      await adoptStoryJobs(prep.id, queued.jobs)
+    })
+    .catch((error: unknown) => {
+      patchJob(prep.id, { status: 'error', error: error instanceof Error ? error.message : String(error), updatedAt: Date.now() })
+    })
+  return prep
+}
+
+/**
+ * Put the shots of a story into the project that holds its preparation job.
+ *
+ * The board draws a live tile only for the jobs a project lists, and the
+ * preparation job was adopted when the request came in: the shots it queues a
+ * minute later are jobs the project has never heard of, so without this the
+ * preparation tile would appear and the clips it made would land on disk alone.
+ * @param prepId - the preparation job the request was adopted with.
+ * @param jobs - the shots just queued.
+ */
+async function adoptStoryJobs(prepId: string, jobs: readonly ImagineJob[]): Promise<void> {
+  if (jobs.length === 0) return
+  const store = await loadImagineStore().catch(() => undefined)
+  if (store === undefined) return
+  const targets = store.projects.filter(project => project.jobIds.includes(prepId)).map(project => project.id)
+  if (targets.length > 0) await adoptJobsInto(targets, jobs.map(job => job.id)).catch(() => undefined)
+}
+
+/**
+ * The shots of a story, queued: the timing, the close-up, the plan and every
+ * job of the chain, in the order the studio has always done them.
+ * @param voice - what the track gives the shots; it decides the chain.
+ * @returns the first job of the chain, how many shots it has, and all of them.
+ */
+async function queueStory(
+  ctx: ImagineHost,
+  workflows: ImagineWorkflows,
+  outputDir: string,
+  request: StoryRequest,
+  take: StoryFiles,
+  graphs: StoryGraphs,
+  storyId: string,
+  now: number,
+  voice: SungVoice,
+): Promise<{ first: ImagineJob; count: number; jobs: readonly ImagineJob[] }> {
+  const timing = await storyTiming(outputDir, request, take, graphs.clips, voice)
+  // After the timing: the close-up gives every shot a photo, not more shots.
+  const files = await withFaceCloseUp(outputDir, take, graphs.clips, timing.shots.length)
+  const storySong = planStory(ctx, outputDir, request, files, timing, storyId)
   const queued = storyJobs(workflows, request, files, timing, graphs, storySong, storyId, now)
   for (const entry of queued) {
     putJob(entry.job.id, entry.job)
@@ -364,7 +453,7 @@ export async function startStory(
   if (files.cuts && files.song !== undefined && graphs.clips.songAudio !== undefined) {
     await recordStory(request, files.song, files.photos, queued, storyId, now)
   }
-  return first
+  return { first, count: timing.shots.length, jobs: queued.map(entry => entry.job) }
 }
 
 /**
@@ -474,6 +563,112 @@ function storyGraphs(workflows: ImagineWorkflows, files: StoryFiles): StoryGraph
   return { clips, continuations, opening }
 }
 
+/** What a track gives the shots to follow with their lips. */
+export type SungVoice = 'voice' | 'no-voice' | 'unknown'
+
+/**
+ * How a track's voice is measured: the real probe, or a stand-in for a test.
+ *
+ * A parameter rather than a module-level switch, the way the boot sweep takes
+ * its clock: the only thing a test needs to hold is the answer, and everything
+ * downstream of it is what the test is about.
+ */
+export type VoiceProbe = (
+  ctx: ImagineHost,
+  workflows: ImagineWorkflows,
+  outputDir: string,
+  song: string,
+  onPrompt?: (promptId: string) => void,
+) => Promise<SungVoice>
+
+/**
+ * Whether a story has to wait for the track's voice before its shots exist.
+ * @param files - the story's files, after a one-photo take became a montage.
+ * @param clips - the graph the shots render on.
+ * @param request - the request, for its hard cuts.
+ * @returns true when the answer can still change the chain.
+ */
+export function awaitsVoice(files: StoryFiles, clips: LoadedWorkflow, request: StoryRequest): boolean {
+  return files.cuts && files.song !== undefined && clips.chain !== undefined && request.hardCuts !== true
+}
+
+/**
+ * Whether a track carries a voice for the shots to follow with their lips.
+ *
+ * Every shot of a montage on the song graph is handed the isolated vocal and
+ * told to sing it, whatever the number of photos: a music video cut over eight
+ * pictures sings on all eight. So the question the chain has to answer is not
+ * "is this one face" but "is there a voice in the track at all", and it is
+ * measured on the isolated vocal, with the same silence floor the silent-slice
+ * check uses (vocal-silence.ts). Taken here, before the chain is decided, and
+ * from the same separation the shots would run anyway: `vocalsOf` caches it per
+ * track, so nothing is separated twice.
+ * @param ctx - plugin context carrying the `comfy` client.
+ * @param workflows - the graphs this deployment loaded.
+ * @param outputDir - the validated media output directory.
+ * @param song - the track's file name in the output directory.
+ * @returns 'voice' when the track carries one, 'no-voice' when its isolated
+ *   vocal is silent for most of its length, and 'unknown' when the separation
+ *   or the reading gave nothing — the caller cuts on that, because a cut is
+ *   cheaper than a mouth out of sync.
+ */
+export async function sungVoiceOf(
+  ctx: ImagineHost,
+  workflows: ImagineWorkflows,
+  outputDir: string,
+  song: string,
+  onPrompt: (promptId: string) => void = () => undefined,
+): Promise<SungVoice> {
+  const vocal = await vocalsOf(ctx, workflows, outputDir, song, {
+    onPrompt,
+    signal: new AbortController().signal,
+  })
+  const share = vocal === undefined
+    ? undefined
+    : voicedShare(await loudnessOf(join(outputDir, vocal), 0, VOICE_SCAN_SECONDS))
+  if (share === undefined) {
+    console.warn(`[imagine] vocal of ${song}: nothing to measure, the shots are cut rather than risk a mouth out of sync`)
+    return 'unknown'
+  }
+  const voiced = share >= VOICED_SHARE_MIN
+  console.log(`[imagine] vocal of ${song}: ${share.toFixed(2)} of it carries a voice `
+    + `(${voiced ? '>=' : '<'} ${String(VOICED_SHARE_MIN)}), the shots ${voiced ? 'are cut' : 'keep the chain'}`)
+  return voiced ? 'voice' : 'no-voice'
+}
+
+/**
+ * Whether the shots of a montage are sampled one after the other, each pinned
+ * to the tail of the one before it.
+ *
+ * A montage over a track is chained, as it has always been: the chain is what
+ * makes a shot continue the framing of the one before it instead of jumping.
+ * The one exception is a track that carries a voice, and that exception is
+ * measured. On 2026-11-17, on a 45-second spoken track (test instance, 480p,
+ * one photo, the same beat, the same graph), the window 6.583-12.250 s — shot
+ * two of a nine-shot video, the one the user hears go out of sync — scored 0.00
+ * and 0.27 over two takes when chained, and 0.451 and 0.567, at lag zero, when
+ * the same seconds were rendered without a head. The chained takes that
+ * articulated peaked 20 frames ahead of the voice: the model reads the audio
+ * guide about one head early, and moving the anchor to compensate did not buy
+ * the difference back. A track nobody sings on has no lips to line up, so it
+ * keeps the chain.
+ * @param files - the story's files: whether it is a montage, and its track.
+ * @param hasChain - whether the graph carries the chain's latent slots.
+ * @param hardCuts - whether the user asked for hard cuts.
+ * @param voice - what the track gives the shots: a voice, none, or nothing
+ *   measurable (which cuts, like a voice does).
+ * @returns true when the shots are chained.
+ */
+export function chainedShots(
+  files: Pick<StoryFiles, 'cuts' | 'song'>,
+  hasChain: boolean,
+  hardCuts: boolean,
+  voice: SungVoice,
+): boolean {
+  if (!files.cuts || files.song === undefined || !hasChain || hardCuts) return false
+  return voice === 'no-voice'
+}
+
 /**
  * How long the story runs and the seconds of each of its shots.
  * @param outputDir - the validated media output directory.
@@ -487,6 +682,7 @@ async function storyTiming(
   request: StoryRequest,
   files: StoryFiles,
   clips: LoadedWorkflow,
+  voice: SungVoice,
 ): Promise<StoryTiming> {
   const { song, cuts, photos } = files
   const songProbe = song === undefined ? undefined : await probeMedia(join(outputDir, song))
@@ -500,13 +696,14 @@ async function storyTiming(
    * not the clip length's. One take keeps deciding its own.
    */
   /*
-   * A montage cut to a song, on a workflow that can chain: every shot after
-   * the first is sampled with the previous shot's tail pinned at its head, so
-   * the video is one continuous take through the photos rather than a stack
-   * of clips. Each such shot delivers GUIDE_SECONDS less than it renders, and
-   * both the shot count and the song offsets account for it.
+   * A montage over a track on a workflow that can chain: every shot after the
+   * first is sampled with the previous shot's tail pinned at its head, so the
+   * video is one continuous take through the photos rather than a stack of
+   * clips. Each such shot delivers GUIDE_SECONDS less than it renders, and both
+   * the shot count and the song offsets account for it. A track that carries a
+   * voice is the one exception: see {@link chainedShots}.
    */
-  const chained = cuts && song !== undefined && clips.chain !== undefined && request.hardCuts !== true
+  const chained = chainedShots(files, clips.chain !== undefined, request.hardCuts === true, voice)
   const overlap = chained ? GUIDE_SECONDS : 0
   /*
    * A chained shot carries the previous shot's context on top of its own
@@ -555,8 +752,13 @@ function planStory(
   storyPlans.set(storyId, cuts
     ? planMontage(ctx, outputDir, intent, timing.shots, photos, {
       ...timing.chained ? { continuous: true } : {},
-      // One photo on a track is one face singing or speaking it throughout.
-      ...timing.chained && files.faceTake === true && storySong !== undefined ? { closeOnFace: true } : {},
+      /*
+       * One photo on a track is one face singing or speaking it throughout: the
+       * rule is about the framing, so it holds whether the shots are chained or
+       * cut — a sung shot is cut now, and without the rule it would follow the
+       * scene out of frame.
+       */
+      ...files.faceTake === true && storySong !== undefined ? { closeOnFace: true } : {},
       ...request.model === undefined ? {} : { model: request.model },
       ...storySong === undefined ? {} : { song: storySong },
     })
@@ -1203,9 +1405,15 @@ export async function lipsyncScore(probe: string, clip: string, voice: string, o
  */
 export function worthRetrying(probe: LipsyncProbe | undefined, floor: number): boolean {
   if (probe === undefined) return false
-  if (probe.corr0 >= floor) return false
   const frames = probe.frames ?? 0
   if (frames > 0 && (probe.noFace ?? 0) / frames > LIPSYNC_FACE_LOST) return false
+  /*
+   * A mouth a whole beat off the voice is refused however high the score at
+   * zero lag is: the score cannot see a uniform lead or lag, and the probe
+   * already says where the aperture peaks (measured 2026-11-17, LIPSYNC_LAG_MAX).
+   */
+  if (probe.bestLag !== undefined && Math.abs(probe.bestLag) > LIPSYNC_LAG_MAX) return true
+  if (probe.corr0 >= floor) return false
   if (probe.movCorr0 === undefined) return true
   return probe.movCorr0 < LIPSYNC_ARTICULATION
 }

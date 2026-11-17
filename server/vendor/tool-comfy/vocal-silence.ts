@@ -72,6 +72,32 @@ function parseLoudness(stdout: string): readonly number[] {
 }
 
 /**
+ * Above this share of a track's isolated vocal the track carries a voice.
+ *
+ * Measured 2026-11-17 on the 32 isolated vocals the studio had on disk, with the
+ * readings {@link voicedShare} builds: the lowest track that carries a voice —
+ * a song sung over less than half of its length — comes out at 0.40, the spoken
+ * tracks at 0.87-0.89, and the rest between them. Where nobody sings the
+ * separator leaves a residue under {@link SILENCE_DBFS}, so an instrumental
+ * track lands near zero: the threshold sits in the empty gap between the two.
+ * What the number decides is whether a montage cuts its shots or keeps them
+ * chained (see `chainedShots` in story-jobs).
+ */
+export const VOICED_SHARE_MIN = 0.25
+
+/**
+ * The share of a track that carries a voice.
+ * @param readings - dBFS per half second, as `loudnessOf` returns them.
+ * @returns the share of the readings above the silence floor, or undefined when
+ *   there are none: a track that could not be read is not known to have no
+ *   voice, and the caller treats that as a reason to cut rather than to chain.
+ */
+export function voicedShare(readings: readonly number[]): number | undefined {
+  if (readings.length === 0) return undefined
+  return readings.filter(level => level > SILENCE_DBFS).length / readings.length
+}
+
+/**
  * Whether these readings are a silent slice.
  * @param readings - dBFS per step, as `loudnessOf` returns them.
  * @returns true when nothing worth singing is in them; false for an empty

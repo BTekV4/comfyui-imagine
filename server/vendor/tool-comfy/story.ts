@@ -670,6 +670,19 @@ export const LIPSYNC_MIN = 0.3
 export const LIPSYNC_ARTICULATION = 0.2
 
 /**
+ * Above this the mouth is off the voice by a whole beat, whatever the score at
+ * zero lag says.
+ *
+ * Measured 2026-11-17 on the 45-second spoken track (test instance, 480p, one
+ * photo): a chained shot whose mouth ran 0.83 s ahead of the voice scored 0.00
+ * at zero lag and peaked at 0.36 there, and the same window rendered without
+ * the pinned head landed at lag 0 with 0.45-0.57. The zero-lag score cannot see
+ * a mouth that is uniformly early or late; the probe already reports where it
+ * peaks, so a shot a full beat off is taken again before it is accepted.
+ */
+export const LIPSYNC_LAG_MAX = 0.2
+
+/**
  * Above this share of frames with no face, the probe's score is about the
  * detector, not the mouth.
  *

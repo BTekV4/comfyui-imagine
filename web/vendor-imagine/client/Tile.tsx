@@ -60,8 +60,10 @@ export const PendingTile = memo(function PendingTile({
             * job for good as a record, so the label yields as soon as the
             * retry reports progress.
             */}
-          {job.notice === 'comfy-restart' && progress === undefined
-            ? translate('imagine.noticeComfyRestart')
+          {job.notice === 'separating-voice' && progress === undefined
+            ? translate('imagine.noticeSeparatingVoice')
+            : job.notice === 'comfy-restart' && progress === undefined
+              ? translate('imagine.noticeComfyRestart')
             : job.storyIndex !== undefined && job.storyCount !== undefined
               ? translate('imagine.storyClip', { n: String(job.storyIndex + 1), total: String(job.storyCount) })
               : job.status === 'queued' ? translate('imagine.jobQueued') : <GeneratingLabel />}

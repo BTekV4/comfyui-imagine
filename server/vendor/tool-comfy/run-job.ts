@@ -1767,6 +1767,9 @@ async function retakeOffVoice(
   for (let attempt = 1; attempt <= retries && worthRetrying(probe, floor); attempt += 1) {
     if (signal.aborted) break
     setJobNotice(job.id, 'lipsync-retry')
+    console.warn(`[imagine] lipsync: ${basename(files.find(file => file.kind === 'video')?.path ?? '')} `
+      + `corr0 ${probe?.corr0 ?? 'none'} bestLag ${probe?.bestLag ?? 'none'} `
+      + `movement ${probe?.movCorr0 ?? 'none'}, rendering the shot again (${String(attempt)}/${String(retries)})`)
     try {
       files = (await render(job.chain, nextSeed(seed, attempt))).files
     } catch {

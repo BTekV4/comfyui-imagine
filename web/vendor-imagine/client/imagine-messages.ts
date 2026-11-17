@@ -126,6 +126,7 @@ export function noteFromError(error: unknown): string {
 /** The line for each notice the host sets on a job. */
 const NOTICE_KEYS: Readonly<Record<string, ComfyLocaleKey>> = {
   'comfy-restart': 'imagine.noticeComfyRestart',
+  'separating-voice': 'imagine.noticeSeparatingVoice',
   'song-failed': 'imagine.noticeSongFailed',
   'montage-failed': 'imagine.noticeMontageFailed',
   'montage-repairing': 'imagine.noticeMontageRepairing',

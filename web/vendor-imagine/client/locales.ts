@@ -261,6 +261,7 @@ export const en = {
   "imagine.noticeVideoRatio": "The photo and the video have different shapes: the video was rendered in the closest shape to the photo, so nothing is stretched. If the subject is cut, generate the video from a photo of the same shape.",
   "imagine.noticeRecreateAudioFailed": "I could not lay the original audio over it: the clip has the generated one.",
   "imagine.noticeComfyRestart": "OOM: restarting ComfyUI, then I will redo this generation.",
+  "imagine.noticeSeparatingVoice": "Separating the voice of the track, then the shots start.",
   "imagine.noticeSongFailed": "I could not lay the song over the video: the generated audio stays.",
   "imagine.noticeVoiceMuxFailed": "I could not rebuild the video: the converted track is in the gallery.",
   "imagine.noticeMontageFailed": "I could not cut the shots together: you will find them one by one on the board.",

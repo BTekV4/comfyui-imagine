@@ -21,6 +21,7 @@ import { joinStage, Percent, ProgressBar, stageLineOf, useJobProgress } from './
 import { useTrace, type TraceStore } from './reading-trace.ts'
 import css from './ChatColumn.module.css'
 import { translate } from './locale-store.ts'
+import { noticeText } from './imagine-messages.ts'
 
 /** A file a line carries or produced, as a thumbnail button (a note for audio). */
 function FileChip({ file, className, thumbClassName, size, picked, onOpen }: {
@@ -252,20 +253,31 @@ const JobRow = memo(function JobRow({ job, onStop, onApproveSetup }: {
   const installing = (live?.notice ?? job.notice) === 'setup-running' && job.promptId === undefined
   const { percent, stage, eta } = stageLineOf(live?.progress)
   const scan = live?.scanProgress
+  /*
+   * A job that is measuring the track's voice before its shots exist is not
+   * generating: the row said "Generating… 0%" over a bar at zero, which reads
+   * as a run stuck at the first per cent (seen 2026-11-17). The notice is the
+   * truth, and there is no percentage to show until the shots start.
+   */
+  const preparing = (live?.notice ?? job.notice) === 'separating-voice'
+    ? noticeText('separating-voice')
+    : undefined
   const setupStage = installing && setupProgress !== undefined && setupProgress.stage !== ''
     ? setupProgress.stage === 'restart' ? translate('imagine.setupRestart') : setupProgress.stage
     : undefined
   return (
     <div className={css.chatWork} data-imagine-job={job.id}>
       <span className={css.chatWorkLabel}>
-        {job.status === 'queued'
-          ? translate('imagine.jobQueued')
-          : installing
-          ? translate('imagine.setupRunning')
-          : scan === undefined
-            ? <GeneratingLabel />
-            : translate('imagine.scanningFrame', { done: String(scan.done), total: String(scan.total) })}
-        <Percent value={percent} />
+        {preparing !== undefined
+          ? preparing
+          : job.status === 'queued'
+            ? translate('imagine.jobQueued')
+            : installing
+              ? translate('imagine.setupRunning')
+              : scan === undefined
+                ? <GeneratingLabel />
+                : translate('imagine.scanningFrame', { done: String(scan.done), total: String(scan.total) })}
+        {preparing === undefined && <Percent value={percent} />}
         <button type="button" className={css.stopJob} onClick={() => { onStop(job.id) }}>
           {translate('imagine.stop')}
         </button>

@@ -13,6 +13,7 @@ import { HISTORY_PROJECT_ID } from '../../../shared/imagine-projects.ts'
 import type { GalleryItem, ImagineJobView as ImagineJob } from '../../../shared/imagine-types.ts'
 import { canvasOrder, layoutCanvas, runGroups } from './canvas-layout.ts'
 import { askToLook, boardJobs, jobIsLive, upscalesInFlight } from './gallery-api.ts'
+import { claimsTile } from './job-tiles.ts'
 import type { ImagineView } from './gallery-store.ts'
 import { filterHistory, historyKindCounts, kindCounts, type HistoryFilters } from './imagine-filters.ts'
 import { runGapOf } from './imagine-messages.ts'
@@ -115,8 +116,10 @@ export function useBoardModel({
     [jobs, currentJobIds],
   )
   // An upscale draws on the tile it is replacing rather than claiming one of
-  // its own; every other action still gets a placeholder.
-  const liveJobs = useMemo(() => boardJobs(ownLive), [ownLive])
+  // its own, and a story's preparation job — the one that measures the track's
+  // voice before the shots exist — has nothing to draw yet; every other action
+  // still gets a placeholder (see `claimsTile`).
+  const liveJobs = useMemo(() => boardJobs(ownLive).filter(claimsTile), [ownLive])
   const upscaling = useMemo(() => upscalesInFlight(ownLive), [ownLive])
   /*
    * "Recreate video" in two halves: the scan draws the candidate frames and
