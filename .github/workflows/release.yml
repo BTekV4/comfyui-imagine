@@ -160,8 +160,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $installer = Get-ChildItem "$env:GITHUB_WORKSPACE
-elease\Imagine-*-windows-x64-setup.exe" | Select-Object -First 1
+          $installer = Get-ChildItem "$env:GITHUB_WORKSPACE\release\Imagine-*-windows-x64-setup.exe" | Select-Object -First 1
           $next = Get-ChildItem "$env:RUNNER_TEMP\pkg-next\Imagine-*-windows-x64-setup.exe" | Select-Object -First 1
           if (-not $installer) { throw 'the packaging step produced no installer' }
           if (-not $next) { throw 'the packaging step produced no next-version installer' }
