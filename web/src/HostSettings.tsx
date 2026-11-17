@@ -17,6 +17,7 @@ import css from '../vendor-imagine/client/ImagineSettings.module.css'
 import own from './HostSettings.module.css'
 import { isThinkingLevel, THINKING_DEFAULT, THINKING_FALLBACK } from '../../shared/host-settings.ts'
 import type { HostSettingsPatch as Patch, HostSettingsView as View, ThinkingLevel } from '../../shared/host-settings.ts'
+import type { HostAccessView } from '../../shared/host-access.ts'
 import type { ModelEntry, ModelRoute as Route } from '../../shared/imagine-types.ts'
 import { presetFor, PROVIDER_PRESETS } from '../../shared/provider-presets.ts'
 
@@ -50,6 +51,12 @@ export function HostSettings({ sections = 'all', onPending }: {
   readonly onPending?: (pending: HostPending | undefined) => void
 } = {}) {
   const [view, setView] = useState<View>()
+  /**
+   * What `/api/access` says: the Access card shows the open-studio warning as
+   * hidden, and the button that puts it back. The page hides it from the strip
+   * itself; this side reads the same state.
+   */
+  const [access, setAccess] = useState<HostAccessView>()
   const [draft, setDraft] = useState<Patch>({})
   const [catalog, setCatalog] = useState<string[]>()
   const [filter, setFilter] = useState('')
@@ -62,6 +69,18 @@ export function HostSettings({ sections = 'all', onPending }: {
     }
   }
   useEffect(() => { void load() }, [])
+  /**
+   * The access state, read again after the strip is hidden: the row only
+   * exists while the warning is hidden, so a failure leaves it out.
+   */
+  useEffect(() => {
+    const read = (): void => {
+      void getJson<HostAccessView>('/api/access', 'HTTP').then(setAccess, () => undefined)
+    }
+    read()
+    window.addEventListener('imagine:access-changed', read)
+    return () => { window.removeEventListener('imagine:access-changed', read) }
+  }, [])
 
   const value = <K extends keyof Patch>(key: K): Patch[K] | undefined =>
     (draft[key] ?? (view as Patch | undefined)?.[key])
@@ -117,6 +136,21 @@ export function HostSettings({ sections = 'all', onPending }: {
     } catch (error: unknown) {
       setStatus({ kind: 'error', text: translate('imagine.settings.unsaved', { error: messageOf(error) }) })
       throw error
+    }
+  }
+  /**
+   * Put the open-studio warning back on every device. The hide is a click on
+   * the strip itself, so there is nothing to apply here: this acts at once.
+   */
+  const showBanner = async (): Promise<void> => {
+    setStatus(undefined)
+    try {
+      setAccess(await send<HostAccessView>('/api/access/banner/show', 'POST', {}, 'HTTP'))
+      // The strip above the stage reads the same state.
+      window.dispatchEvent(new Event('imagine:access-changed'))
+      setStatus({ kind: 'ok', text: translate('imagine.access.shownAgain') })
+    } catch (error: unknown) {
+      setStatus({ kind: 'error', text: messageOf(error) })
     }
   }
   // The page's "Apply" always calls the current version, with the current draft.
@@ -349,6 +383,22 @@ export function HostSettings({ sections = 'all', onPending }: {
             onChange={(event) => { set({ password: event.target.value }) }}
           />
         </label>
+        {/*
+          * The warning about an open studio can be hidden from the strip
+          * itself; with the login on the strip is not drawn, so this is the
+          * only place that says it is hidden and undoes it.
+          */}
+        {access?.bannerDismissed === true && !view.requireLogin && (
+          <div className={own.row}>
+            <span className={own.label}>{translate('imagine.access.hidden')}</span>
+            <span className={css.hint}>{translate('imagine.access.hiddenHint')}</span>
+            <div className={own.actions}>
+              <button type="button" className={css.button} onClick={() => { void showBanner() }}>
+                {translate('imagine.access.showAgain')}
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       {/*

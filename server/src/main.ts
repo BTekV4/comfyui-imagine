@@ -38,6 +38,8 @@ import { message, withLanguage } from './messages.ts'
 import { allowOnly, HttpError, languageOf, methods, readBody, readObject, restOf, sendJson } from './route-kit.ts'
 import { createLocalePacks, createLocalePacksRoutes } from './locales.ts'
 import { createHostSettings } from './settings.ts'
+import { createAccessBanner, forgetDismissalWhenLoginMoves } from './access-banner.ts'
+import { createAccessRoutes } from './access-routes.ts'
 import { liveSetupStatus } from './setup-status.ts'
 import { ensureConfig } from './first-run.ts'
 import { configureComfySetup } from '../vendor/tool-comfy/comfy-setup.ts'
@@ -167,6 +169,17 @@ configureComfySetup(() => {
   return { hfToken, autoSetup }
 })
 const now = (): HostSettingsValues => settings.current()
+
+/*
+ * The warning about an open studio can be hidden for the whole studio: one
+ * file beside the other records, read from every device.
+ */
+const accessBanner = await createAccessBanner(dataPath('access-banner.json'))
+/*
+ * A dismissal never outlives a boot with the login on: the studio was closed
+ * in between, and the warning must be back when it opens again.
+ */
+if (now().requireLogin) await accessBanner.show()
 
 /** Providers as the LLM client sees them, with the gateway fields from the settings. */
 const providers = (): Readonly<Record<string, ProviderConfig>> => {
@@ -371,8 +384,16 @@ const own: WebRoute[] = [
       GET: (_req, res) => { sendJson(res, 200, settings.view()) },
       POST: async (req, res) => {
         const patch = await readObject<Parameters<typeof settings.save>[0]>(req)
+        const loginWas = now().requireLogin
         try {
           const view = await settings.save(patch)
+          /*
+           * The login switch ended the situation in which the warning was
+           * hidden (or started one): its dismissal is forgotten, and the
+           * strip is back on every device the next time the studio is open.
+           */
+          await forgetDismissalWhenLoginMoves(accessBanner, loginWas, view.requireLogin)
+            .catch((error: unknown) => { console.warn('[imagine] access-banner:', error) })
           applyModels()
           // A password change bumped the session generation: this browser gets
           // a cookie for the new one, every other browser gets a 401.
@@ -417,24 +438,20 @@ const own: WebRoute[] = [
     }),
   },
   { kind: 'exact', path: '/api/health', handler: (_req, res) => { sendJson(res, 200, { ok: true }) } },
-  {
-    /*
-     * What the page needs to warn the owner: a studio listening beyond loopback
-     * with no password is open to the network. The desktop app is always on
-     * 127.0.0.1, so it never sees the warning; `/api/access` itself needs no
-     * login, or the page could not draw it before the form.
-     */
-    kind: 'exact',
-    path: '/api/access',
-    handler: (_req, res) => {
-      sendJson(res, 200, {
-        loginRequired: now().requireLogin,
-        passwordSet: settings.view().passwordSet,
-        exposed: exposedToNetwork,
-        listenHost: listenOn.host,
-      })
-    },
-  },
+  /*
+   * What the page needs to warn the owner: a studio listening beyond loopback
+   * with no password is open to the network. The desktop app is always on
+   * 127.0.0.1, so it never sees the warning; `/api/access` itself needs no
+   * login, or the page could not draw it before the form. With it come the two
+   * routes that hide the warning for the whole studio and bring it back.
+   */
+  ...createAccessRoutes({
+    banner: accessBanner,
+    listenHost: listenOn.host,
+    exposed: exposedToNetwork,
+    loginRequired: () => now().requireLogin,
+    passwordSet: () => settings.view().passwordSet,
+  }),
   { kind: 'exact', path: '/api/trim', handler: createTrimRoute(outputDir) },
   { kind: 'exact', path: '/api/merge', handler: createMergeRoute(outputDir) },
   { kind: 'exact', path: '/api/likes', handler: createLikesRoute(dataPath('comfy', 'likes.json'), outputDir) },

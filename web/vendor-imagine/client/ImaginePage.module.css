@@ -164,8 +164,9 @@
 }
 
 /* A studio listening beyond loopback with no password: a quiet strip that stays
-   above the stage until the owner turns the login on (Settings → Access). It is
-   in the stage's flow, so it pushes the header down instead of covering it. */
+   above the stage until the owner turns the login on (Settings → Access) or
+   hides it for every device, which the settings page can undo. It is in the
+   stage's flow, so it pushes the header down instead of covering it. */
 .accessWarning {
   display: flex;
   align-items: center;
@@ -197,4 +198,9 @@
 
 .accessWarningAction:hover {
   background: color-mix(in srgb, var(--imagine-ink) 10%, transparent);
+}
+
+.accessWarningAction:focus-visible {
+  outline: 2px solid var(--imagine-focus);
+  outline-offset: 2px;
 }

@@ -24,7 +24,8 @@ import { IMAGINE_ASPECTS } from '../../../shared/imagine-media.ts'
 import type { FrameCard } from './FrameExtractor.tsx'
 import type { GalleryItem, ImagineAction } from '../../../shared/imagine-types.ts'
 import type { WorkflowProposal } from '../../../shared/imagine-chat.ts'
-import { getJson } from './http.ts'
+import type { HostAccessView } from '../../../shared/host-access.ts'
+import { getJson, send } from './http.ts'
 import { readDismissedScans, rememberDismissedScan } from './dismissed-scans.ts'
 import { approveImagineSetup, uploadGalleryItem, startMusicClip, type SocialPost } from './gallery-api.ts'
 import { CHAT_DEFAULT, CHAT_OLD_DEFAULT, CHAT_MAX, CHAT_MIN, type ImagineView } from './gallery-store.ts'
@@ -121,13 +122,15 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
   /**
    * What `/api/access` says about who may open this studio: the rail offers
    * "Log out" only when the login is on, and the page warns when a non-loopback
-   * studio has no password. The settings page says when to read it again.
+   * studio has no password. Hiding that warning is one choice for the studio,
+   * so it is written to the host (Settings → Access brings it back). The
+   * settings page says when to read all this again.
    */
-  const [access, setAccess] = useState<{ loginRequired: boolean; passwordSet: boolean; exposed: boolean; listenHost: string }>()
+  const [access, setAccess] = useState<HostAccessView>()
   useEffect(() => {
     let alive = true
     const read = (): void => {
-      void getJson<{ loginRequired: boolean; passwordSet: boolean; exposed: boolean; listenHost: string }>('/api/access', 'HTTP')
+      void getJson<HostAccessView>('/api/access', 'HTTP')
         .then((next) => { if (alive) setAccess(next) }, () => undefined)
     }
     read()
@@ -737,6 +740,15 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
       .finally(() => { location.assign('/login') })
   })
   const onRailClick = useEvent(() => { if (selected !== undefined) setSelected(undefined) })
+  /**
+   * Hide the warning about the open studio, on every device: the host writes
+   * the choice, then every reader of `/api/access` hears about it. The
+   * settings page offers the way back.
+   */
+  const onHideAccessWarning = useEvent(() => {
+    void send<HostAccessView>('/api/access/banner/hide', 'POST', {}, 'HTTP')
+      .then(() => { window.dispatchEvent(new Event('imagine:access-changed')) }, () => undefined)
+  })
   const onCloseDrawer = useEvent(() => { setRailDrawer(false) })
   // From inside a workflow card too: "New generation" is the grid of tools.
   const onNewGeneration = useEvent(() => {
@@ -959,11 +971,19 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
       />
 
       <div className={css.stage}>
-        {access !== undefined && access.exposed && !access.loginRequired && (
+        {access !== undefined && access.exposed && !access.loginRequired && !access.bannerDismissed && (
           <div className={css.accessWarning} role="status">
             <span>{translate('imagine.access.exposed', { host: access.listenHost })}</span>
             <button type="button" className={css.accessWarningAction} onClick={() => { actions.go('settings') }}>
               {translate('imagine.access.openSettings')}
+            </button>
+            <button
+              type="button"
+              className={css.accessWarningAction}
+              title={translate('imagine.access.hide')}
+              onClick={onHideAccessWarning}
+            >
+              {translate('imagine.access.hide')}
             </button>
           </div>
         )}
