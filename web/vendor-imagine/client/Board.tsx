@@ -211,7 +211,7 @@ export const Board = memo(forwardRef<BoardHandle, BoardProps>(function Board(pro
     const newest = newestOf(fresh, id => latest.current.liveById.get(id)?.createdAt ?? 0)
     if (newest === undefined || !offScreen(newest)) return
     setNewMedia(held => ({ count: (held?.count ?? 0) + fresh.length, name: newest }))
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the live ids and the layout
+    // Deliberately keyed on the live ids and the layout, not on every job tick.
   }, [liveKey, rects])
 
   /*
@@ -235,7 +235,7 @@ export const Board = memo(forwardRef<BoardHandle, BoardProps>(function Board(pro
     const newest = newestOf(fresh, name => itemsByName.get(name)?.mtime ?? 0)
     if (newest === undefined || !offScreen(newest)) return
     setNewMedia(held => ({ count: (held?.count ?? 0) + fresh.length, name: newest }))
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reveal reads the session
+    // Deliberately keyed on the project and its visible names: reveal reads the session.
   }, [projectId, visibleNames, rects, session])
 
   const pickedSet = useMemo(() => new Set(picked), [picked])

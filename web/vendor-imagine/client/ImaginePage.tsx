@@ -477,7 +477,7 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
       const kept = state.sources.filter(item => current.itemNames.includes(item.name))
       return kept.length === state.sources.length ? {} : { sources: kept }
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- on the switch only
+    // Deliberately keyed on the project switch: the sources of the old project go.
   }, [projectId])
 
 

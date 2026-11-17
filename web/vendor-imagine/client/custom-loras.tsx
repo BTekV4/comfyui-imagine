@@ -90,7 +90,7 @@ export function useCustomLoras(base: string | undefined, onError?: (message: str
       }
     })()
     return () => { live = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `report` only reaches setters and a ref
+    // Deliberately keyed on `base`: `report` only reaches setters and a ref.
   }, [base])
 
   const write = async (path: string, method: 'POST' | 'PATCH' | 'DELETE', body: unknown): Promise<void> => {

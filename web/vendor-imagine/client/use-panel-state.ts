@@ -180,7 +180,7 @@ export function usePanelState({ view, composer, homeRef, addItems, setNote }: Pa
       if (templatePanel !== undefined) closeTemplate()
     }
     viewSeenRef.current = view
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- on the view only
+    // Deliberately keyed on the view only: the panels close when the page changes.
   }, [view])
 
   const stageInSlot = (spec: WorkflowSpec, slot: WorkflowSlot, item: GalleryItem | undefined): void => {

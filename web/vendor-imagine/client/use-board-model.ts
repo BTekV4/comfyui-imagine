@@ -157,7 +157,7 @@ export function useBoardModel({
   const liveKey = liveJobs.map(job => job.id).join('\n')
   const ids = useMemo(
     () => canvasOrder(visible.map(item => item.name), liveJobs.map(job => job.id)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on liveKey
+    // Deliberately keyed on liveKey, so a job’s progress does not rebuild this.
     [liveKey, visible],
   )
   /*
@@ -178,7 +178,7 @@ export function useBoardModel({
       if (ratio !== undefined) byId[job.id] = ratio
     }
     return byId
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on liveKey
+    // Deliberately keyed on liveKey, so a job’s progress does not rebuild this.
   }, [visible, liveKey])
   /** Which story each delivered shot belongs to; the same map while no story changes. */
   const storyRef = useRef<{ key: string; byFile: ReadonlyMap<string, string> }>({ key: '', byFile: new Map() })
@@ -209,7 +209,7 @@ export function useBoardModel({
     )
     for (const [name, group] of runs) out[name] = storyByFile.has(name) ? group : `r:${group}`
     return out
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on liveKey
+    // Deliberately keyed on liveKey, so a job’s progress does not rebuild this.
   }, [storyByFile, liveKey, visible])
   const rects = useMemo(() => layoutCanvas(ids, saved, ratios, groupOf), [ids, saved, ratios, groupOf])
 
