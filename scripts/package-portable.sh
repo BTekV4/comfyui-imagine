@@ -198,17 +198,25 @@ cd /d "%~dp0"
 set "IMAGINE_CONFIG=%CD%\config.yaml"
 set "IMAGINE_HOME=%CD%\data"
 set "PATH=%CD%\runtime\node;%CD%\runtime\ffmpeg;%PATH%"
+rem The port the config names, read with the bundled Node: the fixed 3090
+rem below made a second copy start (EADDRINUSE) for anyone who changed it.
+set "PORTFILE=%TEMP%\imagine-port-%RANDOM%.txt"
+"runtime\node\node.exe" -e "const y=require('./node_modules/yaml'),fs=require('fs');try{fs.writeFileSync(process.argv[1],String(y.parse(fs.readFileSync('config.yaml','utf8')).port||3090))}catch{fs.writeFileSync(process.argv[1],'3090')}" "%PORTFILE%" >nul 2>&1
+set "PORT="
+set /p PORT=<"%PORTFILE%" 2>nul
+del "%PORTFILE%" >nul 2>&1
+if not defined PORT set "PORT=3090"
 echo.
 echo   Imagine: the browser opens in a few seconds.
 echo   Leave this window open while you use it; close it to stop Imagine.
 echo.
-powershell -NoProfile -Command "try{(Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:3090).StatusCode|Out-Null; exit 0}catch{exit 1}" >nul 2>&1
+powershell -NoProfile -Command "try{(Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:%PORT%).StatusCode|Out-Null; exit 0}catch{exit 1}" >nul 2>&1
 if %errorlevel%==0 (
   echo Imagine is already running: opening the page.
-  start "" http://127.0.0.1:3090
+  start "" http://127.0.0.1:%PORT%
   exit /b 0
 )
-start "" cmd /c "timeout /t 4 >nul & start http://127.0.0.1:3090"
+start "" cmd /c "timeout /t 4 >nul & start http://127.0.0.1:%PORT%"
 "runtime\node\node.exe" dist\server.mjs
 echo.
 echo   Imagine has stopped. Press a key to close.
