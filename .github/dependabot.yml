@@ -1,0 +1,29 @@
+# Monthly, grouped: the studio has few dependencies and many of the updates
+# arrive together anyway. Minor and patch bumps of npm packages and of the
+# actions share one pull request each, so the list stays readable; a major
+# version still gets a pull request of its own, because it can change a build.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch

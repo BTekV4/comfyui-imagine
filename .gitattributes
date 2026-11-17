@@ -1,0 +1,41 @@
+# One checkout style everywhere: the shell scripts and the Node sources are
+# LF even on Windows, while the files Windows runs itself keep CRLF. Binary
+# media is never converted or diffed as text.
+* text=auto
+
+*.sh text eol=lf
+*.mjs text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.css text eol=lf
+*.md text eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.avif binary
+*.mp4 binary
+*.webm binary
+*.mp3 binary
+*.wav binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.gz binary
+*.zip binary
+*.tar.gz binary
+*.AppImage binary
+*.node binary
+*.exe binary
+*.dll binary

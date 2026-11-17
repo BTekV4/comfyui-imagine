@@ -8,11 +8,12 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   tarball:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -52,6 +53,7 @@ jobs:
           # use POSIX separators): 0.1.2. A package that was never started is
           # not attached to a release.
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
     defaults:
       run:
         shell: bash
@@ -96,6 +98,7 @@ jobs:
   # screen before it is attached — a package nobody booted is not a package.
   desktop:
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -127,6 +130,9 @@ jobs:
 
   publish:
     needs: [tarball, portable, desktop]
+    timeout-minutes: 15
+    permissions:
+      contents: write
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v8

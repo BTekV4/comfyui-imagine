@@ -1,0 +1,15 @@
+# Gitleaks' default rules, with two false positives silenced: the generic API
+# key rule reads a translation key such as `labelKey: 'imagine.some.key'` as a
+# secret. Only those two files and only those three field names are exempt, so
+# a real key added there is still found.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Translation keys, not credentials"
+regexTarget = "match"
+paths = [
+  '''shared/imagine-templates\.ts''',
+  '''web/vendor-imagine/client/workflow-specs\.ts''',
+]
+regexes = ['''(?:labelKey|hintKey|placeholderKey): '[^']*' ''']
