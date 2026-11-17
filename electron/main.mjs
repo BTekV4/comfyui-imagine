@@ -23,7 +23,7 @@
  */
 
 import { app, BrowserWindow, Menu, ipcMain, shell } from 'electron'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { get } from 'node:http'
 import { createServer } from 'node:net'
@@ -52,7 +52,17 @@ const PAGE_REPORT_TIMEOUT_MS = 20_000
 /** Past this size the log is rotated when the app starts: nobody reads a folder that only grows. */
 const LOG_MAX_BYTES = 5 * 1024 * 1024
 
+/** Windows: no catchable `SIGTERM`, and a kill that stops one process, not a tree. */
+const WINDOWS = process.platform === 'win32'
+
 app.setName('Imagine')
+/*
+ * Windows groups taskbar buttons, jump lists and notifications by this id, and
+ * the installer gives the shortcut the same one (`appId` in
+ * electron-builder.yml). Without it the icon is the executable's path, and a
+ * second install or an update can end up as a second taskbar icon.
+ */
+if (WINDOWS) app.setAppUserModelId('net.btekv.imagine')
 
 /*
  * Chromium's sandbox needs a setuid helper, and an AppImage is mounted with
@@ -173,6 +183,20 @@ function answers(port) {
   })
 }
 
+/**
+ * The PATH the server gets: the package's ffmpeg first, then the system's.
+ *
+ * ffmpeg and ffprobe are called by name (`media-tools.ts`, `setup-status.ts`),
+ * so the one inside the package wins without the studio knowing a path. On
+ * Windows the separator is `;` and the entries may contain spaces
+ * (`C:\Users\Ada Lovelace\AppData\...`): it is built with `path.delimiter`, not
+ * with a formula that assumes `:`.
+ * @returns the value for `PATH`.
+ */
+function serverPath() {
+  return `${FFMPEG_DIR}${delimiter}${process.env['PATH'] ?? ''}`
+}
+
 /** The environment the server starts with: the program here, the data there. */
 function serverEnv(port) {
   const env = { ...process.env }
@@ -191,7 +215,7 @@ function serverEnv(port) {
   env['IMAGINE_LOCALES_SRC'] = join(PROGRAM, 'locales')
   env['IMAGINE_PLUGINS_SRC'] = join(PROGRAM, 'plugins')
   // ffmpeg and ffprobe are called by name (media-tools.ts): ours come first.
-  env['PATH'] = `${FFMPEG_DIR}${delimiter}${env['PATH'] ?? ''}`
+  env['PATH'] = serverPath()
   return env
 }
 
@@ -392,18 +416,56 @@ function watchServer() {
   })
 }
 
-/** Stop the server and wait for it: the app must not leave one behind. */
+/** Whether this child is still running. */
+function running(child) {
+  return child.exitCode === null && child.signalCode === null
+}
+
+/**
+ * Stop the server and wait for it: the app must not leave one behind.
+ *
+ * POSIX gets `SIGTERM`, which the server handles: the disposers run, the port
+ * closes, a job is stopped. **Windows has no signal a Node process can
+ * receive** — `child.kill()` there is `TerminateProcess`, which runs no handler
+ * — and it stops one process, not a tree, so an ffmpeg a job started would
+ * outlive the window. `taskkill /T /F` stops the server and whatever it
+ * started; the studio writes its files atomically, so nothing is lost, and the
+ * port is free before the app exits. A window killed from outside is covered by
+ * the server's own watchdog (`IMAGINE_PARENT_PID`,
+ * `server/src/parent-watch.ts`), which works the same on both platforms.
+ * @returns a promise that resolves once the process is gone.
+ */
 function stopStudio() {
   const child = server
   server = undefined
-  if (child === undefined || child.exitCode !== null || child.signalCode !== null) return Promise.resolve()
-  return new Promise(done => {
-    const force = setTimeout(() => {
+  if (child === undefined || !running(child)) return Promise.resolve()
+  return new Promise((done) => {
+    let settled = false
+    let force
+    const finish = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(force)
+      done()
+    }
+    child.once('exit', finish)
+    force = setTimeout(() => {
       try { child.kill('SIGKILL') } catch { /* already gone */ }
+      finish()
     }, 5000)
     force.unref()
-    child.once('exit', () => { clearTimeout(force); done() })
-    try { child.kill('SIGTERM') } catch { clearTimeout(force); done() }
+    try {
+      if (WINDOWS) {
+        // `taskkill` ships with Windows; `/T` is the tree, `/F` the force.
+        const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
+        killer.once('error', () => { try { child.kill() } catch { /* already gone */ } })
+        killer.once('exit', () => { if (!running(child)) finish() })
+      } else {
+        child.kill('SIGTERM')
+      }
+    } catch {
+      finish()
+    }
   })
 }
 
@@ -509,6 +571,10 @@ async function pageReport() {
  *
  * `IMAGINE_APP_SELFTEST_CLOSE_MS=<ms>` then closes the window, which is the
  * path that must stop the server: the same code a person's click runs.
+ *
+ * `IMAGINE_APP_SCREENSHOT=<png>` keeps what the window is showing. A script
+ * that only reads the report knows the page drew *something*; the picture is
+ * what a person would have seen, and it is the artifact a CI run attaches.
  */
 async function writeSelfTest() {
   const file = (process.env['IMAGINE_APP_SELFTEST'] ?? '').trim()
@@ -518,6 +584,7 @@ async function writeSelfTest() {
   // after it has fetched its language pack (`web/src/main.tsx`), so this waits
   // for `#root` to have something in it instead of asking once.
   const drawn = await pageReport()
+  const screenshot = await saveScreenshot()
   const report = {
     app: app.getVersion(),
     electron: process.versions.electron,
@@ -530,6 +597,11 @@ async function writeSelfTest() {
     // The page's own report: the window is not blank.
     rootChildren: drawn.rootChildren,
     pageTitle: drawn.pageTitle,
+    // Which ffmpeg the studio will run: the package's own, first on PATH. A
+    // Windows check reads these two to prove the packaged binary is the one a
+    // job gets, on a machine whose own PATH has none at all.
+    ffmpegDir: FFMPEG_DIR,
+    pathHead: serverPath().split(delimiter)[0] ?? '',
     // This process: a script that wants to close the window the way a person
     // does (or kill it, to check the server does not outlive it) must signal
     // this one, not the AppImage runtime in front of it.
@@ -537,6 +609,7 @@ async function writeSelfTest() {
     serverPid: server?.pid ?? null,
     data: DATA,
     log: LOG_FILE,
+    screenshot: screenshot ?? '',
     at: new Date().toISOString(),
   }
   try {
@@ -551,6 +624,35 @@ async function writeSelfTest() {
       log('self-test: closing the window')
       win?.close()
     }, closeAfter).unref()
+  }
+}
+
+/**
+ * `IMAGINE_APP_SCREENSHOT=<png>`: what the window is showing right now.
+ *
+ * `webContents.capturePage()` is used instead of a screen grab because it needs
+ * no desktop and no compositor — it works on a headless Linux runner and on a
+ * Windows runner's session alike — and because what it captures is the page the
+ * studio drew, which is the thing a screenshot is meant to prove.
+ * @returns the file written, or undefined when there is nothing to write.
+ */
+async function saveScreenshot() {
+  const target = (process.env['IMAGINE_APP_SCREENSHOT'] ?? '').trim()
+  if (target === '') return undefined
+  const file = resolve(target)
+  if (win === undefined || win.isDestroyed()) return undefined
+  try {
+    const image = await win.webContents.capturePage()
+    if (image.isEmpty()) {
+      log(`self-test: the screenshot of ${file} is empty`)
+      return undefined
+    }
+    writeFileSync(file, image.toPNG())
+    log(`self-test: screenshot written to ${file}`)
+    return file
+  } catch (error) {
+    log(`self-test: could not write the screenshot ${file}: ${String(error)}`)
+    return undefined
   }
 }
 
@@ -677,8 +779,14 @@ if (!single) {
     process.on(signal, () => { app.quit() })
   }
   process.on('exit', () => {
-    if (server !== undefined && server.exitCode === null && server.signalCode === null) {
-      try { server.kill('SIGKILL') } catch { /* already gone */ }
+    if (server === undefined || !running(server)) return
+    try {
+      // Last resort, and nothing asynchronous can run here: Windows gets the
+      // same tree kill `stopStudio` uses, POSIX the signal it always got.
+      if (WINDOWS) spawnSync('taskkill', ['/PID', String(server.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
+      else server.kill('SIGKILL')
+    } catch {
+      // The process is already gone.
     }
   })
 }

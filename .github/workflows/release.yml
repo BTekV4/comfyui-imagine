@@ -128,8 +128,63 @@ jobs:
             release/Imagine-*-linux-x64.AppImage.sha256
           if-no-files-found: error
 
+  # The Windows installer: built by electron-builder on Windows and **installed
+  # on Windows** before it is attached — silently, started, upgraded from the
+  # previous version, and uninstalled, exactly as `ci.yml` does it.
+  windows-desktop:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Build
+        run: npm run build
+      - name: The installer
+        run: OUT_DIR=release bash scripts/package-electron.sh windows-x64
+      # The upgrade the check installs over this one: the same tag's tree built
+      # as the next patch version, which is what an update will be.
+      - name: The next version (for the upgrade check)
+        run: |
+          set -euo pipefail
+          NEXT=$(node -e "const v = require('./package.json').version.split('.'); v[2] = String(Number(v[2]) + 1); console.log(v.join('.'))")
+          echo "the next version for the upgrade check: $NEXT"
+          OUT_DIR="$(cygpath -u "$RUNNER_TEMP")/pkg-next" VERSION="$NEXT" bash scripts/package-electron.sh windows-x64
+      - name: Install it, run it, upgrade it, uninstall it
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Get-ChildItem "$env:GITHUB_WORKSPACE
+elease\Imagine-*-windows-x64-setup.exe" | Select-Object -First 1
+          $next = Get-ChildItem "$env:RUNNER_TEMP\pkg-next\Imagine-*-windows-x64-setup.exe" | Select-Object -First 1
+          if (-not $installer) { throw 'the packaging step produced no installer' }
+          if (-not $next) { throw 'the packaging step produced no next-version installer' }
+          ./scripts/check-windows.ps1 -Installer $installer.FullName -UpgradeTo $next.FullName
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-windows
+          path: |
+            release/Imagine-*-windows-x64-setup.exe
+            release/Imagine-*-windows-x64-setup.exe.sha256
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: desktop-windows-window
+          path: |
+            ${{ runner.temp }}/imagine-windows-check/*.png
+            ${{ runner.temp }}/imagine-windows-check/*.json
+            ${{ runner.temp }}/imagine-windows-check/imagine.log
+          if-no-files-found: warn
+
   publish:
-    needs: [tarball, portable, desktop]
+    needs: [tarball, portable, desktop, windows-desktop]
     timeout-minutes: 15
     permissions:
       contents: write
@@ -147,16 +202,27 @@ jobs:
           fail_on_unmatched_files: true
           body: |
             **Choose your system, download, double-click.** Node and ffmpeg are
-            inside the portable packages: nothing else to install.
+            inside the packages: nothing else to install.
 
             | Your system | Download | Then |
             |---|---|---|
             | Linux (64-bit) | `Imagine-<version>-linux-x64.AppImage` | double-click it: imagine opens in its own window |
             | Linux, or a folder you keep | `Imagine-<version>-linux-x64.zip` | extract, run **Imagine.sh** |
+            | Windows (64-bit) | `Imagine-<version>-windows-x64-setup.exe` | double-click it: the installer puts Imagine on the Desktop and in the Start menu, then opens it |
             | macOS, or a server | `comfyui-imagine-<version>.tar.gz` | `tar xzf … && ./install.sh` |
 
-            A Windows package is next: it is being tested on Windows before it
-            ships (a package that was never started is not attached to a release).
+            The Windows installer is **per user**: it does not ask for an
+            administrator, puts the program in `%LOCALAPPDATA%\Programs\Imagine`
+            and your data in `%APPDATA%\Imagine`. Uninstalling it (Windows
+            Settings → **Apps**) removes the program and its shortcuts and
+            leaves your configuration, projects and media where they are;
+            installing a new version over the old one does the same thing the
+            other way round.
+
+            **It is not signed yet**, so the first time Windows SmartScreen says
+            *"Windows protected your PC"*: click **More info** (or "Ulteriori
+            informazioni") and then **Run anyway** ("Esegui comunque"). A
+            certificate is a purchase, not a code change.
 
             The Linux AppImage is the studio as an **app**: its own window, its
             own icon in the menu, no browser and no terminal. Closing the window

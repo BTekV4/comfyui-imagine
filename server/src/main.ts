@@ -397,13 +397,22 @@ const own: WebRoute[] = [
     },
   },
   {
-    // systemd's Restart=always brings the process back; the reply goes out first.
+    /*
+     * systemd's Restart=always, or the desktop app's own supervisor, brings the
+     * process back; the reply goes out first.
+     *
+     * The stop is `shutdown()` and not a signal to ourselves: on Windows
+     * `process.kill(pid, 'SIGTERM')` is `TerminateProcess`, which runs no
+     * handler — the disposers, the port close and the job cancellations would
+     * all be skipped, and the page would see a studio that vanished. Calling
+     * the same graceful stop the signal runs on POSIX works everywhere.
+     */
     kind: 'exact',
     path: '/api/restart',
     handler: methods({
       POST: (_req, res) => {
         sendJson(res, 200, { ok: true })
-        setTimeout(() => { process.kill(process.pid, 'SIGTERM') }, 300)
+        setTimeout(shutdown, 300)
       },
     }),
   },

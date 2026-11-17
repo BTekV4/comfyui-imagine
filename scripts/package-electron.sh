@@ -1,20 +1,25 @@
 #!/usr/bin/env bash
 #
-# Imagine's desktop app: the studio in a window, as an AppImage.
+# Imagine's desktop app: the studio in a window, as an AppImage on Linux and as
+# a per-user installer on Windows.
 #
 #   scripts/package-electron.sh              → release/Imagine-<ver>-linux-x64.AppImage
-#   scripts/package-electron.sh windows-x64  → the same tree, for the Windows installer
+#   scripts/package-electron.sh windows-x64  → release/Imagine-<ver>-windows-x64-setup.exe
 #
 # It replaces `scripts/package-appimage.sh`, which shipped a bash launcher with
 # `Terminal=true` that copied the app into the user's folder on the first run
 # and never updated it. Here the program stays inside the package (read-only)
 # and only the data (config, media, projects, plugins) lives in the user's
-# folder, so an update is "download the new file".
+# folder, so an update is "download the new file" — on Windows, "run the new
+# installer over the old one".
 #
 # The program tree is the **portable package's** tree — the same `dist/`, the
 # same graphs and language packs, the same static ffmpeg — so the two shapes
 # cannot drift apart. Its runtime Node is not used: Electron 45 carries Node
-# 24, the version `engines` asks for, and the server runs on that.
+# 24, the version `engines` asks for, and the server runs on that. A Windows
+# build runs this script from Git Bash on a Windows runner (`.github/workflows`),
+# which is why every path is quoted and the one argument electron-builder
+# receives as a path is handed to it in native form.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VERSION=${VERSION:-$(node -p "require('./package.json').version")}
@@ -25,8 +30,8 @@ say() { printf '%s\n' "$*"; }
 die() { printf 'electron: %s\n' "$*" >&2; exit 3; }
 
 case "$TARGET" in
-  linux-x64) PLATFORM=linux; ARCH=x64 ;;
-  windows-x64) PLATFORM=win; ARCH=x64 ;;
+  linux-x64) PLATFORM=linux; ARCH=x64; FFMPEG_BIN=ffmpeg ;;
+  windows-x64) PLATFORM=win; ARCH=x64; FFMPEG_BIN=ffmpeg.exe ;;
   *) die "unknown platform: $TARGET (linux-x64 | windows-x64)" ;;
 esac
 
@@ -40,7 +45,7 @@ fi
 # 1. The program tree. It is the portable package's: built here when a release
 #    has not built it already, so this script is usable on its own.
 TREE="$OUT/Imagine-$VERSION-$TARGET"
-if [ ! -d "$TREE/dist" ] || [ ! -x "$TREE/runtime/ffmpeg/ffmpeg" ]; then
+if [ ! -d "$TREE/dist" ] || [ ! -x "$TREE/runtime/ffmpeg/$FFMPEG_BIN" ]; then
   say "program: building the portable tree ($TARGET)"
   OUT_DIR="$OUT" bash scripts/package-portable.sh "$TARGET" >/dev/null
 fi
@@ -97,7 +102,17 @@ rm -rf "$OUT/electron"
 # `-c.directories.output` because the configuration names `release/electron`
 # (relative to the project) and a release may pass another OUT_DIR: with the
 # output left to the file, the tree lands where this script does not look.
-BUILDER_ARGS=(--config electron-builder.yml --publish never "--$PLATFORM" "--$ARCH" "-c.directories.output=$OUT/electron")
+#
+# A Windows runner runs this under Git Bash, whose argument handling rewrites
+# `/`-separated paths on the way to a native program: `-c.directories.output`
+# arrives as `C:/…` (sometimes as a broken mix), and electron-builder then
+# writes somewhere else. The output folder is therefore handed over in the
+# native form; `cygpath` exists exactly where the rewriting does.
+OUTPUT="$OUT/electron"
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) OUTPUT=$(cygpath -w "$OUTPUT") ;;
+esac
+BUILDER_ARGS=(--config electron-builder.yml --publish never "--$PLATFORM" "--$ARCH" "-c.directories.output=$OUTPUT")
 if [ "$PLATFORM" = linux ]; then
   npx --no-install electron-builder "${BUILDER_ARGS[@]}" --dir
 else
@@ -179,10 +194,10 @@ fi
 # 6. The artifact and its digest, named the way the release notes say.
 case "$TARGET" in
   linux-x64)   BUILT="$OUT/electron/Imagine-$VERSION-linux-x64.AppImage"; WANTED="$OUT/Imagine-$VERSION-$TARGET.AppImage" ;;
-  windows-x64) BUILT="$OUT/electron/Imagine-$VERSION-windows-$ARCH.exe";    WANTED="$OUT/Imagine-$VERSION-$TARGET.exe" ;;
+  windows-x64) BUILT="$OUT/electron/Imagine-$VERSION-windows-$ARCH-setup.exe"; WANTED="$OUT/Imagine-$VERSION-$TARGET-setup.exe" ;;
 esac
 [ -f "$BUILT" ] || die "no artifact at $BUILT"
-mv -- "$BUILT" "$WANTED"
+if [ "$BUILT" != "$WANTED" ]; then mv -- "$BUILT" "$WANTED"; fi
 # electron-builder's leftovers (the unpacked tree, update metadata for a feed
 # nobody runs here) are not part of the package.
 rm -rf -- "$OUT/electron"

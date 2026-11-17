@@ -57,26 +57,27 @@ it: node packs at the version this studio was tested with, weights checked file
 by file. Nothing is downloaded before you say yes, and everything can be
 declined — the action then says what it would have needed.
 
-**Download for your system, extract, double-click.** The portable packages carry
-Node and ffmpeg inside, so there is nothing to install first:
+**Download for your system and double-click.** Node and ffmpeg are inside the
+packages, so there is nothing to install first:
 
 | Your system | Download | Then |
 |---|---|---|
+| **Windows** (64-bit), the app | `Imagine-<version>-windows-x64-setup.exe` | double-click it: the installer puts Imagine on the Desktop and in the Start menu, then opens it |
 | **Linux** (64-bit), one app | `Imagine-<version>-linux-x64.AppImage` | double-click it: Imagine opens in its own window |
 | **Linux**, a folder you keep | `Imagine-<version>-linux-x64.zip` | extract it, run **Imagine.sh** (`bash Imagine.sh`, or double-click it) |
 | **macOS**, or a server | `comfyui-imagine-<version>.tar.gz` | `tar xzf … && cd … && ./install.sh` |
 
-A **Windows** package is next: it is being tested on Windows before it ships
-(the runner runs the test suite there, and the package is booted before it is
-attached to a release) — the launcher is already in the repository, as
-`scripts/package-portable.sh windows-x64`.
+The Windows installer is **per user** (no administrator password), keeps your
+data in `%APPDATA%\Imagine`, and is **not signed yet**: the first time,
+Windows shows a warning — **More info → Run anyway** clears it, see
+[The app (Windows)](#the-app-windows).
 
-The launcher opens the browser by itself, and a second double-click just
-reopens the page instead of starting a second copy. On the first start there is
-**no configuration to write**: the studio creates one (ComfyUI on
-`127.0.0.1:8188`), and the home page's **first-run card** says what is still
-missing — ComfyUI not answering, no text model, no ffmpeg — with the setting
-that fixes each row. The ComfyUI address and the text model are set from that
+In the Linux and macOS zips the launcher opens the browser by itself, and a
+second double-click just reopens the page instead of starting a second copy.
+On the first start there is **no configuration to write**: the studio creates
+one (ComfyUI on `127.0.0.1:8188`), and the home page's **first-run card** says
+what is still missing — ComfyUI not answering, no text model, no ffmpeg — with
+the setting that fixes each row. The ComfyUI address and the text model are set from that
 card or from **Settings**.
 
 That is the short version; [Install](#install) has the macOS and server paths,
@@ -266,13 +267,51 @@ libfuse.so.2"*: run it as
 `./Imagine-<version>-linux-x64.AppImage --appimage-extract-and-run`, or use the
 zip, which needs nothing.
 
+### The app (Windows)
+
+`Imagine-<version>-windows-x64-setup.exe` installs Imagine for the user who
+runs it: **no administrator prompt and no folder to choose**. Double-click it,
+wait for the bar and leave **Run Imagine** checked — the window opens. There is
+an icon on the Desktop and one in the Start menu, and Imagine appears in
+**Settings → Apps → Installed apps** (Windows 10: **Apps & features**), where
+the same entry uninstalls it.
+
+**The first time, Windows will be suspicious.** The installer is not signed —
+a code-signing certificate is a purchase, not a line of code — so SmartScreen
+shows *"Windows protected your PC"*. Click **More info** (Italian: *Ulteriori
+informazioni*) under the message, then **Run anyway** (*Esegui comunque*). It
+asks once per downloaded file; an *"Unknown publisher"* line under the
+installer's name is the same thing, and it is why the installer is checked by CI
+and its `sha256` published beside it.
+
+The program and your data are separate, exactly as on Linux:
+
+| What | Where |
+|---|---|
+| the program — replaced, never edited | `%LOCALAPPDATA%\Programs\Imagine` |
+| `config.yaml`, the media, the projects, the installed plugins and languages | `%APPDATA%\Imagine` |
+| the log, rotated at 5 MB | `%APPDATA%\Imagine\logs\imagine.log` |
+
+Installing a new version **over** the old one replaces the program and finds the
+data where it was. Uninstalling removes the program, the shortcuts and the entry
+in *Installed apps* and **leaves `%APPDATA%\Imagine` alone** — delete that
+folder by hand only if you want an empty studio. `IMAGINE_DATA=<folder>` puts
+everything somewhere else.
+
+**ffmpeg and ffprobe are inside the package** (`resources\ffmpeg`) and are used
+before anything else on `PATH`; Node is the one Electron carries. There is
+nothing else to install: no Node, no ffmpeg, no terminal. The window behaves
+like the Linux one — one instance at a time, closing it stops the studio, the
+server's failures are shown in the window, and **File → Restart studio** brings
+it back without closing the window.
+
 ### The portable package (Linux)
 
 `Imagine-<version>-linux-x64.zip` is the studio with **Node 24** and a static
-**ffmpeg** beside it, plus `Imagine.sh`. Windows and macOS launchers are written
-in `scripts/package-portable.sh` (`windows-x64`, `macos-arm64`) but they ship
-only once they have been run on their platform: a package nobody booted is not
-a package.
+**ffmpeg** beside it, plus `Imagine.sh`. Windows is the installer above, not a
+zip; the zip's Windows launcher in `scripts/package-portable.sh` stays a
+development tool. The macOS launcher ships only once it has been run on a Mac:
+a package nobody booted is not a package.
 
 Nothing is asked in a terminal: the server writes `config.yaml` on its first
 start, from `config.example.yaml` shipped beside it, with ComfyUI on
@@ -360,10 +399,11 @@ the page into `dist/web`. Each part also builds alone: `npm run build:server`,
 
 ### Updating
 
-Replace the folder with the new release's tarball, or `git pull` in a source
-checkout, then `npm install` (source only), `npm run build` (source only) and a
-restart. `config.yaml`, `<data>` and your model weights are outside all of it
-and stay where they are. The plugins you installed are brought up to the new
+Download the new installer and run it over the installed one (Windows), replace
+the AppImage file (Linux), or replace the folder with the new release's tarball,
+or `git pull` in a source checkout, then `npm install` (source only), `npm run
+build` (source only) and a restart. `config.yaml`, `<data>` and your model
+weights are outside all of it and stay where they are. The plugins you installed are brought up to the new
 version at the next start (the old files stay beside them as
 `*.bak-<time>-update`; their settings are never touched).
 

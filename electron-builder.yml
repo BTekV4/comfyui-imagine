@@ -58,26 +58,43 @@ linux:
 # passes `--no-sandbox`, see the script) and AppImageKit's runtime glued in
 # front. Nothing here builds one, which is why there is no `appImage:` section.
 
-# Windows. NOT built yet: the installer has never been started on Windows, and
-# a package nobody booted is not attached to a release. Turning it on is the
-# `target` line below plus `npm run package:win` (or `--win` in the release
-# workflow) — everything else (icon, shortcut, install folder, artifact name)
-# is already written.
+# Windows: one installer, double-clicked by somebody who has never opened a
+# terminal. It installs for the current user — no administrator prompt, no
+# folder to choose — puts an icon on the Desktop and in the Start menu, adds
+# itself to "Apps & features" and leaves %APPDATA%\Imagine alone when it is
+# removed. `npm run package:win` (scripts/package-electron.sh windows-x64)
+# builds it; CI installs, starts and uninstalls it before a release attaches it.
 win:
-  target: []
-  # target:
-  #   - nsis
+  target:
+    - nsis
   icon: icon.png
   executableName: Imagine
-  artifactName: Imagine-${version}-windows-${arch}.exe
+  # The file a person downloads: Imagine-0.2.0-windows-x64-setup.exe.
+  artifactName: Imagine-${version}-windows-${arch}-setup.exe
 
 nsis:
+  # The wizard: a progress window and a "Run Imagine" checkbox, nothing else.
   oneClick: false
+  # Per user: %LOCALAPPDATA%\Programs\Imagine, its uninstall entry in HKCU, and
+  # no UAC prompt on a normal account.
   perMachine: false
-  allowToChangeInstallationDirectory: true
+  # Never ask for elevation — not even the "install for all users" option, so
+  # the installer cannot turn into an administrator prompt halfway through.
+  allowElevation: false
+  # The folder is not a question this app should ask: the program goes where
+  # Windows puts per-user programs, and the user's own files live elsewhere.
+  allowToChangeInstallationDirectory: false
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Imagine
-  # Install over the previous version instead of beside it: the data folder in
-  # %APPDATA%\Imagine is what carries the projects and the media forward.
+  # The page skips the "for all users / only for me" choice: per-user is the
+  # only mode, and two radio buttons that say so are a question with one answer.
+  include: electron/installer.nsh
+  # Install over the previous version instead of beside it (the NSIS upgrade
+  # path), and keep %APPDATA%\Imagine on uninstall: that folder is the
+  # projects, the media, the plugins and config.yaml, not the program.
   deleteAppDataOnUninstall: false
+  # No certificate yet: the installer is unsigned, and Windows says so the
+  # first time (see README → SmartScreen). Signing needs a paid certificate and
+  # is a decision of the release owner.
+  runAfterFinish: true

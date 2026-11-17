@@ -43,12 +43,14 @@ jobs:
         env:
           IMAGINE_SMOKE_REQUIRE_FFMPEG: '1'
 
-  # Windows is where most people who use ComfyUI are, and it had never been
-  # tested: here the types, the tests, the build and the boot run on the
-  # packaging platform itself.
+  # Windows is where most people who use ComfyUI are: here the types, the
+  # tests, the build and the boot run on the packaging platform itself, and the
+  # **installer** is built and really installed — silently, started, closed,
+  # upgraded and uninstalled. `scripts/check-windows.ps1` is the counterpart of
+  # `check-appimage.sh`: a package nobody booted is not a package.
   windows:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     defaults:
       run:
         shell: bash
@@ -74,6 +76,49 @@ jobs:
         run: node scripts/smoke-server.mjs
         env:
           IMAGINE_SMOKE_REQUIRE_FFMPEG: '1'
+      # The installer the release attaches, built by electron-builder on the
+      # platform it installs on.
+      - name: Package the Windows installer
+        run: OUT_DIR="$(cygpath -u "$RUNNER_TEMP")/pkg" bash scripts/package-electron.sh windows-x64
+      # The update a real version does needs two of them: the same commit built
+      # as the next patch version, installed over this one by the check.
+      - name: Package the next version (for the upgrade check)
+        run: |
+          set -euo pipefail
+          NEXT=$(node -e "const v = require('./package.json').version.split('.'); v[2] = String(Number(v[2]) + 1); console.log(v.join('.'))")
+          echo "the next version for the upgrade check: $NEXT"
+          OUT_DIR="$(cygpath -u "$RUNNER_TEMP")/pkg-next" VERSION="$NEXT" bash scripts/package-electron.sh windows-x64
+      # Install it the way a person does (double-click → silent here), start
+      # the installed exe, look at the window, restart the studio, upgrade,
+      # uninstall — see the script for what each step proves.
+      - name: Install it, run it, upgrade it, uninstall it
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Get-ChildItem "$env:RUNNER_TEMP\pkg\Imagine-*-windows-x64-setup.exe" | Select-Object -First 1
+          $next = Get-ChildItem "$env:RUNNER_TEMP\pkg-next\Imagine-*-windows-x64-setup.exe" | Select-Object -First 1
+          if (-not $installer) { throw 'the packaging step produced no installer' }
+          if (-not $next) { throw 'the packaging step produced no next-version installer' }
+          ./scripts/check-windows.ps1 -Installer $installer.FullName -UpgradeTo $next.FullName
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: windows-installer
+          path: |
+            ${{ runner.temp }}/pkg/Imagine-*-windows-x64-setup.exe
+            ${{ runner.temp }}/pkg/Imagine-*-windows-x64-setup.exe.sha256
+            ${{ runner.temp }}/pkg-next/Imagine-*-windows-x64-setup.exe
+            ${{ runner.temp }}/pkg-next/Imagine-*-windows-x64-setup.exe.sha256
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: windows-window
+          path: |
+            ${{ runner.temp }}/imagine-windows-check/*.png
+            ${{ runner.temp }}/imagine-windows-check/*.json
+            ${{ runner.temp }}/imagine-windows-check/imagine.log
+          if-no-files-found: warn
 
   # The desktop app (Electron) is built and **started without a screen**: the
   # check is not "the process is alive" but "the window loaded the studio".

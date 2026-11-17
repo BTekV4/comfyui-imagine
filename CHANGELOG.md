@@ -34,6 +34,22 @@ versions follow [semantic versioning](https://semver.org/).
   that a second launch does not start a second studio, and that closing the
   window leaves no server process. CI runs it on every push; the release runs it
   before attaching the file.
+- **A Windows installer.** `Imagine-<version>-windows-x64-setup.exe` installs
+  Imagine for the user who runs it: per user, no administrator prompt, no folder
+  to choose, icons on the Desktop and in the Start menu, an entry in *Installed
+  apps* whose uninstall keeps `%APPDATA%\Imagine`, and an update that replaces
+  the program in place. ffmpeg and ffprobe are inside the package
+  (`resources\ffmpeg`) and first on `PATH`; Node is the one Electron carries.
+  The installer is **unsigned** for now, so the first launch goes through
+  SmartScreen (*More info → Run anyway*).
+- `scripts/check-windows.ps1`: installs the installer silently, starts the
+  installed program, checks the window (`#root` drawn, screenshot) and the
+  packaged ffmpeg, edits a workflow through the API to see the copy land in
+  `%APPDATA%\Imagine\data\workflows`, restarts the studio, launches it twice,
+  closes the window (no server left), uninstalls (data kept) and installs the
+  next version over the previous one. CI runs it on `windows-latest` on every
+  push, with the screenshot as an artifact; the release runs it before attaching
+  the file.
 
 ### Changed
 
@@ -41,10 +57,10 @@ versions follow [semantic versioning](https://semver.org/).
   (`server/src/boot-env.ts`): a packaged app names its read-only program folder
   and the free loopback port it reserved, without rewriting `config.yaml` on
   every start. Every other installation boots exactly as before.
-- `scripts/package-appimage.sh` is gone: `scripts/package-electron.sh` builds the
-  AppImage with electron-builder, and the same tree is what a Windows NSIS
-  installer will pack (`electron-builder.yml`; the target is one line away and
-  deliberately off).
+- `scripts/package-electron.sh` builds the AppImage with electron-builder, and
+  the same tree is what the Windows NSIS installer packs (`electron-builder.yml`,
+  `nsis`): per-user install, Desktop and Start menu shortcuts, no elevation, and
+  no deletion of `%APPDATA%\Imagine` on uninstall.
 
 ## 0.1.2 — 2026-11-16
 
