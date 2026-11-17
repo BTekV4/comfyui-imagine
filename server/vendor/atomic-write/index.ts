@@ -12,9 +12,9 @@
  */
 
 import { randomBytes } from 'node:crypto'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { setTimeout as delay } from 'node:timers/promises'
+import { renameWithRetry } from '../retry-fs/index.ts'
 
 /**
  * Filesystem options for {@link writeFileAtomic}; `mode` is required so the
@@ -43,10 +43,9 @@ export interface WriteFileAtomicOptions {
  * race. The rename also replaces a symlinked target itself instead of writing
  * through to its referent, and the same-directory sibling keeps the rename on
  * one filesystem. On failure the temp file is removed and the failure
- * rethrown. Crash durability (fsync) is out of scope. On Windows a rename
- * over an existing file can fail with EPERM/EBUSY while a virus scanner or the
- * search indexer has the old one open for a moment: that error is retried a
- * few times, as `write-file-atomic` does upstream.
+ * rethrown. Crash durability (fsync) is out of scope. The rename goes
+ * through `retry-fs`, which retries the EPERM/EBUSY a virus scanner or the
+ * search indexer causes on Windows for a moment.
  * @param filename - final path receiving the content.
  * @param content - complete next file content.
  * @param options - permission bits for the replacement inode.
@@ -59,39 +58,10 @@ export async function writeFileAtomic(filename: string, content: string | Uint8A
   const temp = `${filename}.${randomBytes(6).toString('hex')}.tmp`
   try {
     await writeFile(temp, content, { mode: options.mode, flag: 'wx' })
-    await renameOverExisting(temp, filename)
+    await renameWithRetry(temp, filename)
   } catch (error) {
     await rm(temp, { force: true })
     throw error
-  }
-}
-
-/** How many times a Windows rename blocked by a scanner or the indexer is tried. */
-const RENAME_ATTEMPTS = 10
-/** The pause before the first retry; each following one waits a little longer. */
-const RENAME_BACKOFF_MS = 20
-
-/**
- * A rename over an existing file, with the retry Windows needs.
- *
- * `MoveFileEx` (which Node's `rename` uses) answers EPERM or EBUSY when
- * another process holds the destination open without delete sharing: virus
- * scanners and the search indexer do this for a few milliseconds after a file
- * is written. Everywhere else the error is a real one and is thrown at once.
- * @param from - the temporary file just written.
- * @param to - the file it replaces.
- */
-async function renameOverExisting(from: string, to: string): Promise<void> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      await rename(from, to)
-      return
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException | undefined)?.code
-      const transient = process.platform === 'win32' && (code === 'EPERM' || code === 'EACCES' || code === 'EBUSY')
-      if (!transient || attempt >= RENAME_ATTEMPTS) throw error
-      await delay(RENAME_BACKOFF_MS * (attempt + 1))
-    }
   }
 }
 

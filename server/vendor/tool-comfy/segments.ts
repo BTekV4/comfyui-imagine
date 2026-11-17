@@ -16,7 +16,8 @@
  * @module tool-comfy/segments
  */
 
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { renameWithRetry, rmWithRetry } from '../retry-fs/index.ts'
 import { extname, join } from 'node:path'
 import type { ImagineHost } from '../../src/host.ts'
 import { message } from '../../src/messages.ts'
@@ -178,18 +179,18 @@ async function analyzeSegments(ctx: ImagineHost, outputDir: string, photo: strin
     await ctx.comfy.fetchMediaTo(indexRef, nodeIndex)
     const index = parseNodeIndex(await readFile(nodeIndex, 'utf8'), photo, sight.model)
     if (index === undefined) throw new Error(message('segments.noIndex'))
-    await rm(nodeIndex)
+    await rmWithRetry(nodeIndex)
     const wanted = new Set(index.segments.flatMap(segment => [segment.mask, segment.cut]))
     // Two PNGs per segment, up to 40 concepts times their count: one request
     // at a time made the download the slowest step after the vision pass.
     await eachLimited(run.media.filter(ref => wanted.has(ref.filename)), DOWNLOAD_PARALLEL,
       async (ref) => { await ctx.comfy.fetchMediaTo(ref, join(scratch, ref.filename)) })
     await writeFile(join(scratch, INDEX_FILE), JSON.stringify(index))
-    await rm(dir, { recursive: true, force: true })
-    await rename(scratch, dir)
+    await rmWithRetry(dir, { recursive: true, force: true })
+    await renameWithRetry(scratch, dir)
     return index
   } catch (error: unknown) {
-    await rm(scratch, { recursive: true, force: true }).catch(() => undefined)
+    await rmWithRetry(scratch, { recursive: true, force: true }).catch(() => undefined)
     throw error
   }
 }

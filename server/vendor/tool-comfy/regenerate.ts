@@ -18,7 +18,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { unlink } from 'node:fs/promises'
+import { unlinkWithRetry } from '../retry-fs/index.ts'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -276,6 +276,6 @@ async function seenPrompt(
     console.warn(`[imagine] regenerate detail: the frame could not be prepared or read, the refiner starts from the neutral sentence: ${error instanceof Error ? error.message : String(error)}`)
     return undefined
   } finally {
-    await unlink(frame).catch(() => undefined)
+    await unlinkWithRetry(frame).catch(() => undefined)
   }
 }

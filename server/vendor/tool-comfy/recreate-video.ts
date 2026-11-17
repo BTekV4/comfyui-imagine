@@ -14,7 +14,7 @@
  * @module tool-comfy/recreate-video
  */
 
-import { unlink } from 'node:fs/promises'
+import { unlinkWithRetry } from '../retry-fs/index.ts'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ImagineHost } from '../../src/host.ts'
@@ -154,7 +154,7 @@ async function contactSheet(clip: string, duration: number, stamp: string): Prom
       '-map', '[sheet]', '-frames:v', '1', out,
     ], 120_000)
   } finally {
-    await Promise.all(moments.map(async ({ tile }) => unlink(tile).catch(() => undefined)))
+    await Promise.all(moments.map(async ({ tile }) => unlinkWithRetry(tile).catch(() => undefined)))
   }
 }
 
@@ -224,7 +224,7 @@ export async function readReferenceClip(
      */
     return { frame: pinHair(`${activePersona().identity} ${body}`), ...motion === undefined ? {} : { motion } }
   } finally {
-    await unlink(sheet).catch(() => undefined)
+    await unlinkWithRetry(sheet).catch(() => undefined)
   }
 }
 

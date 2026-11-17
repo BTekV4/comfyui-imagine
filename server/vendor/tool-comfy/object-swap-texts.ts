@@ -22,7 +22,7 @@
  * @module tool-comfy/object-swap-texts
  */
 
-import { unlink } from 'node:fs/promises'
+import { unlinkWithRetry } from '../retry-fs/index.ts'
 import type { ImagineHost } from '../../src/host.ts'
 import { eyesOf } from './eyes.ts'
 import type { ImagineObjectMode, ModelRoute } from '../../../shared/imagine-types.ts'
@@ -314,7 +314,7 @@ export async function writeObjectSwapTexts(
     console.warn(`[imagine] object swap: the strip of the take could not be prepared, keeping the graph's texts: ${error instanceof Error ? error.message : String(error)}`)
     return undefined
   } finally {
-    if (strip !== undefined) await unlink(strip).catch(() => undefined)
+    if (strip !== undefined) await unlinkWithRetry(strip).catch(() => undefined)
   }
 }
 

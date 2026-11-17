@@ -5,7 +5,8 @@
  */
 
 import type { Dirent, Stats } from 'node:fs'
-import { mkdir, open, readdir, stat, unlink } from 'node:fs/promises'
+import { mkdir, open, readdir, stat } from 'node:fs/promises'
+import { unlinkWithRetry } from '../retry-fs/index.ts'
 import { createWriteStream } from 'node:fs'
 import { pipeline } from 'node:stream/promises'
 import { join } from 'node:path'
@@ -309,7 +310,7 @@ export async function deleteGalleryItem(outputDir: string, name: string): Promis
   const safe = safeBasename(name)
   if (safe === undefined) return false
   try {
-    await unlink(join(outputDir, safe))
+    await unlinkWithRetry(join(outputDir, safe))
   } catch (error: unknown) {
     if (!isMissing(error)) throw error
   }
@@ -476,7 +477,7 @@ class UploadRefusedError extends Error {
 /** Remove a half-written upload, ignoring a file that never got created. */
 async function discardUpload(path: string): Promise<void> {
   try {
-    await unlink(path)
+    await unlinkWithRetry(path)
   } catch (error: unknown) {
     if (!isMissing(error)) throw error
   }

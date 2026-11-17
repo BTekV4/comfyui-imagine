@@ -9,7 +9,8 @@
 
 import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { rm, stat, unlink } from 'node:fs/promises'
+import { stat } from 'node:fs/promises'
+import { rmWithRetry, unlinkWithRetry } from '../retry-fs/index.ts'
 import { basename, join } from 'node:path'
 import { promisify } from 'node:util'
 import { lastJsonLine } from './model-json.ts'
@@ -160,7 +161,7 @@ export async function ffmpegTo(out: string, args: readonly string[], timeoutMs: 
     await execFileAsync('ffmpeg', [...args], { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 })
     return out
   } catch (error) {
-    await rm(out, { force: true }).catch(() => undefined)
+    await rmWithRetry(out, { force: true }).catch(() => undefined)
     throw error
   }
 }
@@ -281,7 +282,7 @@ export async function frameAt(
    * frame is taken again with the seek on the output side, which decodes from
    * the start and is right even when the index is not.
    */
-  await rm(out, { force: true }).catch(() => undefined)
+  await rmWithRetry(out, { force: true }).catch(() => undefined)
   await ffmpegTo(out, ['-v', 'error', '-y', '-i', video, ...seek, ...tail], timeout)
   return out
 }
@@ -296,7 +297,7 @@ async function hasFrame(path: string): Promise<boolean> {
  * @param paths - absolute paths of the files.
  */
 export async function dropScratch(paths: readonly string[]): Promise<void> {
-  await Promise.all(paths.map(path => unlink(path).catch(() => undefined)))
+  await Promise.all(paths.map(path => unlinkWithRetry(path).catch(() => undefined)))
 }
 
 /**

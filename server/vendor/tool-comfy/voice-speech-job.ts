@@ -12,7 +12,8 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
+import { rmWithRetry } from '../retry-fs/index.ts'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { message } from '../../src/messages.ts'
@@ -123,7 +124,7 @@ async function voiceInto(target: SpeakTarget, outputDir: string, job: ImagineJob
   } finally {
     clearTimeout(timer)
     endRunControl(job.id)
-    await Promise.all(scratch.map(file => rm(file, { force: true }).catch(() => undefined)))
+    await Promise.all(scratch.map(file => rmWithRetry(file, { force: true }).catch(() => undefined)))
   }
 }
 

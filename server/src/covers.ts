@@ -10,7 +10,8 @@
  * @module covers
  */
 
-import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, stat, writeFile } from 'node:fs/promises'
+import { rmWithRetry } from '../vendor/retry-fs/index.ts'
 import { join } from 'node:path'
 import { coverTypeOfBytes, coverTypeOfName, type CoverType } from '../../shared/cover-kinds.ts'
 import { dataPath } from '../vendor/home-paths/index.ts'
@@ -162,9 +163,9 @@ export async function coverIndex(dir: string): Promise<Record<string, { kind: Co
  */
 export async function removeCoverFiles(dir: string, key: string): Promise<void> {
   for (const entry of await listCoverFiles(dir)) {
-    if (entry.key === key) await rm(entry.file, { force: true })
+    if (entry.key === key) await rmWithRetry(entry.file, { force: true })
   }
-  await rm(join(dir, `${key}.${POSTER_NAME}`), { force: true })
+  await rmWithRetry(join(dir, `${key}.${POSTER_NAME}`), { force: true })
 }
 
 /** What happened to an upload. */

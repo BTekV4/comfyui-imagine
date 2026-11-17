@@ -9,7 +9,8 @@
 
 import { randomUUID } from 'node:crypto'
 import { message, withLanguage } from '../../src/messages.ts'
-import { readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
+import { renameWithRetry, unlinkWithRetry } from '../retry-fs/index.ts'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import type { ImagineHost } from '../../src/host.ts'
@@ -372,7 +373,7 @@ async function writePaintedMask(bytes: Uint8Array, width: number, height: number
     await ffmpegTo(path, ['-hide_banner', '-loglevel', 'error', '-y', '-i', painted,
       '-vf', `scale=${String(width)}:${String(height)}:flags=bilinear,format=rgb24`, '-frames:v', '1', path], 60_000)
   } finally {
-    await unlink(painted).catch(() => undefined)
+    await unlinkWithRetry(painted).catch(() => undefined)
   }
 }
 
@@ -595,7 +596,7 @@ async function readInputs(
     ? undefined
     : await resolveInputVideo({ path: upscaleInput }, outputDir)
   if (upscaleInput !== sourceVideo && upscaleInput !== undefined) {
-    await unlink(upscaleInput).catch(() => undefined)
+    await unlinkWithRetry(upscaleInput).catch(() => undefined)
   }
   /*
    * An object swap's input image is its photo, not its source: the plate
@@ -1255,9 +1256,9 @@ function assemblerFor(outputDir: string, out: RunOutput, args: Record<string, un
       assembled = await joinCuts(parts, canvas.width, canvas.height, outputDir, lengths, fade)
     }
     const finished = await finish(assembled)
-    await rename(finished, final)
-    if (finished !== assembled) await unlink(assembled).catch(() => undefined)
-    await Promise.all(parts.map(async part => unlink(part).catch(() => undefined)))
+    await renameWithRetry(finished, final)
+    if (finished !== assembled) await unlinkWithRetry(assembled).catch(() => undefined)
+    await Promise.all(parts.map(async part => unlinkWithRetry(part).catch(() => undefined)))
     return [{ path: final, kind: 'video' }]
   }
 }
@@ -1591,7 +1592,7 @@ async function trimHead(files: readonly ComfyProducedFile[], outputDir: string):
   if (mine === undefined) return
   try {
     const trimmed = await dropHead(mine.path, outputDir)
-    await rename(trimmed, mine.path)
+    await renameWithRetry(trimmed, mine.path)
   } catch {
     // Left untrimmed: the video runs GUIDE_SECONDS long from here on,
     // which is a worse cut than a lost shot would have been a hole.

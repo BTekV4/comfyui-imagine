@@ -9,7 +9,8 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { readFile, rename, stat, unlink } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
+import { renameWithRetry, unlinkWithRetry } from '../retry-fs/index.ts'
 import { basename, extname, join } from 'node:path'
 import type { ImagineHost } from '../../src/host.ts'
 import { message, withLanguage } from '../../src/messages.ts'
@@ -1114,7 +1115,7 @@ async function resumeStory(
   if (plan.pending.length === 0 && found.finals.length > 0
     && await exists(join(outputDir, found.finals[0] ?? ''))) return undefined
   if (Object.keys(plan.renames).length > 0) {
-    for (const [from, to] of Object.entries(plan.renames)) await rename(join(outputDir, from), join(outputDir, to)).catch(() => undefined)
+    for (const [from, to] of Object.entries(plan.renames)) await renameWithRetry(join(outputDir, from), join(outputDir, to)).catch(() => undefined)
     await renameInProjects(plan.renames)
     renameJobFiles(plan.renames)
   }
@@ -1474,12 +1475,12 @@ export async function rebuildStory(storyId: string, outputDir: string): Promise<
   const final = join(outputDir, finalFileName(manifest.label, manifest.finals.length + 1))
   const joined = await joinShots(paths, shots, track, outputDir)
   if (songPath === undefined || track === undefined) {
-    await rename(joined, final)
+    await renameWithRetry(joined, final)
   } else {
     const made = await probeMedia(joined)
     const scored = await laySongOver(joined, songPath, made.duration, track.duration, outputDir)
-    await unlink(joined).catch(() => undefined)
-    await rename(scored, final)
+    await unlinkWithRetry(joined).catch(() => undefined)
+    await renameWithRetry(scored, final)
   }
   // The video came out whole: the next hole, if there ever is one, gets its
   // own two attempts rather than inheriting these.
@@ -1517,7 +1518,7 @@ export async function joinShots(
   try {
     return await joinCuts(fitted.paths, canvas.width, canvas.height, outputDir)
   } finally {
-    if (fitted.temp !== undefined) await unlink(fitted.temp).catch(() => undefined)
+    if (fitted.temp !== undefined) await unlinkWithRetry(fitted.temp).catch(() => undefined)
   }
 }
 

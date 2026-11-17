@@ -26,7 +26,8 @@
  */
 
 import { randomBytes } from 'node:crypto'
-import { mkdtemp, open, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, open, writeFile } from 'node:fs/promises'
+import { renameWithRetry, rmWithRetry } from '../retry-fs/index.ts'
 import { tmpdir } from 'node:os'
 import { basename, dirname, extname, join } from 'node:path'
 import type { PlanCompose } from '../../../shared/imagine-templates.ts'
@@ -151,14 +152,14 @@ export async function composeTemplate(step: PlanCompose, opts: ComposeOptions): 
     if (!('width' in pixels) || pixels.width <= 0 || pixels.height <= 0) {
       throw new Error(message('template.composeFailed', { reason: message('still.sizeUnreadable') }))
     }
-    await rename(temp, out)
+    await renameWithRetry(temp, out)
   } catch (error: unknown) {
     // Neither the half-written picture nor the empty reservation stays behind.
-    await rm(temp, { force: true }).catch(() => undefined)
-    await rm(out, { force: true }).catch(() => undefined)
+    await rmWithRetry(temp, { force: true }).catch(() => undefined)
+    await rmWithRetry(out, { force: true }).catch(() => undefined)
     throw error
   } finally {
-    await rm(scratch, { recursive: true, force: true }).catch(() => undefined)
+    await rmWithRetry(scratch, { recursive: true, force: true }).catch(() => undefined)
   }
   return basename(out)
 }

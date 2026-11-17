@@ -14,7 +14,8 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { rmWithRetry } from '../retry-fs/index.ts'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { serialized, writeFileAtomic } from '../atomic-write/index.ts'
@@ -611,7 +612,7 @@ export async function removeCustomWorkflow(id: string): Promise<boolean> {
   return serialized(customDir(id), async () => {
     const meta = await readMeta(id)
     if (meta === undefined) return false
-    await rm(customDir(id), { recursive: true, force: true })
+    await rmWithRetry(customDir(id), { recursive: true, force: true })
     metaCache.delete(id)
     return true
   })

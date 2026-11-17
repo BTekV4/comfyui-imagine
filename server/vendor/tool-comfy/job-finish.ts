@@ -5,7 +5,7 @@
  * @module tool-comfy/job-finish
  */
 
-import { rename, unlink } from 'node:fs/promises'
+import { renameWithRetry, unlinkWithRetry } from '../retry-fs/index.ts'
 import { basename, join } from 'node:path'
 import type { ImagineHost } from '../../src/host.ts'
 import { declaredOutputPath, freeOutputPath } from './index.ts'
@@ -103,9 +103,9 @@ async function deliveredFiles(run: FinishRun): Promise<readonly ComfyProducedFil
       const muxed = await layPlateAudio(mine.path, sourceVideo, outputDir, 'recreate-audio')
       if (muxed !== mine.path) {
         try {
-          await rename(muxed, mine.path)
+          await renameWithRetry(muxed, mine.path)
         } catch {
-          await unlink(muxed).catch(() => undefined)
+          await unlinkWithRetry(muxed).catch(() => undefined)
           setJobNotice(job.id, 'recreate-audio-failed')
         }
       }
@@ -196,12 +196,12 @@ async function deliveredFiles(run: FinishRun): Promise<readonly ComfyProducedFil
           // The cut gets the story's own name and the last shot keeps its
           // number: a redo needs every shot, the last one included.
           const final = join(outputDir, finalFileName(storyLabel(job.storyId)))
-          await rename(joined, final)
+          await renameWithRetry(joined, final)
           finalFiles = [{ path: final, kind: 'video' }, mine]
         } else {
           // The whole video takes the declared output name, as a story's last
           // clip does: otherwise the gallery shows the last shot as the result.
-          await rename(joined, mine.path)
+          await renameWithRetry(joined, mine.path)
           finalFiles = [{ path: mine.path, kind: 'video' }]
         }
       } catch {
@@ -224,7 +224,7 @@ async function deliveredFiles(run: FinishRun): Promise<readonly ComfyProducedFil
       // The whole clip takes the declared output name, replacing the
       // continuation: otherwise the job leaves two videos in the gallery and
       // the one it reports is the half-length one.
-      await rename(concatenated, videoFile.path)
+      await renameWithRetry(concatenated, videoFile.path)
       finalFiles = [{ path: videoFile.path, kind: 'video' }]
     }
   }
@@ -241,7 +241,7 @@ async function deliveredFiles(run: FinishRun): Promise<readonly ComfyProducedFil
       try {
         const [made, track] = await Promise.all([probeMedia(videoFile.path), run.songTrack()])
         const scored = await laySongOver(videoFile.path, join(outputDir, job.song), made.duration, track.duration, outputDir)
-        await rename(scored, videoFile.path)
+        await renameWithRetry(scored, videoFile.path)
         // The shot the cut was made from stays listed beside it.
         finalFiles = finalFiles.filter(file => file.kind === 'video')
       } catch {

@@ -7,7 +7,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { unlink } from 'node:fs/promises'
+import { unlinkWithRetry } from '../retry-fs/index.ts'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { lookWith, type VisionCapable } from './imagine-models.ts'
@@ -70,7 +70,7 @@ export async function clipStrip(clip: string, duration: number, prefix: string):
       '-map', '[strip]', '-frames:v', '1', out,
     ], 120_000)
   } finally {
-    await Promise.all(frames.map(async ({ path }) => unlink(path).catch(() => undefined)))
+    await Promise.all(frames.map(async ({ path }) => unlinkWithRetry(path).catch(() => undefined)))
   }
 }
 

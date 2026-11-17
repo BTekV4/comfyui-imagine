@@ -8,7 +8,8 @@
  * @module tool-comfy/media-thumbs
  */
 
-import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises'
+import { mkdir, readdir, stat } from 'node:fs/promises'
+import { renameWithRetry, rmWithRetry } from '../retry-fs/index.ts'
 import { join } from 'node:path'
 import { dataPath } from '../home-paths/index.ts'
 import { kindOf } from './gallery.ts'
@@ -228,9 +229,9 @@ async function cut(source: string, name: string, stamp: string): Promise<Readonl
       const outs = missing.map(width => [width, `${paths.get(width) ?? ''}.part`] as const)
       try {
         await execFileAsync('ffmpeg', thumbsArgs(source, outs), { timeout: 30_000 })
-        for (const [, partial] of outs) await rename(partial, partial.slice(0, -'.part'.length))
+        for (const [, partial] of outs) await renameWithRetry(partial, partial.slice(0, -'.part'.length))
       } catch (error) {
-        await Promise.all(outs.map(([, partial]) => rm(partial, { force: true })))
+        await Promise.all(outs.map(([, partial]) => rmWithRetry(partial, { force: true })))
         throw error
       }
       const byName = await thumbIndex()
@@ -259,5 +260,5 @@ export async function forgetThumbs(name: string, keepStamp?: string): Promise<vo
   if (files === undefined) return
   const stale = [...files].filter(file => keepStamp === undefined || THUMB_FILE.exec(file)?.[3] !== keepStamp)
   for (const file of stale) files.delete(file)
-  await Promise.all(stale.map(file => rm(join(thumbsDir(), file), { force: true })))
+  await Promise.all(stale.map(file => rmWithRetry(join(thumbsDir(), file), { force: true })))
 }

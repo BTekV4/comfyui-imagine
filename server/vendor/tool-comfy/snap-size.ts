@@ -10,7 +10,8 @@
  * container; anything further off is left alone — that is a different
  * picture, not a rounding.
  */
-import { open, rename, unlink } from 'node:fs/promises'
+import { open } from 'node:fs/promises'
+import { renameWithRetry, unlinkWithRetry } from '../retry-fs/index.ts'
 import { imageTypeOf, probePixels } from './gallery.ts'
 import { FASTSTART, ffmpegTo, h264Out } from './media-tools.ts'
 import { SHAPE_SLACK, frameOnShape, nearestShape } from '../../../shared/imagine-sizing.ts'
@@ -121,11 +122,11 @@ async function snapTo(
       '-vf', `scale=${w}:${h}:force_original_aspect_ratio=increase:flags=lanczos,crop=${w}:${h}`,
       ...await encode(), temp,
     ], timeoutMs)
-    await rename(temp, path)
+    await renameWithRetry(temp, path)
     return true
   } catch (error: unknown) {
     // ffmpegTo already removed a half-written file; this covers a failed rename.
-    await unlink(temp).catch(() => undefined)
+    await unlinkWithRetry(temp).catch(() => undefined)
     console.warn(`[imagine] ${what} not corrected for ${path}: ${error instanceof Error ? error.message : String(error)}`)
     return false
   }

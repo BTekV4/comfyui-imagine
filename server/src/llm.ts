@@ -6,7 +6,8 @@
  * In DSH these came from `llm-pi-ai` and the auxiliary service; the shapes are
  * the ones `tool-comfy/imagine-models.ts` and `edit-prompt.ts` declare.
  */
-import { mkdtemp, open, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, open, readFile } from 'node:fs/promises'
+import { rmWithRetry } from '../vendor/retry-fs/index.ts'
 import { tmpdir } from 'node:os'
 import { extname, join } from 'node:path'
 import { mediaTypeOfExt, sniffMedia } from '../../shared/media-types.ts'
@@ -465,7 +466,7 @@ export function createLlm(
       if (typeof text !== 'string' || text.trim() === '') throw new Error(message('llm.visionSilent'))
       return { text, provider: target.provider, model: target.model }
     } finally {
-      if (scratch !== undefined) await rm(scratch, { recursive: true, force: true }).catch(() => undefined)
+      if (scratch !== undefined) await rmWithRetry(scratch, { recursive: true, force: true }).catch(() => undefined)
     }
   }
 
