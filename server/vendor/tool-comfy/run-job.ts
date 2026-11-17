@@ -21,6 +21,7 @@ import { FPS, dropScratch, ffmpegTo, frameAt, layPlateAudio, probeMedia, type Me
 import { resolveInputImage, resolveInputVideo, type ResolvedInputVideo } from './input-image.ts'
 import { kindOf, probePixels, safeBasename, upscaleLongFor, upscaleTargetFor } from './gallery.ts'
 import { writeEditPrompt } from './edit-prompt.ts'
+import { isLocalEdit, localEditPrompt } from '../../../shared/imagine-edit.ts'
 import { applyRealismToken, chainSceneSeconds, soundtrackOf, writeH3ChainPrompts, writeH3Prompt } from './video-prompt.ts'
 import { GUIDE_SECONDS, h3Canvas, videoTail } from './extend-video.ts'
 import { formatSize } from './snap-size.ts'
@@ -954,9 +955,18 @@ async function writeRemixPrompt(pass: PromptPass): Promise<void> {
   const sourcePath = visionSourceOf(pass)
   if (sourcePath === undefined) return
   const written = await writeEditPrompt(ctx, sourcePath, job.prompt, job.model)
-  if (written !== undefined) {
-    state.prompt = written
-    state.writtenPrompt = written
+  /*
+   * A local edit is worded again here, whether or not the vision pass wrote
+   * anything: the change only, then the fixed sentence that asks for the rest
+   * to stay. The graph redraws the whole photo, so a grounded prompt that also
+   * lists the clothing and the background is a description of the scene, and
+   * the scene is what comes back (measured on 2026-11-17: two "remove the
+   * extra arm" edits rewrote the body and left the arm).
+   */
+  const prompt = isLocalEdit(job.prompt) ? localEditPrompt(written, job.prompt) : written
+  if (prompt !== undefined) {
+    state.prompt = prompt
+    state.writtenPrompt = prompt
   }
   fileWrittenPrompt(state)
 }

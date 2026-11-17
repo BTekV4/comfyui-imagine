@@ -16,6 +16,7 @@ import type { ImagineHost } from '../../src/host.ts'
 import { eyesOf } from './eyes.ts'
 import { lookWith, secondVisionRoute } from './imagine-models.ts'
 import type { ModelRoute } from '../../../shared/imagine-types.ts'
+import { isLocalEdit, LOCAL_EDIT_KEEP } from '../../../shared/imagine-edit.ts'
 import { stripFences } from './model-json.ts'
 
 // No fixed wait on the vision pass: see video-prompt.ts for why a bare line
@@ -40,6 +41,14 @@ const MAX_PROMPT_LENGTH = 1200
  * @returns the instruction sent alongside the source image.
  */
 function editPromptInstruction(intent: string): string {
+  /*
+   * A local edit is worded differently on purpose. The graph redraws the
+   * whole photo, so a prompt that also describes the clothing, the body and
+   * the background is read as a description of the scene and gets the scene
+   * redrawn. Naming only the part to change, and closing with one fixed
+   * sentence, is what keeps the rest out of the sampler's hands.
+   */
+  if (isLocalEdit(intent)) return localEditInstruction(intent)
   return `Look at this image: it is the starting image of an edit.
 
 The user asked for: "${intent}"
@@ -52,6 +61,32 @@ Rules:
 - Say explicitly what changes and on which element of the image, and close by saying what stays unchanged (identity and faces, pose, composition, background, light) among the parts the request does not touch.
 - Carry the proper names and the quoted words of the request over unchanged: they switch the identity models on and would vanish if you rewrote them.
 - Do not add changes the user did not ask for.`
+}
+
+/**
+ * The instruction for a change to one part of a photo.
+ *
+ * Short by construction: the reply becomes the sampler's conditioning on a
+ * graph that redraws everything, so every extra noun is something else to
+ * redraw. The fixed final sentence is quoted so the vision pass ends with
+ * the exact words the studio wants, whatever else it wrote.
+ * @param intent - the user's line, or a template's wording.
+ * @returns the instruction sent alongside the source image.
+ */
+function localEditInstruction(intent: string): string {
+  return `Look at this image: it is the starting image of an edit that touches ONE part of it, and nothing else.
+
+The user asked for: "${intent}"
+
+Write the instruction for the image editing model that changes exactly that part.
+
+Rules:
+- Reply ONLY with the instruction, in English, one short sentence, with no preamble and no lists.
+- Start with the verb ("Remove...", "Add...", "Replace...", "Move...") and name the one thing to change and where it is in the photo.
+- Do NOT describe the rest of the photo: no clothing, no body, no pose, no background, no light, no framing. A list of what must stay is read as a description of the scene, and the whole scene gets redrawn.
+- Do not add changes the user did not ask for.
+- Carry the proper names and the quoted words of the request over unchanged: they switch the identity models on.
+- End the instruction with exactly this sentence, copied word for word: "${LOCAL_EDIT_KEEP}"`
 }
 
 /**
@@ -84,7 +119,10 @@ function cleanEditPrompt(text: string, intent: string): EditPromptRead {
   // A preamble is its own short line ending in a colon; a colon inside the
   // prompt itself ("style: soft cel shading") sits mid-line and is kept.
   const body = unfenced.replaceAll(/^[^\n:]{0,80}:[ \t]*\n/gm, '').replaceAll(/\s*\n\s*/g, ' ').trim()
-  if (body.length < MIN_PROMPT_LENGTH) return { refused: `too short (${String(body.length)} characters)` }
+  // A local edit is allowed to be one short sentence: "Remove the extra arm"
+  // is a complete instruction, and the fixed keep sentence is added later.
+  const shortest = isLocalEdit(intent) ? 8 : MIN_PROMPT_LENGTH
+  if (body.length < shortest) return { refused: `too short (${String(body.length)} characters)` }
   if (body.length > MAX_PROMPT_LENGTH) return { refused: `too long (${String(body.length)} characters)` }
   const lowered = body.toLowerCase()
   const missing = anchorsOf(intent).find(anchor => !lowered.includes(anchor))

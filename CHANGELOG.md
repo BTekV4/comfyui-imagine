@@ -25,6 +25,16 @@ versions follow [semantic versioning](https://semver.org/).
 
 ### Fixed
 
+- **A local photo edit names one change and gives up after two redraws.**
+  The photo edit redraws the whole picture, so a grounded prompt that also
+  listed the clothing, the body and the background was read as a description
+  of the scene. Two "remove the extra arm" runs on 2026-11-17 rewrote the whole
+  photo and left the arm, and each retry started from the failed output. A
+  local edit is now worded as the change only, closed by one fixed sentence
+  that asks for the rest to stay; a correction starts from the photo the failed
+  run started from; and after two failed redraws no third one is queued: the
+  studio points to «Remove object» (IOPaint), which paints the part out and
+  leaves the rest identical. The remove-object template asks for one thing too.
 - `scripts/check-windows.ps1` failed once on the upgraded install (2026-11-17)
   on a blank screenshot: the window's DOM had rendered but the surface was
   captured before its first paint. The self-test now waits for a painted frame,

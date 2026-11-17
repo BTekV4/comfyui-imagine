@@ -954,9 +954,14 @@ export const TEMPLATES = [
           },
           {
             value: 'remove-object', labelKey: 'imagine.tpl.photoEdit.o.edit.removeObject', label: 'Remove an object',
-            prompt: 'Take out the small distracting object named below and rebuild the background behind it so the area matches its surroundings: the same texture and the same light, with nothing left of the object.',
-            // "The object named below" is the details box: without it there is
-            // nothing to take out.
+            /*
+             * Short and about one thing: the edit graph redraws the whole
+             * photo, and "the small distracting object … rebuild the
+             * background" also described the wrong thing when the object was
+             * a body part (a third arm, 2026-11-17). The details box says
+             * what has to come out.
+             */
+            prompt: 'Remove this from the photo and rebuild only the area it covered from what is around it, so no trace of it is left:',
             requiresText: 'details',
           },
           {
