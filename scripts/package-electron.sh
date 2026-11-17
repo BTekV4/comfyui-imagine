@@ -94,7 +94,10 @@ say "pack: electron-builder ($PLATFORM $ARCH)"
 rm -rf "$OUT/electron"
 # The target (AppImage, nsis) is the configuration's: here only the platform
 # and the architecture are said, and `--x64` is not a target.
-BUILDER_ARGS=(--config electron-builder.yml --publish never "--$PLATFORM" "--$ARCH")
+# `-c.directories.output` because the configuration names `release/electron`
+# (relative to the project) and a release may pass another OUT_DIR: with the
+# output left to the file, the tree lands where this script does not look.
+BUILDER_ARGS=(--config electron-builder.yml --publish never "--$PLATFORM" "--$ARCH" "-c.directories.output=$OUT/electron")
 if [ "$PLATFORM" = linux ]; then
   npx --no-install electron-builder "${BUILDER_ARGS[@]}" --dir
 else

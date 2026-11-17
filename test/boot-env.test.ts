@@ -10,6 +10,7 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { resolve } from 'node:path'
 import { listenHost, listenPort, programDirFrom } from '../server/src/boot-env.ts'
 
 test('with nothing in the environment the config is the only word', () => {
@@ -26,8 +27,11 @@ test('the config decides when it says nothing: 3090 on every address', () => {
 })
 
 test('`IMAGINE_PROGRAM_DIR` is the program folder, as an absolute path', () => {
-  assert.equal(programDirFrom({ IMAGINE_PROGRAM_DIR: '/tmp/appimage/usr/lib/imagine' }), '/tmp/appimage/usr/lib/imagine')
-  assert.equal(programDirFrom({ IMAGINE_PROGRAM_DIR: '/a/../b' }), '/b')
+  // Built with the platform's own rules: on Windows the same value is `C:\...`,
+  // and a test that spells `/tmp/...` fails there for the wrong reason.
+  const program = resolve('program', 'imagine')
+  assert.equal(programDirFrom({ IMAGINE_PROGRAM_DIR: program }), program)
+  assert.equal(programDirFrom({ IMAGINE_PROGRAM_DIR: resolve('a', '..', 'b') }), resolve('b'))
 })
 
 test('a port from the app wins, and a broken one is ignored', () => {
