@@ -30,3 +30,27 @@ paragraph is data: a JSON file named by `toolComfy.persona.path`.
 
 A deployment without a persona file boots and works: it draws a neutral,
 undescribed person.
+
+## Running from a read-only program folder
+
+A service has its program and its data in one tree: `config.yaml` sits beside
+`dist/`, the graphs and the media. The desktop app cannot: the AppImage is
+mounted read-only and replaced whole on every update, so the program lives in
+the image and the data in the user's folder. Three variables say so, and every
+installation that does not set them boots exactly as before.
+
+| Variable | What it says |
+|---|---|
+| `IMAGINE_PROGRAM_DIR` | The read-only folder holding `dist/`, `locales/`, `plugins/`, `workflows/`, `persona/` and `config.example.yaml`. A **relative** `webDir`, workflow `path:`/`pathHigh:` and persona `path:` are read from here instead of from the config's folder; an absolute one is taken as written, and `custom:<id>` still means a personal workflow in the data folder. |
+| `IMAGINE_PORT` / `IMAGINE_HOST` | The free loopback port the app reserved for its window (`127.0.0.1`), instead of `port:`/`host:` from the config. A desktop window is not a server on the LAN. |
+| `IMAGINE_PARENT_PID` | The window's process. The studio stops within two seconds of it disappearing, however it went: closing the window has its own path, a logout or a kill is caught here. |
+
+The data side is the usual pair: `IMAGINE_CONFIG` (the file to read) and
+`IMAGINE_HOME` (where media, projects, plugins, language packs, `host-settings.json`
+and the login files go). The app sets `IMAGINE_HOME` to its data folder's
+`data/`, so a `config.yaml` written there keeps landing everything in the same
+place — `outputDir: ./data/outputs`, `passwordFile: ./data/password.json`.
+Its own data folder is `IMAGINE_DATA` when set, else the folder Electron gives
+an app (`~/.config/Imagine` on Linux, `%APPDATA%\Imagine` on Windows), else
+`~/.local/share/imagine/app` when that is where the previous AppImage kept
+everything.

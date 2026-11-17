@@ -364,9 +364,10 @@ async function startStudio() {
     // still on the splash, and `onServerGone` would load a second page into it.
     child.once('exit', (code, signal) => {
       if (quitting || restarting) return
-      settle(new Error(code === 0
-        ? 'The studio stopped while starting: it read the configuration and exited.'
-        : `The studio stopped while starting (${code === null ? `signal ${String(signal)}` : `code ${String(code)}`}).`))
+      // The code goes to the log, not to the headline: what a person needs is
+      // the sentence under it, which `explainFailure` writes from the log.
+      if (!studioUp) log(`studio: exited during the boot (${code === null ? `signal ${String(signal)}` : `code ${String(code)}`})`)
+      settle(new Error('The studio stopped before its window could open.'))
     })
     const poll = async () => {
       if (settled) return

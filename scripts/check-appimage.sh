@@ -17,7 +17,7 @@
 # download is the one this ran against. Needs Xvfb, ImageMagick's `import`,
 # Node, and no FUSE (the AppImage unpacks itself).
 set -euo pipefail
-APP=${1:?"the AppImage is required"}
+APP=$(readlink -f "${1:?"the AppImage is required"}")
 WORK=${2:-$(mktemp -d "${TMPDIR:-/tmp}/imagine-check.XXXXXX")}
 mkdir -p "$WORK"
 say() { printf 'check: %s\n' "$*"; }
@@ -45,6 +45,18 @@ cleanup() {
 trap cleanup EXIT
 export DISPLAY=":$DISPLAY_NUMBER"
 sleep 2
+
+# The desktop entry and the icon are what put Imagine in the applications menu
+# when the file is integrated: they are inside the image, so they are checked
+# from the image (one file at a time: no need to unpack 450 MB).
+for entry in imagine.desktop .DirIcon; do
+  ( cd "$WORK" && "$APP" --appimage-extract "$entry" >/dev/null 2>&1 ) || fail "the image has no $entry"
+done
+grep -q "^Terminal=false" "$WORK/squashfs-root/imagine.desktop" || fail "the desktop entry asks for a terminal"
+grep -q "^Name=Imagine$" "$WORK/squashfs-root/imagine.desktop" || fail "the desktop entry is not named Imagine"
+[ -s "$WORK/squashfs-root/.DirIcon" ] || fail "the image has no icon"
+say "menu entry and icon in the image"
+rm -rf -- "$WORK/squashfs-root"
 
 say "starting $(basename "$APP") on $DISPLAY"
 "$APP" > "$WORK/app.log" 2>&1 &

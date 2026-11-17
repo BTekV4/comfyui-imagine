@@ -2,7 +2,7 @@
 #
 # Imagine's desktop app: the studio in a window, as an AppImage.
 #
-#   scripts/package-electron.sh              → release/electron/Imagine-<ver>-linux-x64.AppImage
+#   scripts/package-electron.sh              → release/Imagine-<ver>-linux-x64.AppImage
 #   scripts/package-electron.sh windows-x64  → the same tree, for the Windows installer
 #
 # It replaces `scripts/package-appimage.sh`, which shipped a bash launcher with
@@ -83,47 +83,68 @@ cat > "$BUILD/package.json" <<MANIFEST
 }
 MANIFEST
 
-# 4. electron-builder: the AppImage now, the NSIS installer when asked for.
+# 4. electron-builder: the application tree (the asar, `resources/`, the
+#    Electron runtime) and nothing else. It can produce an AppImage by itself,
+#    but its AppRun starts the binary with no argument when the file itself is
+#    double-clicked, and Electron refuses to start without `--no-sandbox` as
+#    root and where unprivileged user namespaces are restricted (Ubuntu 24.04).
+#    The image is assembled below, with our own AppRun — and compressing once
+#    instead of twice is what makes this build survive a machine with 4 GB.
 say "pack: electron-builder ($PLATFORM $ARCH)"
 rm -rf "$OUT/electron"
 # The target (AppImage, nsis) is the configuration's: here only the platform
 # and the architecture are said, and `--x64` is not a target.
 BUILDER_ARGS=(--config electron-builder.yml --publish never "--$PLATFORM" "--$ARCH")
-npx --no-install electron-builder "${BUILDER_ARGS[@]}"
-
-# 4b. The launcher inside the image. electron-builder's AppRun runs the binary
-#     with no argument when the file itself is double-clicked, and Electron
-#     refuses to start **without --no-sandbox** in two situations a desktop app
-#     must survive: as root, and where unprivileged user namespaces are
-#     restricted (Ubuntu 24.04). An AppImage is mounted read-only and `nosuid`,
-#     so the setuid sandbox helper cannot work from inside it; and a launcher
-#     that needs a terminal argument is no launcher. This AppRun always passes
-#     the switch: what the window loads is the studio on 127.0.0.1, and only it
-#     (navigation is pinned in `electron/main.mjs`).
 if [ "$PLATFORM" = linux ]; then
-  say "appimage: the AppRun that starts the window"
+  npx --no-install electron-builder "${BUILDER_ARGS[@]}" --dir
+else
+  npx --no-install electron-builder "${BUILDER_ARGS[@]}"
+fi
+
+# 5. The AppImage: an AppDir, the launcher, the desktop entry, one squashfs,
+#    and AppImageKit's runtime glued in front (the shape appimagetool produces,
+#    without needing appimagetool).
+if [ "$PLATFORM" = linux ]; then
+  UNPACKED="$OUT/electron/linux-unpacked"
+  [ -x "$UNPACKED/imagine" ] || die "electron-builder produced no app tree in $UNPACKED"
   STAGE=$(mktemp -d "${TMPDIR:-/tmp}/imagine-appimage.XXXXXX")
   trap 'rm -rf -- "$STAGE"' EXIT
-  ( cd "$STAGE" && "$OUT/electron/Imagine-$VERSION-linux-x64.AppImage" --appimage-extract >/dev/null )
-  [ -f "$STAGE/squashfs-root/imagine" ] || die "the extracted AppDir has no imagine binary"
-  cat > "$STAGE/squashfs-root/AppRun" <<'APPRUN'
+  APPDIR="$STAGE/AppDir"
+  cp -a "$UNPACKED" "$APPDIR"
+
+  cat > "$APPDIR/AppRun" <<'APPRUN'
 #!/bin/sh
 # AppRun: start Imagine's window.
 #
-# --no-sandbox always, because inside an AppImage the setuid sandbox helper
-# cannot be setuid (the image is mounted `nosuid`) and Electron refuses to
-# start without it as root or where unprivileged user namespaces are
-# restricted. The window is pinned to the studio on 127.0.0.1: that address is
-# the only one it may navigate to, node is off in the page and context
-# isolation is on.
+# --no-sandbox always: inside an AppImage the setuid sandbox helper cannot be
+# setuid (the image is mounted `nosuid`), and Electron refuses to start without
+# the switch as root or where unprivileged user namespaces are restricted. What
+# the window loads is the studio on 127.0.0.1 — the only address it may navigate
+# to — with no Node in the page and context isolation on.
 HERE=$(dirname "$(readlink -f "$0")")
 LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export LD_LIBRARY_PATH
 exec "$HERE/imagine" --no-sandbox "$@"
 APPRUN
-  chmod +x "$STAGE/squashfs-root/AppRun"
-  # The runtime AppImageKit uses: the same one the previous AppImage glued in
-  # front of its squashfs (an ELF, then the image).
+  chmod +x "$APPDIR/AppRun"
+  cat > "$APPDIR/imagine.desktop" <<DESK
+[Desktop Entry]
+Type=Application
+Name=Imagine
+Comment=A local studio for ComfyUI
+Exec=AppRun --no-sandbox %U
+Icon=imagine
+Terminal=false
+StartupWMClass=Imagine
+X-AppImage-Version=$VERSION
+Categories=Graphics;
+DESK
+  install -Dm644 web/public/icon-512.png "$APPDIR/imagine.png"
+  cp "$APPDIR/imagine.png" "$APPDIR/.DirIcon"
+  install -Dm644 web/public/icon-512.png "$APPDIR/usr/share/icons/hicolor/512x512/apps/imagine.png"
+  mkdir -p "$APPDIR/usr/lib"
+
+  # The runtime AppImageKit uses: an ELF, then the squashfs image.
   CACHE=${CACHE_DIR:-${TMPDIR:-/tmp}/imagine-runtime-cache}
   RUNTIME="$CACHE/appimage-runtime-x86_64"
   RUNTIME_URL=${RUNTIME_URL:-https://github.com/AppImage/AppImageKit/releases/download/continuous/runtime-x86_64}
@@ -134,22 +155,33 @@ APPRUN
     head -c 4 "$RUNTIME" | grep -q $'\x7fELF' || die "the runtime is not an ELF file"
     chmod +x "$RUNTIME"
   fi
-  # xz and not zstd: AppImageKit's runtime reads only xz and zlib.
-  mksquashfs "$STAGE/squashfs-root" "$STAGE/image.squashfs" -comp xz -b 128K -noappend -root-owned -quiet \
-    || die "mksquashfs failed (install squashfs-tools)"
-  cat "$RUNTIME" "$STAGE/image.squashfs" > "$STAGE/Imagine.AppImage"
-  chmod +x "$STAGE/Imagine.AppImage"
-  mv -- "$STAGE/Imagine.AppImage" "$OUT/electron/Imagine-$VERSION-linux-x64.AppImage"
+  # xz and not zstd: AppImageKit's runtime reads only xz and zlib. One
+  # processor and a small cache: a threaded xz was killed by the OOM killer on
+  # a machine with 4 GB of RAM. When even that is killed, gzip is the same
+  # image in a bigger file — a build that fails on a small machine is worse
+  # than a package 20 % larger.
+  if ! mksquashfs "$APPDIR" "$STAGE/image.squashfs" -comp xz -b 128K -noappend \
+      -root-owned -processors 1 -mem-percent 5 -quiet; then
+    rm -f "$STAGE/image.squashfs"
+    printf "%s\n" "electron: xz was killed (out of memory?): compressing with gzip instead" >&2
+    mksquashfs "$APPDIR" "$STAGE/image.squashfs" -comp gzip -b 128K -noappend \
+      -root-owned -processors 1 -mem-percent 5 -quiet \
+      || die "mksquashfs failed (squashfs-tools installed?)"
+  fi
+  cat "$RUNTIME" "$STAGE/image.squashfs" > "$OUT/electron/Imagine-$VERSION-linux-x64.AppImage"
+  chmod +x "$OUT/electron/Imagine-$VERSION-linux-x64.AppImage"
+  say "appimage: the launcher that always passes --no-sandbox"
 fi
 
-# 5. The artifact and its digest, named the way the release notes say.
+# 6. The artifact and its digest, named the way the release notes say.
 case "$TARGET" in
   linux-x64)   BUILT="$OUT/electron/Imagine-$VERSION-linux-x64.AppImage"; WANTED="$OUT/Imagine-$VERSION-$TARGET.AppImage" ;;
   windows-x64) BUILT="$OUT/electron/Imagine-$VERSION-windows-$ARCH.exe";    WANTED="$OUT/Imagine-$VERSION-$TARGET.exe" ;;
 esac
-[ -f "$BUILT" ] || die "electron-builder wrote no artifact at $BUILT"
+[ -f "$BUILT" ] || die "no artifact at $BUILT"
 mv -- "$BUILT" "$WANTED"
-# electron-builder's update metadata is for a feed nobody runs here.
+# electron-builder's leftovers (the unpacked tree, update metadata for a feed
+# nobody runs here) are not part of the package.
 rm -rf -- "$OUT/electron"
 ( cd "$OUT" && sha256sum "$(basename "$WANTED")" > "$(basename "$WANTED").sha256" )
 say "electron: $WANTED ($(du -h "$WANTED" | cut -f1))"

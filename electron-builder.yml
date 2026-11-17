@@ -42,6 +42,9 @@ asar: true
 compression: normal
 
 linux:
+  # What the script asks for is `--dir` (the app tree); the entry stays so that
+  # a plain `npx electron-builder --linux` produces something a person can
+  # double-click, even though the release uses the script.
   target:
     - AppImage
   category: Graphics
@@ -50,11 +53,10 @@ linux:
   synopsis: A local studio for ComfyUI
   description: "Imagine — a local studio for ComfyUI: chat, images, video and a gallery, in one window."
 
-appImage:
-  # The name the release notes and the upgrade path already use: x64 is the
-  # only architecture packaged, and `${arch}` here would say `x86_64`, a name
-  # nobody downloading it recognises.
-  artifactName: Imagine-${version}-linux-x64.AppImage
+# The AppImage is assembled by `scripts/package-electron.sh` from the tree
+# electron-builder builds with `--dir`: it needs its own AppRun (one that always
+# passes `--no-sandbox`, see the script) and AppImageKit's runtime glued in
+# front. Nothing here builds one, which is why there is no `appImage:` section.
 
 # Windows. NOT built yet: the installer has never been started on Windows, and
 # a package nobody booted is not attached to a release. Turning it on is the
