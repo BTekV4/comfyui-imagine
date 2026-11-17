@@ -157,10 +157,15 @@ export interface StoryPlan {
    * the English line the video model reads. Aligned with {@link beats}, an
    * entry may be empty. Absent on an English page, when the director wrote
    * none, and on every story planned before captions existed.
+   *
+   * Not readonly: when the director leaves some out, a reply of its own fills
+   * them in place after the plan is already in the chain's hands (see
+   * {@link captionFallbackInstruction}). The shots read the plan again when
+   * their turn comes, so a caption that lands later is the one they show.
    */
-  readonly captions?: readonly string[]
+  captions?: string[]
   /** The language {@link captions} are written in, as the page declared it. */
-  readonly captionLanguage?: string
+  captionLanguage?: string
 }
 
 /**
@@ -218,6 +223,12 @@ export interface StoryPlanOptions {
    * reply: the studio shows the caption, the video model keeps the beat.
    */
   captionLanguage?: string
+  /**
+   * Called once, when a reply of its own has filled the captions the director
+   * left out, while the clips keep rendering. Read by {@link writeStoryPlan}
+   * only; the instruction ignores it.
+   */
+  onCaptions?: (plan: StoryPlan) => void
 }
 
 /**
@@ -489,6 +500,29 @@ function ruleSinging(framed: boolean): string {
 }
 
 /**
+ * The language a caption is worth writing in: the page's own, and nothing on
+ * an English page — there the beat already reads as the user's language, so
+ * asking for a caption would be asking for the same line twice.
+ * @param language - the language of the page, as the request declared it.
+ * @returns the language, or undefined when no caption is wanted.
+ */
+function captionLanguageOf(language: string | undefined): string | undefined {
+  if (language === undefined) return undefined
+  const code = language.slice(0, 2).toLowerCase()
+  return code.length === 0 || code === 'en' ? undefined : language
+}
+
+/**
+ * What a caption is, in the words both the plan and the fallback reply are
+ * asked in.
+ * @param language - the language the captions are written in.
+ * @returns the rule, one sentence.
+ */
+function captionRule(language: string): string {
+  return `Each caption is ONE short sentence (at most twenty words), in ${languageName(language)}, in the present tense, saying only what happens in that shot: it is what the person reads in the studio under the clip, so no camera directions, no style words, no seconds, and never a note about the translation. These captions are not sent to the video model; the beats above are.`
+}
+
+/**
  * The paragraph that asks the director for the captions the studio shows.
  *
  * Written into the same reply as the beats on purpose: the director already
@@ -503,13 +537,148 @@ function ruleSinging(framed: boolean): string {
  * @returns the paragraph to place after the beats, or undefined for English.
  */
 function captionBrief(language: string | undefined): string | undefined {
-  if (language === undefined || language.slice(0, 2).toLowerCase() === 'en') return undefined
+  const written = captionLanguageOf(language)
+  if (written === undefined) return undefined
   return `
 
 Captions:
-After the numbered lines, add one caption per beat, in ${languageName(language)}, numbered the same way. Each caption is ONE short sentence (at most twenty words), in the present tense, saying only what happens in that shot: it is what the person reads in the studio under the clip, so no camera directions, no style words, no seconds, and never a note about the translation. These captions are not sent to the video model; the beats above are.
+After the numbered lines, add one caption per beat, numbered the same way. ${captionRule(written)}
 1. <the caption of the first shot>
 `
+}
+
+/**
+ * Whether the director is being denied the chance to write the captions.
+ *
+ * A switch for the test instance only. The failure the fallback guards
+ * against — the director writes the beats and no caption block, measured on
+ * two plans out of six on 2026-11-18 — cannot be asked for in a reply, and the
+ * fallback it triggers needs a story planned for real. With
+ * `IMAGINE_TEST_NO_CAPTIONS=1` the plan is written without the caption brief,
+ * exactly as those two replies came back, so the fallback is the only thing
+ * that can fill it.
+ * @returns whether the caption brief is withheld from the plan.
+ */
+function captionsWithheld(): boolean {
+  return /^(?:1|true|yes)$/i.test(process.env.IMAGINE_TEST_NO_CAPTIONS?.trim() ?? '')
+}
+
+/**
+ * The one short reply that fills the captions the director left out.
+ *
+ * Asked for the whole plan at once — never one beat at a time — and only when
+ * a caption is actually missing, so a plan that came back complete costs
+ * nothing. It runs beside the clips: the studio does not wait for it, and the
+ * English beat it may not replace is already on screen (see
+ * {@link fillMissingCaptions}).
+ * @param beats - the plan's beats, in shot order, in English.
+ * @param language - the language of the page the story was asked from.
+ * @returns the prompt sent to the model.
+ */
+export function captionFallbackInstruction(beats: readonly string[], language: string): string {
+  const list = beats.map((beat, index) => `${String(index + 1)}. ${beat.trim()}`).join('\n')
+  return `The beats of a video, in English, in shot order:
+
+${list}
+
+Write the caption of each beat, in ${languageName(language)}. ${captionRule(language)}
+
+Reply ONLY with the numbered captions, one per line, with no preamble and no beat:
+1. <the caption of the first shot>`
+}
+
+/**
+ * Read one caption per beat out of the fallback reply.
+ *
+ * The numbering is skipped rather than trusted: the reply is one caption per
+ * beat, in the order of the list it was given, so a model that renumbers from
+ * one still lines up with a plan whose first beats were already covered. A
+ * reply with nothing usable in it is not a translation, and the caller keeps
+ * the English beat.
+ * @param text - the model's reply.
+ * @param count - how many beats the plan has.
+ * @returns one caption per beat, empty where the reply had none; undefined
+ *   when the reply carries no caption at all.
+ */
+function parseCaptionReply(text: string | undefined, count: number): string[] | undefined {
+  if (text === undefined) return undefined
+  const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0)
+  // A model that labels its block is read the way the plan is: the captions
+  // are the numbered lines under the label.
+  const labelAt = lines.findIndex(line => /^(?:captions?|didascalie)\s*:?\s*$/i.test(line))
+  const body = labelAt < 0 ? lines : lines.slice(labelAt + 1)
+  const said = body.flatMap((line) => {
+    const caption = /^(?:\d+\s*[.)]|[-*])\s*(.+)$/.exec(line)?.[1]?.trim()
+    return caption === undefined || caption.length === 0 || caption.length > MAX_BEAT_LENGTH ? [] : [caption]
+  })
+  if (said.length === 0) return undefined
+  return Array.from({ length: count }, (_unused, index) => said[index] ?? '')
+}
+
+/**
+ * The shots whose caption the plan still has no text for.
+ * @param plan - the plan the director wrote.
+ * @returns the indexes, in shot order.
+ */
+function missingCaptionIndexes(plan: StoryPlan): number[] {
+  return plan.beats.flatMap((_beat, index) => ((plan.captions?.[index]?.trim() ?? '').length === 0 ? [index] : []))
+}
+
+/**
+ * Fill the captions the director left out, in place, with one short reply.
+ *
+ * Runs beside the clips: the plan is handed to the chain before this is
+ * called, and nothing waits for it, so a reply that is slow, that fails, or a
+ * model that stays silent past the model client's silence window leaves the
+ * plan exactly as it was — every shot then shows its English beat, which is
+ * what the studio showed before captions existed. The beats are never touched:
+ * the video model is handed the same line it always was.
+ *
+ * A caption that lands after a shot has started is still worth having: the
+ * caller is told (see `onCaptions`) and files it on the job, the story's record
+ * and the note of any file already produced.
+ * @param ctx - plugin context, carrying `llm`.
+ * @param plan - the plan to fill, in place.
+ * @param language - the language of the page.
+ * @param chosen - the model the studio is showing, when the caller has one.
+ * @param onCaptions - told once the captions are in the plan.
+ */
+async function fillMissingCaptions(
+  ctx: ImagineHost,
+  plan: StoryPlan,
+  language: string,
+  chosen: ModelRoute | undefined,
+  onCaptions: ((plan: StoryPlan) => void) | undefined,
+): Promise<void> {
+  const missing = missingCaptionIndexes(plan)
+  if (missing.length === 0) return
+  const said = await firstTextReply(
+    ctx,
+    chosen,
+    captionFallbackInstruction(plan.beats, language),
+    written => parseCaptionReply(written, plan.beats.length),
+    'the story captions',
+  )
+  if (said === undefined) return
+  const captionSlots = plan.captions
+  if (captionSlots === undefined) return
+  /*
+   * A reply that hands the beats back is not a translation: the beat is the
+   * English line the person already sees, and filing it as a caption would put
+   * the same sentence under a label that says it is theirs.
+   */
+  const echoed = new Set(plan.beats.map(beat => beat.trim().toLowerCase()))
+  let filled = 0
+  for (const index of missing) {
+    const caption = said[index]?.trim() ?? ''
+    if (caption.length === 0 || echoed.has(caption.toLowerCase())) continue
+    // In place: the plan was handed to the chain, and the montage holds the
+    // same array.
+    captionSlots[index] = caption
+    filled += 1
+  }
+  if (filled === 0) return
+  onCaptions?.(plan)
 }
 
 /**
@@ -621,6 +790,13 @@ function parseStoryPlan(text: string | undefined, count: number, captionLanguage
  * weaker video than a planned one, and a much better answer than a refused
  * run. The planner is a text call, so it costs no GPU and runs while the card
  * is still busy with the previous clip.
+ *
+ * The captions are the one thing here that is not waited for. When the page is
+ * in a language of its own, the director writes them in the same reply; when
+ * it leaves some out, one short reply of its own fills them in beside the
+ * clips and the plan is already on its way (see
+ * {@link captionFallbackInstruction}). A plan that comes back without them
+ * costs the caption, never the video.
  * @param ctx - plugin context, carrying `auxiliary` and `llm` when set up.
  * @param intent - the user's line.
  * @param shots - the seconds of each shot, in order.
@@ -633,6 +809,9 @@ export async function writeStoryPlan(
   shots: readonly number[],
   opts: StoryPlanOptions & { model?: ModelRoute } = { opening: false },
 ): Promise<StoryPlan> {
+  const language = captionLanguageOf(opts.captionLanguage)
+  // The brief withheld is the reply that came back with no caption block.
+  const asked = captionsWithheld() ? undefined : language
   /*
    * Every route in turn, the way the song's caption is written. Stopping at
    * the first one left a whole music video on the user's bare line —
@@ -640,9 +819,30 @@ export async function writeStoryPlan(
    * answered nothing in its budget, and nothing reported it: the video was
    * just flatter.
    */
-  const plan = await firstTextReply(ctx, opts.model, storyPlanInstruction(intent, shots, opts),
-    written => parseStoryPlan(written, shots.length, opts.captionLanguage), 'the video clip shot plan')
-  return plan ?? { beats: shots.map(() => intent) }
+  const plan = await firstTextReply(ctx, opts.model, storyPlanInstruction(intent, shots, {
+    ...opts,
+    captionLanguage: asked,
+  }), written => parseStoryPlan(written, shots.length, asked), 'the video clip shot plan')
+  /*
+   * A plan that failed outright is the user's own line on every shot, in the
+   * language they wrote it in: there is nothing to translate, and asking for a
+   * caption of their own sentence would be a request for nothing.
+   */
+  if (plan === undefined) return { beats: shots.map(() => intent) }
+  if (language === undefined) return plan
+  /*
+   * A slot per shot for the caption, even when the director wrote none: the
+   * fallback reply lands after the plan has been handed to the chain, and the
+   * montage copies the plan (sources and all) on its way out — the slots must
+   * be the same array every reader is holding, so they are filled in place and
+   * never replaced.
+   */
+  if (plan.captions === undefined) plan.captions = Array.from({ length: shots.length }, () => '')
+  plan.captionLanguage = language
+  if (missingCaptionIndexes(plan).length > 0) {
+    void fillMissingCaptions(ctx, plan, language, opts.model, opts.onCaptions)
+  }
+  return plan
 }
 
 /** How long the song is faded down for when the video ends before it does. */

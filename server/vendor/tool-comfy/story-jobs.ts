@@ -38,11 +38,12 @@ import {
 } from './story.ts'
 import type { MediaKind, ModelRoute } from '../../../shared/imagine-types.ts'
 import {
-  endRunControl, getImagineJob, jobThatProduced, patchJob, putJob, renameJobFiles, setJobPromptId,
-  startRunControl, type ImagineJob,
+  endRunControl, getImagineJob, jobThatProduced, listImagineJobs, patchJob, putJob, renameJobFiles,
+  setJobPromptId, startRunControl, type ImagineJob,
 } from './job-queue.ts'
 import type { ImagineJobRequest } from './job-request.ts'
 import { enqueueJob } from './run-job.ts'
+import { rememberCaption } from './imagine-notes.ts'
 
 /** Whether a file is on disk: a stat, not a read. */
 async function exists(path: string): Promise<boolean> {
@@ -246,7 +247,14 @@ export async function planMontage(
   intent: string,
   shots: readonly number[],
   photos: readonly string[],
-  opts: { song?: StorySong; model?: ModelRoute; continuous?: boolean; closeOnFace?: boolean; captionLanguage?: string },
+  opts: {
+    song?: StorySong
+    model?: ModelRoute
+    continuous?: boolean
+    closeOnFace?: boolean
+    captionLanguage?: string
+    onCaptions?: (plan: StoryPlan) => void
+  },
 ): Promise<StoryPlan> {
   const sights = await lookAtShots(ctx, outputDir, photos, opts.model)
   const ordered = opts.song === undefined ? orderShots(sights) : sights
@@ -264,6 +272,7 @@ export async function planMontage(
     ...opts.model === undefined ? {} : { model: opts.model },
     ...opts.song === undefined ? {} : { song: opts.song },
     ...opts.captionLanguage === undefined ? {} : { captionLanguage: opts.captionLanguage },
+    ...opts.onCaptions === undefined ? {} : { onCaptions: opts.onCaptions },
   })
   /*
    * The rule goes on every beat, not only in the brief the director was given:
@@ -814,6 +823,14 @@ function planStory(
    */
   const sungLyrics = song === undefined ? request.lyrics?.trim() : undefined
   const captionLanguage = captionsLanguage()
+  /*
+   * The fallback reply lands while the clips render: the shots whose turn has
+   * not come read the plan again and find the caption there, and the ones
+   * already queued or drawn are told to take it (see {@link fileStoryCaptions}).
+   * Nothing waits for it, and a reply that never comes leaves every shot on its
+   * English beat.
+   */
+  const onCaptions = (plan: StoryPlan): void => { void fileStoryCaptions(storyId, plan) }
   storyPlans.set(storyId, cuts
     ? planMontage(ctx, outputDir, intent, timing.shots, photos, {
       ...timing.chained ? { continuous: true } : {},
@@ -827,6 +844,7 @@ function planStory(
       ...request.model === undefined ? {} : { model: request.model },
       ...storySong === undefined ? {} : { song: storySong },
       ...captionLanguage === undefined ? {} : { captionLanguage },
+      onCaptions,
     })
     : writeStoryPlan(ctx, intent, timing.shots, {
       opening: source === undefined,
@@ -834,8 +852,46 @@ function planStory(
       ...storySong === undefined ? {} : { song: storySong },
       ...sungLyrics === undefined || sungLyrics.length === 0 ? {} : { sung: { lyrics: sungLyrics } },
       ...captionLanguage === undefined ? {} : { captionLanguage },
+      onCaptions,
     }))
   return storySong
+}
+
+/**
+ * Put the captions of a fallback reply on what was already made of the plan.
+ *
+ * The reply lands while the clips render. Every shot whose turn has not come
+ * reads the plan again and finds its caption there, but the jobs already queued
+ * or drawn were handed the plan as it was, so their caption is written here: on
+ * the live job (its tile), on the story's record (a redo, a resume) and on the
+ * note of any file already produced (its Details card). A caption is what the
+ * person reads, not what the video is: nothing here can fail a shot.
+ *
+ * Exported for `test/story-caption-fallback.test.ts` only; this module is its
+ * one caller.
+ * @param storyId - the story the plan belongs to.
+ * @param plan - the plan, its captions now filled.
+ */
+export async function fileStoryCaptions(storyId: string, plan: StoryPlan): Promise<void> {
+  for (const job of listImagineJobs()) {
+    if (job.storyId !== storyId || job.storyIndex === undefined) continue
+    const caption = captionOf(plan, job.storyIndex)
+    if (caption === undefined) continue
+    if (job.caption === undefined || job.captionLanguage === undefined) {
+      patchJob(job.id, { caption: caption.text, captionLanguage: caption.language })
+    }
+    await Promise.all((job.files ?? []).map(file => rememberCaption(file.name, caption.text, caption.language)))
+  }
+  await updateStoryManifest(storyId, current => ({
+    ...current,
+    shots: current.shots.map((shot) => {
+      const caption = captionOf(plan, shot.index)
+      // The director's own caption, or one a redo's beat replaced, stays.
+      return caption === undefined || shot.caption !== undefined
+        ? shot
+        : { ...shot, caption: caption.text, captionLanguage: caption.language }
+    }),
+  })).catch(() => undefined)
 }
 
 /** One job of a story's chain and the graph it renders on. */

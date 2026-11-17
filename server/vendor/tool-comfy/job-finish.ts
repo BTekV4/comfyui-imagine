@@ -24,7 +24,7 @@ import { laySongOver } from './story.ts'
 import type { ImagineWorkflows } from './workflow-fields.ts'
 import type { MediaKind } from '../../../shared/imagine-types.ts'
 import { getImagineJob, isSettled, listImagineJobs, patchJob, setJobNotice, type ImagineJob } from './job-queue.ts'
-import { joinShots, rebuildStory, repairStory } from './story-jobs.ts'
+import { joinShots, rebuildStory, repairStory, storyCaption } from './story-jobs.ts'
 
 /** A shot of a music video, delivered under its number. */
 export interface DeliveredShot {
@@ -305,12 +305,41 @@ async function snapToSize(run: FinishRun, files: readonly ComfyProducedFile[]): 
 }
 
 /**
+ * The job with the caption the plan carries now, when the run started without
+ * one.
+ *
+ * A story's shot is handed its caption when its turn comes, and on a plan the
+ * director left without captions the fallback reply lands later — while the
+ * clip is rendering. The plan is read once more here so that shot is filed with
+ * its caption: the note outlives the job, and the Details card reads it.
+ * @param job - the run's working copy.
+ * @returns the same job, or the job with the caption the plan now carries.
+ */
+async function withStoryCaption(job: ImagineJob): Promise<ImagineJob> {
+  if (job.caption !== undefined || job.redo !== undefined || job.storyId === undefined
+    || job.storyIndex === undefined) {
+    return job
+  }
+  const caption = await storyCaption(job)
+  return caption === undefined ? job : { ...job, caption: caption.text, captionLanguage: caption.language }
+}
+
+/**
  * The terminal write: the prompt filed under the clip, the story's record,
  * the origin of every file, the stills queued for a look, the job marked done
  * on the live copy, and the files put on the board.
  */
 async function writeResult(run: FinishRun, files: readonly ComfyProducedFile[]): Promise<void> {
-  const { ctx, outputDir, job, shot, lipsync } = run
+  const { ctx, outputDir, shot, lipsync } = run
+  /*
+   * The caption this shot is filed with is the one the plan carries now, not
+   * the one it carried when the run started: on a plan the director left
+   * without captions, the fallback reply lands while the clip renders (see
+   * `fillMissingCaptions`), and this is the only copy of it that outlives the
+   * job. Read off the plan for that case alone — a job that already has a
+   * caption (the director's, a redo's own line) keeps it.
+   */
+  const job = await withStoryCaption(run.job)
   // A cancel decided while the run was settling wins: the user asked for it
   // to stop, and a late "done" would put a file they cancelled on the board.
   // So does the deadline's error: the queue has already moved on.

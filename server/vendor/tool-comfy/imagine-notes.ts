@@ -131,6 +131,26 @@ export async function rememberSight(name: string, sight: string): Promise<void> 
 }
 
 /**
+ * Add the caption of a story's shot to a file already filed on disk.
+ *
+ * A shot that was drawn before the fallback reply landed has its note already
+ * written, without a caption: the Details card would keep showing the English
+ * beat for the rest of the file's life. The note is amended rather than
+ * replaced, so everything else filed about the file — what was seen in it, the
+ * seconds, the source — stays as it was.
+ * @param name - the produced file's basename.
+ * @param caption - the caption the plan now carries for that shot.
+ * @param language - the language of the page it was written for.
+ */
+export async function rememberCaption(name: string, caption: string, language: string): Promise<void> {
+  const text = caption.trim()
+  if (text.length === 0) return
+  await amend(name, (note) => note.origin === undefined
+    ? note
+    : { ...note, origin: { ...note.origin, caption: text, captionLanguage: language } })
+}
+
+/**
  * Drop the description of a file whose bytes changed, keeping its origin.
  * @param name - the produced file's basename.
  */

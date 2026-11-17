@@ -6,7 +6,8 @@
  * shot as a short caption, and the director writes both in the same reply: one
  * call, no second wait. These tests pin the two halves apart — the beats stay
  * English, the captions are in the page's language, and an English page or an
- * old story is exactly what it was.
+ * old story is exactly what it was. The reply that fills the captions the
+ * director left out is `story-caption-fallback.test.ts`.
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -72,15 +73,28 @@ test('the plan keeps the English beats and the Italian captions apart', async ()
   assert.equal(plan.captionLanguage, 'it')
 })
 
-test('a director that answered only the beats leaves no captions to show', async () => {
-  const plan = await writeStoryPlan(hostSaying(BEATS_ONLY), 'a girl dances', [6, 6], {
+test('a director that answered only the beats is asked once more, and shows the beat when that fails too', async () => {
+  let calls = 0
+  const host = {
+    llm: {
+      async *stream() {
+        calls += 1
+        // The plan, then a fallback that gets nothing back.
+        if (calls > 1) throw new Error('the model is down')
+        yield { type: 'text-delta', text: BEATS_ONLY }
+      },
+    },
+  } as unknown as ImagineHost
+  const plan = await writeStoryPlan(host, 'a girl dances', [6, 6], {
     opening: false,
     captionLanguage: 'it',
     model: { provider: 'fake', model: 'm' },
   })
   assert.equal(plan.beats.length, 2)
-  assert.equal(plan.captions, undefined)
-  assert.equal(plan.captionLanguage, undefined)
+  // Nothing is shown under a caption label: the shot keeps its English beat,
+  // which is what the studio showed before captions existed.
+  assert.deepEqual(plan.captions, ['', ''])
+  assert.equal(calls, 2)
 })
 
 test('an English page drops a caption block the model wrote anyway', async () => {
