@@ -20,7 +20,7 @@ export interface MaskPainterOptions {
 }
 
 export interface MaskPainter {
-  readonly ref: RefObject<HTMLCanvasElement>
+  readonly ref: RefObject<HTMLCanvasElement | null>
   /** Whether anything has been painted since the last clear. */
   readonly painted: boolean
   readonly setPainted: (painted: boolean) => void
@@ -44,7 +44,7 @@ export interface MaskPainter {
 
 export function useMaskPainter({ side, color, brush, erase, onStroke }: MaskPainterOptions): MaskPainter {
   const ref = useRef<HTMLCanvasElement>(null)
-  const last = useRef<{ x: number; y: number }>()
+  const last = useRef<{ x: number; y: number } | undefined>(undefined)
   const [painted, setPainted] = useState(false)
 
   const sizePaint = (image: HTMLImageElement): void => {

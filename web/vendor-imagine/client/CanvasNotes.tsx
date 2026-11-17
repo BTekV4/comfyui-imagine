@@ -59,7 +59,7 @@ export function CanvasNoteView({ note, zoom, selected, editing, onSelect, onEdit
   const [draft, setDraft] = useState(note.text)
   const [shift, setShift] = useState({ dx: 0, dy: 0, dw: 0 })
   const [menu, setMenu] = useState<'size' | 'color' | undefined>(undefined)
-  const drag = useRef<Drag>()
+  const drag = useRef<Drag | undefined>(undefined)
   const field = useRef<HTMLTextAreaElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const inverse = Math.max(1, 1 / zoom)

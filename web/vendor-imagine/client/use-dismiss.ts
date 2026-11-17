@@ -11,7 +11,7 @@ import { useEffect, useRef, type RefObject } from 'react'
  * @param onClose - what closing does; the latest one is always called.
  * @param open - false leaves the listeners off (a closed menu).
  */
-export function useDismiss(box: RefObject<HTMLElement>, onClose: () => void, open = true): void {
+export function useDismiss(box: RefObject<HTMLElement | null>, onClose: () => void, open = true): void {
   const close = useRef(onClose)
   close.current = onClose
   useEffect(() => {

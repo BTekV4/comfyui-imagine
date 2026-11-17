@@ -269,7 +269,7 @@ export function Viewer({
     onEdit(current, text, reference)
   }
 
-  const pressedAt = useRef<{ x: number; y: number }>()
+  const pressedAt = useRef<{ x: number; y: number } | undefined>(undefined)
   /** Drag to move a zoomed file around; a fitted one does not move. */
   const drag = useRef<{ x: number; y: number; from: { x: number; y: number } } | undefined>(undefined)
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {

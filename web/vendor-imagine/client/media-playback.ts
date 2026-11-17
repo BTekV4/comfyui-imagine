@@ -52,7 +52,7 @@ function pauseTracks(): void {
 
 /** A clip's or a track's transport: what the play button and the seek bar read. */
 export interface MediaTransport {
-  readonly ref: RefObject<HTMLMediaElement>
+  readonly ref: RefObject<HTMLMediaElement | null>
   readonly playing: boolean
   readonly currentTime: number
   readonly duration: number | undefined

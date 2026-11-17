@@ -33,7 +33,7 @@ export interface Box { readonly left: number; readonly top: number; readonly wid
  * @param imageRef - the picture.
  * @param moved - anything that moves it.
  */
-export function useDrawnBox(imageRef: RefObject<HTMLImageElement>, moved: string): Box | undefined {
+export function useDrawnBox(imageRef: RefObject<HTMLImageElement | null>, moved: string): Box | undefined {
   const [box, setBox] = useState<Box>()
   useLayoutEffect(() => {
     const image = imageRef.current
@@ -252,7 +252,7 @@ export function SegmentBoxes({ index, drawn, frame, shown, group }: {
   /** The picture, in viewport pixels. */
   drawn: Box
   /** The element the boxes are positioned in. */
-  frame: RefObject<HTMLDivElement>
+  frame: RefObject<HTMLDivElement | null>
   shown: readonly number[]
   group: readonly number[] | undefined
 }) {
@@ -286,7 +286,7 @@ export function SegmentBoxes({ index, drawn, frame, shown, group }: {
 export function SegmentLabel({ label, frame, start }: {
   label: string
   /** The photo's frame: the label follows the pointer over it. */
-  frame: RefObject<HTMLElement>
+  frame: RefObject<HTMLElement | null>
   /** Where the pointer was when the part under it was found. */
   start: { x: number; y: number }
 }) {

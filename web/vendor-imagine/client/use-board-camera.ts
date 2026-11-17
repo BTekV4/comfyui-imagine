@@ -83,7 +83,7 @@ export function useCanvasView<T>(session: CanvasSession, select: (state: CanvasV
 export interface BoardCameraContext {
   readonly session: CanvasSession
   /** The board's root, measured and listened on. */
-  readonly boardRef: RefObject<HTMLDivElement>
+  readonly boardRef: RefObject<HTMLDivElement | null>
   /** The open project, or undefined; the board frames once per project. */
   readonly projectId: string | undefined
   readonly rects: readonly CanvasRect[]

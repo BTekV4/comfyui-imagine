@@ -72,7 +72,7 @@ export function useAddressSync(
    * that no longer exists lands elsewhere, and that is then the page).
    */
   const pendingPage = useRef<StudioPage | undefined>(undefined)
-  const startedOn = useRef<{ readonly view: ImagineView; readonly projectId: string | undefined }>()
+  const startedOn = useRef<{ readonly view: ImagineView; readonly projectId: string | undefined } | undefined>(undefined)
   if (startedOn.current === undefined) {
     startedOn.current = { view, projectId }
     const addressed = pageOf(window.location.pathname)

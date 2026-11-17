@@ -20,7 +20,7 @@ export interface StillProps {
   /** Whether to defer the load, for the stills far down a board. */
   readonly lazy?: boolean
   /** The element, for the viewer, which measures the picture it is showing. */
-  readonly imageRef?: RefObject<HTMLImageElement>
+  readonly imageRef?: RefObject<HTMLImageElement | null>
   /** Called on every successful load, after the retries have been reset. */
   readonly onLoaded?: () => void
   /** Ask the browser for this one first: the viewer's picture, among a grid of thumbnails. */

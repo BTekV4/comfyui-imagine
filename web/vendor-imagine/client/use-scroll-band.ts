@@ -37,7 +37,7 @@ export function bandAround(top: number, height: number): { readonly from: number
  * @param first - `now` measures at once on subscribing, `frame` on the next frame.
  */
 export function useScrollMeasure(
-  box: RefObject<HTMLElement>,
+  box: RefObject<HTMLElement | null>,
   measure: () => void,
   again: unknown,
   first: 'now' | 'frame',
@@ -75,7 +75,7 @@ export function useScrollMeasure(
  * @param rootMargin - how far ahead of the screen the end counts as near.
  */
 export function useGrowOnTail(
-  tail: RefObject<Element>,
+  tail: RefObject<Element | null>,
   shown: number,
   total: number,
   grow: () => void,

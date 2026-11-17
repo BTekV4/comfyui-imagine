@@ -328,7 +328,7 @@ export interface HomeViewProps extends PanelActions {
   /** The composer, as the page builds it ("All media" shows the same one). */
   readonly composer: ReactNode
   /** The home's own scroll box, which a card sends back to the composer. */
-  readonly homeRef: RefObject<HTMLDivElement>
+  readonly homeRef: RefObject<HTMLDivElement | null>
   readonly onCard: (id: JobCardId) => void
   /** The uploaded card whose panel is open, if any. */
   readonly customPanel?: CustomWorkflow

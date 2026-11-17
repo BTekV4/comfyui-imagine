@@ -52,7 +52,7 @@ export interface ZoneFrameProps {
 
 export function ZoneFrame({ src, region, onRegion, ratio, children, onPicture, interactive = true }: ZoneFrameProps) {
   const frame = useRef<HTMLDivElement>(null)
-  const gesture = useRef<Gesture>()
+  const gesture = useRef<Gesture | undefined>(undefined)
 
   /** The pointer as fractions of the picture. */
   const at = (event: ReactPointerEvent): { x: number; y: number } => {

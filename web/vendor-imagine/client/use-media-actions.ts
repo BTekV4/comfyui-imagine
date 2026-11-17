@@ -51,7 +51,7 @@ export interface MediaActionsContext {
   readonly changeMode: (next: ImagineMode) => void
   readonly run: (action: ImagineAction, from?: GalleryItem, over?: RunOverride) => Promise<ImagineProject | undefined>
   readonly pickedGroups: PickedGroups
-  readonly boardApi: RefObject<BoardHandle>
+  readonly boardApi: RefObject<BoardHandle | null>
   /** The laid-out tiles: a file waiting to be focused is tried again when they move. */
   readonly rects: readonly CanvasRect[]
 }

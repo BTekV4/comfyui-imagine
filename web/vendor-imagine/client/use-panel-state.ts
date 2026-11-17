@@ -26,7 +26,7 @@ export interface PanelStateContext {
   readonly view: ImagineView
   readonly composer: ComposerStore
   /** The home's own scroll box, which a card sends back to the composer. */
-  readonly homeRef: RefObject<HTMLDivElement>
+  readonly homeRef: RefObject<HTMLDivElement | null>
   readonly addItems: (items: readonly GalleryItem[]) => void
   /** The note under the composer. */
   readonly setNote: (note: string | undefined) => void

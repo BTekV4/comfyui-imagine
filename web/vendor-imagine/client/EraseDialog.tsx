@@ -24,7 +24,7 @@ export function EraseDialog({ item, onClose, onDone }: { item: GalleryItem; onCl
   const [brush, setBrush] = useState(4)
   const [erase, setErase] = useState(false)
   const { busy, error, clearError, run } = useHostEdit<GalleryItem>('/plugin/iopaint/erase', 'erase')
-  const natural = useRef<{ w: number; h: number }>()
+  const natural = useRef<{ w: number; h: number } | undefined>(undefined)
   const painter = useMaskPainter({ side: PAINT_SIDE, color: '#ff4d6d', brush, erase, onStroke: clearError })
   const { painted } = painter
 

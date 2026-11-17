@@ -47,8 +47,8 @@ export interface PageKeyState {
  */
 export function usePageKeys(
   state: PageKeyState,
-  page: RefObject<HTMLElement>,
-  board: RefObject<BoardHandle>,
+  page: RefObject<HTMLElement | null>,
+  board: RefObject<BoardHandle | null>,
   session: CanvasSession,
   actions: ImaginePageProps['actions'],
 ): void {
