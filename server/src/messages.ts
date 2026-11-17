@@ -62,6 +62,7 @@ export const MESSAGES = {
   'locale.notInstalled': { it: 'nessun pacchetto {code} installato', en: 'no {code} language pack is installed' },
   'locale.packEmpty': { it: '{file} non ha nessuna chiave', en: '{file} has no keys' },
   'route.unknown': { it: 'rotta sconosciuta: {method} {path}', en: 'unknown route: {method} {path}' },
+  'security.crossSite': { it: 'richiesta rifiutata: arriva da un’altra origine', en: 'request refused: it comes from another origin' },
   'file.nameRequired': { it: 'serve il nome di un file della galleria', en: 'the name of a gallery file is needed' },
   'gallery.notAFile': { it: '{name} non è un file della galleria', en: '{name} is not a gallery file' },
   'frame.timeRequired': { it: 'serve un istante in secondi', en: 'a time in seconds is needed' },

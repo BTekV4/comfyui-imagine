@@ -27,6 +27,7 @@ import * as toolComfy from '../vendor/tool-comfy/index.ts'
 import { setImagineModels } from '../vendor/tool-comfy/imagine-models.ts'
 import { COVER_MAX_BYTES } from '../../shared/cover-kinds.ts'
 import { createAuth } from './auth.ts'
+import { applySecurityHeaders, stateChangeAllowed } from './security.ts'
 import { absoluteFrom, anchoredToolComfy, programAsset } from './config-paths.ts'
 import { listenHost, listenPort, programDirFrom } from './boot-env.ts'
 import { parentPidFrom, watchParent } from './parent-watch.ts'
@@ -528,6 +529,16 @@ function match(table: readonly WebRoute[], path: string): WebRoute | undefined {
 
 /** Route one request; may throw, synchronously or not: the listener catches both. */
 async function handle(req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
+  applySecurityHeaders(res, path)
+  /*
+   * A state-changing request from a browser is accepted only from the studio's
+   * own origin. Requests with no origin at all are not browsers (curl, the MCP
+   * server, a plugin's webhook, the desktop window's loopback page) and pass.
+   */
+  if (!stateChangeAllowed(req)) {
+    sendJson(res, 403, { error: message('security.crossSite') })
+    return
+  }
   if (path !== '/api/health' && !(await auth.guard(req, res, path))) return
   const route = match(own, path) ?? match(routes, path)
   if (route !== undefined) return route.handler(req, res)
