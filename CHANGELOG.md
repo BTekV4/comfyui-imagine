@@ -4,6 +4,42 @@ Notable changes, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project's
 versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Imagine is an app.** The Linux AppImage is no longer a script that copies the
+  studio into `~/.local/share/imagine` on the first start and opens a browser: it
+  is an **Electron window** with the studio inside — its own icon and menu, one
+  instance at a time (a second launch brings the open window to the front),
+  external links in the system browser, and the failures of the first minute in
+  the window, with **Try again**. Closing the window stops the studio's server;
+  if the server dies while the window is open, the window says so.
+- **The program and the data are separate.** The program (server, page, graphs,
+  language packs) stays inside the read-only AppImage and is replaced whole by an
+  update; `config.yaml`, the media, the projects and the installed plugins live
+  in the user's folder, which the new version finds again. A machine that used
+  the previous AppImage keeps its folder, so an update finds everything where it
+  was.
+- A log in the data folder (`logs/imagine.log`, rotated at 5 MB) and **File →
+  Open log folder** / **Open data folder** in the menu.
+- `scripts/check-appimage.sh`: starts the AppImage on a virtual screen and checks
+  that the window really loaded the studio (address, title, what `#root` holds),
+  that a second launch does not start a second studio, and that closing the
+  window leaves no server process. CI runs it on every push; the release runs it
+  before attaching the file.
+
+### Changed
+
+- The server reads `IMAGINE_PROGRAM_DIR`, `IMAGINE_PORT` and `IMAGINE_HOST`
+  (`server/src/boot-env.ts`): a packaged app names its read-only program folder
+  and the free loopback port it reserved, without rewriting `config.yaml` on
+  every start. Every other installation boots exactly as before.
+- `scripts/package-appimage.sh` is gone: `scripts/package-electron.sh` builds the
+  AppImage with electron-builder, and the same tree is what a Windows NSIS
+  installer will pack (`electron-builder.yml`; the target is one line away and
+  deliberately off).
+
 ## 0.1.2 — 2026-11-16
 
 ### Added

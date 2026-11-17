@@ -62,7 +62,7 @@ Node and ffmpeg inside, so there is nothing to install first:
 
 | Your system | Download | Then |
 |---|---|---|
-| **Linux** (64-bit), one file | `Imagine-<version>-linux-x64.AppImage` | `chmod +x` then double-click it |
+| **Linux** (64-bit), one app | `Imagine-<version>-linux-x64.AppImage` | double-click it: Imagine opens in its own window |
 | **Linux**, a folder you keep | `Imagine-<version>-linux-x64.zip` | extract it, run **Imagine.sh** (`bash Imagine.sh`, or double-click it) |
 | **macOS**, or a server | `comfyui-imagine-<version>.tar.gz` | `tar xzf … && cd … && ./install.sh` |
 
@@ -225,14 +225,37 @@ gated repository (FLUX.3 Klein) needs a Hugging Face token in
 
 ## Install
 
-### The AppImage (Linux)
+### The app (Linux)
 
-`Imagine-<version>-linux-x64.AppImage` is one file: `chmod +x` it and run it. An
-AppImage is mounted read-only, so on the first start it copies itself into
-`~/.local/share/imagine` (change it with `IMAGINE_DATA`) and works from there —
-`config.yaml`, projects, plugins and media all live in that folder. A second
-launch reopens the page instead of starting a second copy, and `IMAGINE_PORT`
-picks another port when you want two side by side.
+`Imagine-<version>-linux-x64.AppImage` is the studio as a desktop app: one file,
+double-click, and **Imagine opens in its own window** — the studio inside, its
+own icon, and a menu. No browser and no terminal. The window starts the studio's
+server on a free loopback port and stops it when you close the window; if you
+double-click the file a second time, the window that is already open comes to
+the front instead of a second copy starting.
+
+**The program and your data are separate.** The AppImage is mounted read-only:
+the program (the server, the page, the graphs, the language packs) is replaced
+whole when you update the file, and the new version finds your data again —
+
+| What | Where |
+|---|---|
+| `config.yaml`, the media, the projects, the installed plugins and languages | `~/.config/Imagine` |
+| the log, and a copy of `config.example.yaml` | `~/.config/Imagine/logs`, `~/.config/Imagine` |
+
+`IMAGINE_DATA=<folder>` puts everything somewhere else. A machine that used the
+previous AppImage keeps `~/.local/share/imagine/app`, so an update finds the
+configuration, the projects and the media exactly where they were.
+
+What a failure looks like: a window, not a terminal. A studio that cannot start,
+a `config.yaml` line it cannot read, a ComfyUI that does not answer (the
+first-run card, as in every package) — the window says what it is and offers
+**Try again**, **Open log folder** and **Open data folder**. The same two folders
+are in the **File** menu, next to **Restart studio**.
+
+The graphs an action runs come with the program, so they cannot be changed from
+inside the app (the Settings → Workflows edit reports the read-only file); the
+personal workflows you add live in your data folder and stay editable.
 
 It needs `libfuse2` (Debian/Ubuntu: `apt install libfuse2`). Without it the
 kernel cannot mount it and the file answers *"dlopen(): error loading

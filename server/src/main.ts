@@ -7,7 +7,7 @@
  * login. It loads the external plugins (`plugins.ts`) and the language packs
  * (`locales.ts`), and serves the studio's web build (`static.ts`).
  */
-import { mkdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -27,7 +27,8 @@ import * as toolComfy from '../vendor/tool-comfy/index.ts'
 import { setImagineModels } from '../vendor/tool-comfy/imagine-models.ts'
 import { COVER_MAX_BYTES } from '../../shared/cover-kinds.ts'
 import { createAuth } from './auth.ts'
-import { absoluteFrom, anchoredToolComfy } from './config-paths.ts'
+import { absoluteFrom, anchoredToolComfy, programAsset } from './config-paths.ts'
+import { listenHost, listenPort, programDirFrom } from './boot-env.ts'
 import { coverIndex, coverKeyOf, coversDir, storeCover } from './covers.ts'
 import { createLlm, type ProviderConfig } from './llm.ts'
 import { createPlugins, createPluginsRoute } from './plugins.ts'
@@ -68,12 +69,22 @@ const studioVersion: string | undefined = __IMAGINE_VERSION__ === '' ? undefined
 
 const configPath = process.env.IMAGINE_CONFIG ?? 'config.yaml'
 /*
+ * The desktop app boots the studio from a read-only program folder (the
+ * AppImage's mount, a Windows installer's folder) with the data in the user's
+ * own: `boot-env.ts` reads the two overrides it passes, and they fall back to
+ * `config.yaml` when absent. Everything below that names a path decides
+ * between the program's files and the user's with them.
+ */
+const programDir = programDirFrom()
+/*
  * A first run has no config.yaml, and the portable packages cannot ask the
  * questions `install.sh` asks (Windows has no bash): the studio writes one
  * from the example beside it, and the page's first-run card asks for the rest
- * — a ComfyUI address that does not answer, no model, no ffmpeg.
+ * — a ComfyUI address that does not answer, no model, no ffmpeg. In a packaged
+ * app the example is in the program folder, not beside the config.
  */
-const firstRun = ensureConfig(configPath, join(dirname(configPath), 'config.example.yaml'))
+const examplePath = join(dirname(configPath), 'config.example.yaml')
+const firstRun = ensureConfig(configPath, programDir === undefined || existsSync(examplePath) ? examplePath : join(programDir, 'config.example.yaml'))
 if (firstRun.created) {
   console.log(`[imagine] first run: ${firstRun.path} written${firstRun.from === undefined ? '' : ` from ${firstRun.from}`}`)
 }
@@ -98,11 +109,12 @@ const absolute = (value: string): string => absoluteFrom(configPath, value)
 
 const config: HostConfig = {
   ...raw,
-  webDir: absolute(raw.webDir),
+  // The page is the program's; the login files and the media are the user's.
+  webDir: programAsset(programDir, configPath, raw.webDir),
   passwordFile: absolute(raw.passwordFile),
   secretFile: absolute(raw.secretFile),
   ...raw.settingsFile === undefined ? {} : { settingsFile: absolute(raw.settingsFile) },
-  toolComfy: anchoredToolComfy(configPath, raw.toolComfy),
+  toolComfy: anchoredToolComfy(configPath, raw.toolComfy, programDir),
 }
 
 /*
@@ -242,7 +254,7 @@ applyModels()
  */
 const localePacks = await createLocalePacks({
   dir: dataPath('locales'),
-  srcDir: process.env.IMAGINE_LOCALES_SRC?.trim() || join(dirname(fileURLToPath(import.meta.url)), '..', 'locales'),
+  srcDir: process.env.IMAGINE_LOCALES_SRC?.trim() || join(programDir ?? join(dirname(fileURLToPath(import.meta.url)), '..'), 'locales'),
 })
 
 /*
@@ -255,7 +267,7 @@ const plugins = await createPlugins({
   // The plugins the repo ships, for the «Available» group and the Install
   // button: beside the bundle (`dist/../plugins`), or where IMAGINE_PLUGINS_SRC
   // says when the app is installed outside the source tree.
-  repoDir: process.env.IMAGINE_PLUGINS_SRC?.trim() || join(dirname(fileURLToPath(import.meta.url)), '..', 'plugins'),
+  repoDir: process.env.IMAGINE_PLUGINS_SRC?.trim() || join(programDir ?? join(dirname(fileURLToPath(import.meta.url)), '..'), 'plugins'),
   stateFile: dataPath('plugins-state.json'),
   host: {
     comfy,
@@ -515,9 +527,15 @@ const server = createServer((req, res) => {
 })
 
 server.requestTimeout = 0
-server.listen(config.port ?? 3090, config.host ?? '0.0.0.0', () => {
+/*
+ * The desktop app reserves a free loopback port for its window and says so in
+ * the environment: a studio started beside a service on 3090 (or behind the
+ * app) must not collide with it.
+ */
+const listenOn = { port: listenPort(config.port), host: listenHost(config.host) }
+server.listen(listenOn.port, listenOn.host, () => {
   warmThumbnails(outputDir)
-  console.log(`[imagine] listening on http://${config.host ?? '0.0.0.0'}:${String(config.port ?? 3090)}`)
+  console.log(`[imagine] listening on http://${listenOn.host}:${String(listenOn.port)}`)
 })
 
 const shutdown = (): void => {

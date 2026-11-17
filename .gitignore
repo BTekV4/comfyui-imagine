@@ -36,3 +36,6 @@ __pycache__/
 
 # The tarball a release ships, built by scripts/release-tarball.sh
 release/
+
+# The staged tree electron-builder packages (scripts/package-electron.sh)
+build/

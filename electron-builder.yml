@@ -1,0 +1,81 @@
+# Imagine as a desktop app: what electron-builder packs.
+#
+# `scripts/package-electron.sh` stages the tree this file packages —
+#
+#   build/electron/package.json   name, version, `main: main.mjs`
+#   build/electron/main.mjs       the window, the server, single instance
+#   build/electron/preload.cjs    the bridge the app's own pages use
+#   build/electron/pages/         the splash and the failure page
+#   build/electron/icon.png       the studio's own logo
+#   build/electron/app/           the PROGRAM, read-only inside the package
+#   build/electron/ffmpeg/        static ffmpeg and ffprobe
+#
+# and the app it produces keeps the two apart: `resources/app` is the program,
+# the user's folder is where `config.yaml`, the media and the plugins live
+# (`IMAGINE_DATA`, else the folder Electron gives an app).
+appId: net.btekv.imagine
+productName: Imagine
+copyright: Imagine contributors
+
+directories:
+  app: build/electron
+  output: release/electron
+  buildResources: build/electron
+
+# The asar holds the window's code only: everything the server reads stays in
+# `resources/app`, where it can be listed and diffed against a release.
+files:
+  - package.json
+  - main.mjs
+  - preload.cjs
+  - pages/**/*
+  - icon.png
+
+# `from` is relative to the project (this file's folder), not to `directories.app`.
+extraResources:
+  - from: build/electron/app
+    to: app
+  - from: build/electron/ffmpeg
+    to: ffmpeg
+
+asar: true
+compression: normal
+
+linux:
+  target:
+    - AppImage
+  category: Graphics
+  icon: icon.png
+  executableName: imagine
+  synopsis: A local studio for ComfyUI
+  description: "Imagine — a local studio for ComfyUI: chat, images, video and a gallery, in one window."
+
+appImage:
+  # The name the release notes and the upgrade path already use: x64 is the
+  # only architecture packaged, and `${arch}` here would say `x86_64`, a name
+  # nobody downloading it recognises.
+  artifactName: Imagine-${version}-linux-x64.AppImage
+
+# Windows. NOT built yet: the installer has never been started on Windows, and
+# a package nobody booted is not attached to a release. Turning it on is the
+# `target` line below plus `npm run package:win` (or `--win` in the release
+# workflow) — everything else (icon, shortcut, install folder, artifact name)
+# is already written.
+win:
+  target: []
+  # target:
+  #   - nsis
+  icon: icon.png
+  executableName: Imagine
+  artifactName: Imagine-${version}-windows-${arch}.exe
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Imagine
+  # Install over the previous version instead of beside it: the data folder in
+  # %APPDATA%\Imagine is what carries the projects and the media forward.
+  deleteAppDataOnUninstall: false

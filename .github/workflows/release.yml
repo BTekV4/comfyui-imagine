@@ -70,12 +70,6 @@ jobs:
         run: npm run build
       - name: Package
         run: OUT_DIR=release bash scripts/package-portable.sh ${{ matrix.target }}
-      # The AppImage, Linux only: one file, double-click, icon in the menu.
-      - name: AppImage
-        if: matrix.target == 'linux-x64'
-        run: |
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends squashfs-tools
-          OUT_DIR=release bash scripts/package-appimage.sh
       # The check that matters: the package opens and the page answers.
       - name: Boot it
         run: |
@@ -96,12 +90,43 @@ jobs:
           path: |
             release/Imagine-*.zip
             release/Imagine-*.zip.sha256
-            release/Imagine-*.AppImage
-            release/Imagine-*.AppImage.sha256
+          if-no-files-found: error
+
+  # The desktop app: the AppImage built by electron-builder, started without a
+  # screen before it is attached — a package nobody booted is not a package.
+  desktop:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: The libraries a window needs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb xauth imagemagick libnss3 libnspr4 libgbm1 libxss1 \
+            libgtk-3-0t64 libasound2t64 libcups2t64 libdrm2 libxkbcommon0 \
+            libatspi2.0-0t64 libatk-bridge2.0-0t64 libxcomposite1 libxdamage1 \
+            libxfixes3 libxrandr2 libpango-1.0-0 libcairo2 squashfs-tools
+      - run: npm ci --no-audit --no-fund
+      - name: Build
+        run: npm run build
+      - name: The AppImage
+        run: OUT_DIR=release bash scripts/package-electron.sh
+      - name: Boot it, twice, and close the window
+        run: bash scripts/check-appimage.sh "$GITHUB_WORKSPACE"/release/Imagine-*-linux-x64.AppImage "$RUNNER_TEMP/check"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux
+          path: |
+            release/Imagine-*-linux-x64.AppImage
+            release/Imagine-*-linux-x64.AppImage.sha256
           if-no-files-found: error
 
   publish:
-    needs: [tarball, portable]
+    needs: [tarball, portable, desktop]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
@@ -120,16 +145,22 @@ jobs:
 
             | Your system | Download | Then |
             |---|---|---|
-            | Linux (64-bit) | `Imagine-<version>-linux-x64.AppImage` | make it executable (`chmod +x`), double-click it |
+            | Linux (64-bit) | `Imagine-<version>-linux-x64.AppImage` | double-click it: imagine opens in its own window |
             | Linux, or a folder you keep | `Imagine-<version>-linux-x64.zip` | extract, run **Imagine.sh** |
             | macOS, or a server | `comfyui-imagine-<version>.tar.gz` | `tar xzf … && ./install.sh` |
 
             A Windows package is next: it is being tested on Windows before it
             ships (a package that was never started is not attached to a release).
 
-            The Windows and Linux zips carry **Node 24** and a static **ffmpeg**:
-            the launcher opens the browser by itself, and a second double-click
-            just reopens the page instead of starting a second copy.
+            The Linux AppImage is the studio as an **app**: its own window, its
+            own icon in the menu, no browser and no terminal. Closing the window
+            stops it, a second double-click brings the open window to the front,
+            and the app updates by replacing the file — the data (configuration,
+            projects, media, plugins) lives in your home folder and stays.
+
+            The zips carry **Node 24** and a static **ffmpeg**: the launcher opens
+            the browser by itself, and a second double-click just reopens the page
+            instead of starting a second copy.
 
             **What you need anyway:** a **ComfyUI** the studio can reach (the zip
             assumes `127.0.0.1:8188`) and its weights — the first request that

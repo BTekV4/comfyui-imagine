@@ -70,6 +70,47 @@ jobs:
         env:
           IMAGINE_SMOKE_REQUIRE_FFMPEG: '1'
 
+  # The desktop app (Electron) is built and **started without a screen**: the
+  # check is not "the process is alive" but "the window loaded the studio".
+  # `scripts/check-appimage.sh` starts it on Xvfb, keeps a screenshot, looks at
+  # what the window reports, launches it twice and closes the window to see
+  # that the server goes with it.
+  desktop:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      # Electron needs the GTK/NSS/GBM libraries, Xvfb a virtual screen and
+      # ImageMagick the screenshot. None of them ship on the runner image.
+      - name: The libraries a window needs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb xauth imagemagick libnss3 libnspr4 libgbm1 libxss1 \
+            libgtk-3-0t64 libasound2t64 libcups2t64 libdrm2 libxkbcommon0 \
+            libatspi2.0-0t64 libatk-bridge2.0-0t64 libxcomposite1 libxdamage1 \
+            libxfixes3 libxrandr2 libpango-1.0-0 libcairo2 squashfs-tools
+      - run: npm ci --no-audit --no-fund
+      - name: Build
+        run: npm run build
+      - name: Package the AppImage
+        run: OUT_DIR="$RUNNER_TEMP/pkg" bash scripts/package-electron.sh
+      - name: Start it without a screen and look at the window
+        run: bash scripts/check-appimage.sh "$RUNNER_TEMP"/pkg/Imagine-*-linux-x64.AppImage "$RUNNER_TEMP/check"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-window
+          path: |
+            ${{ runner.temp }}/check/window.png
+            ${{ runner.temp }}/check/selftest.json
+            ${{ runner.temp }}/check/data/logs/imagine.log
+            ${{ runner.temp }}/check/app.log
+          if-no-files-found: warn
+
   # The portable package is built and really started: if the launcher or the
   # runtime PATH breaks, it shows up here and not in the release.
   portable:
@@ -85,13 +126,6 @@ jobs:
         run: npm run build
       - name: Package
         run: OUT_DIR="$RUNNER_TEMP/pkg" bash scripts/package-portable.sh linux-x64
-      # The AppImage is built here on every push: it costs two minutes, and a
-      # broken runtime or compression is found before the tag.
-      - name: AppImage
-        run: |
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends squashfs-tools
-          OUT_DIR="$RUNNER_TEMP/pkg" bash scripts/package-appimage.sh
-          ls -l "$RUNNER_TEMP/pkg"/*.AppImage
       - name: Boot it
         run: |
           set -e
