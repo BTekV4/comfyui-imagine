@@ -4,6 +4,51 @@ Notable changes, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project's
 versions follow [semantic versioning](https://semver.org/).
 
+## 0.3.0 — 2026-11-17
+
+### Added
+
+- **A Windows installer.** `Imagine-<version>-windows-x64-setup.exe` installs
+  Imagine for the user who runs it: per user, no administrator prompt, no folder
+  to choose, icons on the Desktop and in the Start menu, an entry in *Installed
+  apps* whose uninstall keeps `%APPDATA%\Imagine`, and an update that replaces
+  the program in place. ffmpeg and ffprobe are inside the package
+  (`resources\ffmpeg`) and first on `PATH`; Node is the one Electron carries.
+  The installer is **unsigned** for now, so the first launch may go through
+  SmartScreen (*More info → Run anyway*).
+- `scripts/check-windows.ps1`: installs the installer silently, starts the
+  installed program, checks the window and the packaged ffmpeg, edits a
+  workflow, restarts the studio, launches it twice, closes the window (no server
+  left), uninstalls (data kept) and installs the next version over the previous
+  one. CI runs it on `windows-latest` on every push; the release runs it before
+  attaching the file.
+- **Log out**, and sessions that end: the login cookie lasts 30 days and is
+  renewed while the studio is used, and saving a new password signs out every
+  other browser. Existing sessions are asked for the password once after the
+  update.
+- A banner when the studio listens beyond this machine with the password off.
+- A **Modified** label on the bundled workflows changed in the app, gone again
+  after **Restore default**.
+- `SECURITY.md`: how to report a problem, what the login protects, and the
+  loopback bypass.
+
+### Changed
+
+- State-changing requests from another site are refused (`Origin`, `Referer`,
+  `Sec-Fetch-Site`), and the studio sends a Content Security Policy,
+  `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy`.
+- The user's data files (likes, tags, Instagram records, custom workflows,
+  prompts, notes, plugin state) are written readable by their owner only.
+- React 19 and Vite 8; the web bundle is about 4% larger.
+- `/api/restart` stops the studio the graceful way on every platform.
+- CI: read-only token, a timeout on every job, a secret scan (gitleaks), every
+  action on Node 24, and monthly Dependabot updates.
+
+### Fixed
+
+- Replacing a cover twice within the same millisecond (seen on Windows) no
+  longer leaves the old file behind.
+
 ## 0.2.0 — 2026-11-17
 
 ### Added
@@ -34,22 +79,6 @@ versions follow [semantic versioning](https://semver.org/).
   that a second launch does not start a second studio, and that closing the
   window leaves no server process. CI runs it on every push; the release runs it
   before attaching the file.
-- **A Windows installer.** `Imagine-<version>-windows-x64-setup.exe` installs
-  Imagine for the user who runs it: per user, no administrator prompt, no folder
-  to choose, icons on the Desktop and in the Start menu, an entry in *Installed
-  apps* whose uninstall keeps `%APPDATA%\Imagine`, and an update that replaces
-  the program in place. ffmpeg and ffprobe are inside the package
-  (`resources\ffmpeg`) and first on `PATH`; Node is the one Electron carries.
-  The installer is **unsigned** for now, so the first launch goes through
-  SmartScreen (*More info → Run anyway*).
-- `scripts/check-windows.ps1`: installs the installer silently, starts the
-  installed program, checks the window (`#root` drawn, screenshot) and the
-  packaged ffmpeg, edits a workflow through the API to see the copy land in
-  `%APPDATA%\Imagine\data\workflows`, restarts the studio, launches it twice,
-  closes the window (no server left), uninstalls (data kept) and installs the
-  next version over the previous one. CI runs it on `windows-latest` on every
-  push, with the screenshot as an artifact; the release runs it before attaching
-  the file.
 
 ### Changed
 
@@ -57,10 +86,10 @@ versions follow [semantic versioning](https://semver.org/).
   (`server/src/boot-env.ts`): a packaged app names its read-only program folder
   and the free loopback port it reserved, without rewriting `config.yaml` on
   every start. Every other installation boots exactly as before.
-- `scripts/package-electron.sh` builds the AppImage with electron-builder, and
-  the same tree is what the Windows NSIS installer packs (`electron-builder.yml`,
-  `nsis`): per-user install, Desktop and Start menu shortcuts, no elevation, and
-  no deletion of `%APPDATA%\Imagine` on uninstall.
+- `scripts/package-appimage.sh` is gone: `scripts/package-electron.sh` builds the
+  AppImage with electron-builder, and the same tree is what a Windows NSIS
+  installer will pack (`electron-builder.yml`; the target is one line away and
+  deliberately off).
 
 ## 0.1.2 — 2026-11-16
 

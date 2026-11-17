@@ -1,6 +1,6 @@
 {
   "name": "comfyui-imagine",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "A local studio for ComfyUI: a chat that turns a sentence into the right graph, a job queue, a gallery and ready-made image and video recipes.",
   "license": "MIT",
