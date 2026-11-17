@@ -14,6 +14,11 @@ on:
   # `gh workflow run ci.yml --ref <branch>`. The Windows job takes long enough
   # that waiting for a pull request is worse than asking for the run.
   workflow_dispatch:
+    inputs:
+      release_rehearsal:
+        description: "Rehearse the release file list and the ffmpeg fallback (writes no release)"
+        type: boolean
+        default: false
 
 jobs:
   check:
@@ -192,6 +197,91 @@ jobs:
             sleep 1
           done
           curl -fsS http://127.0.0.1:3095/setup-status
+
+  # A release's two risky steps, run without a tag and without writing
+  # anything: the file list the publish job gates on, and the portable package
+  # built with ffmpeg's mirror broken (the 0.3.0 zip doubled to 195 MB when
+  # that fallback ran).
+  # `gh workflow run ci.yml --ref <branch> -f release_rehearsal=true`.
+  release-rehearsal:
+    if: inputs.release_rehearsal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: The packages and their digests are accepted
+        run: |
+          set -euo pipefail
+          mkdir packages
+          for name in \
+            comfyui-imagine-0.4.0.tar.gz comfyui-imagine-0.4.0.tar.gz.sha256 \
+            Imagine-0.4.0-linux-x64.zip Imagine-0.4.0-linux-x64.zip.sha256 \
+            Imagine-0.4.0-linux-x64.AppImage Imagine-0.4.0-linux-x64.AppImage.sha256 \
+            Imagine-0.4.0-windows-x64-setup.exe Imagine-0.4.0-windows-x64-setup.exe.sha256; do
+            : > "packages/$name"
+          done
+          bash scripts/check-release-assets.sh packages | tee list.txt
+          test "$(tail -n +2 list.txt | wc -l)" -eq 8
+      - name: The Windows check's files are refused
+        run: |
+          set -euo pipefail
+          cp -a packages rejected
+          for name in imagine.log selftest-close.json selftest-fresh.json \
+            selftest-paths.json selftest-previous.json selftest-upgraded.json \
+            window-close.png window-fresh.png window-paths.png window-previous.png \
+            window-upgraded.png; do
+            : > "rejected/$name"
+          done
+          if bash scripts/check-release-assets.sh rejected; then
+            echo "::error::the gate accepted the files v0.3.0 attached by mistake"
+            exit 1
+          fi
+          echo "refused, as it must be"
+      - name: A package without its digest is refused
+        run: |
+          set -euo pipefail
+          cp -a packages nodigest
+          rm nodigest/Imagine-0.4.0-linux-x64.zip.sha256
+          if bash scripts/check-release-assets.sh nodigest; then
+            echo "::error::the gate accepted a package with no digest"
+            exit 1
+          fi
+          echo "refused, as it must be"
+      - run: npm ci --no-audit --no-fund
+      - name: Build the portable package with ffmpeg's mirror broken
+        run: |
+          set -euo pipefail
+          # example.invalid answers nothing, so every attempt fails and the
+          # fallback is what builds the package.
+          FFMPEG_LINUX_URL=https://example.invalid/ffmpeg.tar.xz \
+            OUT_DIR="$PWD/release" bash scripts/package-portable.sh linux-x64
+      - name: The package is the small one
+        run: |
+          set -euo pipefail
+          zip=$(ls release/Imagine-*-linux-x64.zip)
+          size=$(stat -c %s "$zip")
+          echo "the zip is $size bytes"
+          # v0.3.0, with the 176 MB-per-binary fallback, was 194 747 839 bytes;
+          # John Van Sickle's 79 MB binaries make a package of about 113 MB.
+          if [ "$size" -gt 140000000 ]; then
+            echo "::error::the ffmpeg fallback doubled the package: $size bytes"
+            exit 1
+          fi
+          python3 - "$zip" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              for info in z.infolist():
+                  if "/runtime/ffmpeg/" in info.filename:
+                      print(f"{info.filename}: {info.file_size} bytes")
+                      assert info.file_size < 100_000_000, "the fallback is the big build"
+          PY
+          tree=$(ls -d release/Imagine-*-linux-x64)
+          "$tree/runtime/ffmpeg/ffmpeg" -version | head -1
+          "$tree/runtime/ffmpeg/ffprobe" -version | head -1
 
   # The history is public, and a key committed once stays in it after the file
   # is deleted: the scan looks at every commit, not only this checkout. The
