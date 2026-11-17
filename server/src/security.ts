@@ -103,8 +103,9 @@ export function stateChangeAllowed(req: Pick<IncomingMessage, 'method' | 'header
  *
  * `'unsafe-inline'` in `style-src` is needed: the page sets inline `style`
  * attributes (the dragged chat width, a cover's colour) that a stricter policy
- * drops, and there is no script inline anywhere. `ws:`/`wss:` stay for the
- * progress socket, `blob:` for generated previews and the service worker.
+ * drops, and there is no script inline anywhere. `connect-src` stays on the
+ * studio alone: the chat, the jobs and the gallery all talk to the same origin
+ * (server-sent events included), and the page opens no WebSocket of its own.
  */
 export const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
@@ -113,9 +114,9 @@ export const CONTENT_SECURITY_POLICY = [
   "img-src 'self' data: blob:",
   "media-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'self' ws: wss:",
+  "connect-src 'self'",
   "frame-src 'self'",
-  "worker-src 'self' blob:",
+  "worker-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
