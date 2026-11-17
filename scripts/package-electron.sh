@@ -69,6 +69,11 @@ node -e 'const fs = require("fs"); const [file, version] = process.argv.slice(1)
 rm -rf -- "$BUILD/app/dist" "$BUILD/app/plugins"
 cp -a dist "$BUILD/app/dist"
 cp -a plugins "$BUILD/app/plugins"
+# The same rule as the tarball (`scripts/release-tarball.sh`): nothing at
+# runtime opens a .map, and the desktop package carries the program the server
+# runs. This copy comes from the build, not from the tarball's tree, so it
+# drops its own.
+find "$BUILD/app/dist" "$BUILD/app/plugins" -type f -name '*.map' -delete
 # The portable launcher and its runtime are not the app's: the window is the
 # launcher here, and Electron is the runtime.
 rm -rf -- "$BUILD/app/runtime" "$BUILD/app/Imagine.sh" "$BUILD/app/Imagine.desktop" \

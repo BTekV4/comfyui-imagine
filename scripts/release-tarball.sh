@@ -62,9 +62,10 @@ rm -rf -- "$DEST"/plugins/*/src
 # Source maps are for the person holding the repository, not for the person
 # running the studio: nothing at runtime opens a .map, the code is public
 # anyway, and they were 10.8 MB of a 28 MB tree (2.8 MB compressed, 29% of the
-# archive). They stay in the repository, produced by `npm run build`; the
-# portable and desktop packages carry the same tree, so they do not get them
-# either.
+# archive). They stay in the repository, produced by `npm run build`. The
+# portable package carries this same tree; the desktop packages stage their
+# `dist` from the build and drop their own copy of the maps the same way
+# (`scripts/package-electron.sh`).
 find "$DEST/dist" "$DEST/plugins" -type f -name '*.map' -delete
 
 # 4. The runtime packages, exactly as the lockfile pins them.

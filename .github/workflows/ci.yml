@@ -274,6 +274,8 @@ jobs:
           python3 - "$zip" <<'PY'
           import sys, zipfile
           with zipfile.ZipFile(sys.argv[1]) as z:
+              maps = [info.filename for info in z.infolist() if info.filename.endswith(".map")]
+              assert not maps, f"source maps in the package: {maps[:3]}"
               for info in z.infolist():
                   if "/runtime/ffmpeg/" in info.filename:
                       print(f"{info.filename}: {info.file_size} bytes")
