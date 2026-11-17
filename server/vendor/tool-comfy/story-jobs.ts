@@ -13,7 +13,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { renameWithRetry, unlinkWithRetry } from '../retry-fs/index.ts'
 import { basename, extname, join } from 'node:path'
 import type { ImagineHost } from '../../src/host.ts'
-import { message, withLanguage } from '../../src/messages.ts'
+import { currentLanguage, message, withLanguage } from '../../src/messages.ts'
 import { runWorkflow } from './index.ts'
 import type { LoadedWorkflow } from './index.ts'
 import { AAC_192K, FASTSTART, ffmpegTo, h264Out, probeMedia, runProbe } from './media-tools.ts'
@@ -246,7 +246,7 @@ export async function planMontage(
   intent: string,
   shots: readonly number[],
   photos: readonly string[],
-  opts: { song?: StorySong; model?: ModelRoute; continuous?: boolean; closeOnFace?: boolean },
+  opts: { song?: StorySong; model?: ModelRoute; continuous?: boolean; closeOnFace?: boolean; captionLanguage?: string },
 ): Promise<StoryPlan> {
   const sights = await lookAtShots(ctx, outputDir, photos, opts.model)
   const ordered = opts.song === undefined ? orderShots(sights) : sights
@@ -263,6 +263,7 @@ export async function planMontage(
     ...opts.closeOnFace === true ? { closeOnFace: true } : {},
     ...opts.model === undefined ? {} : { model: opts.model },
     ...opts.song === undefined ? {} : { song: opts.song },
+    ...opts.captionLanguage === undefined ? {} : { captionLanguage: opts.captionLanguage },
   })
   /*
    * The rule goes on every beat, not only in the brief the director was given:
@@ -281,6 +282,38 @@ export async function storyBeat(job: ImagineJob): Promise<string | undefined> {
   const plan = await storyPlans.get(job.storyId)
   if (plan === undefined) return undefined
   return job.storyIndex === undefined ? plan.opening : plan.beats[job.storyIndex]
+}
+
+/**
+ * The caption a clip of a story shows, in the language of the page.
+ *
+ * The beat stays the English line the video model reads; this is the short
+ * sentence the studio gives the person, written by the director in the same
+ * reply as the plan. Absent on an English page, on an old story, and on a clip
+ * whose caption the director did not write: the studio then shows the beat.
+ * @param job - a shot of a story.
+ * @returns the caption and its language, or undefined.
+ */
+export async function storyCaption(job: ImagineJob): Promise<{ text: string; language: string } | undefined> {
+  if (job.storyId === undefined || job.storyIndex === undefined) return undefined
+  return captionOf(await storyPlans.get(job.storyId), job.storyIndex)
+}
+
+/** One shot's caption out of a plan, when the plan carries one. */
+function captionOf(plan: StoryPlan | undefined, index: number): { text: string; language: string } | undefined {
+  const text = plan?.captions?.[index]?.trim() ?? ''
+  const language = plan?.captionLanguage
+  return text.length === 0 || language === undefined ? undefined : { text, language }
+}
+
+/**
+ * The language the captions are asked in: the page's own, and nothing when the
+ * page is English — there the beat already reads as the user's language, and
+ * the reply must stay exactly what it has always been.
+ */
+function captionsLanguage(): string | undefined {
+  const language = currentLanguage()
+  return language === undefined || language.slice(0, 2).toLowerCase() === 'en' ? undefined : language
 }
 
 /**
@@ -780,6 +813,7 @@ function planStory(
    * and a character singing over it would be a second voice.
    */
   const sungLyrics = song === undefined ? request.lyrics?.trim() : undefined
+  const captionLanguage = captionsLanguage()
   storyPlans.set(storyId, cuts
     ? planMontage(ctx, outputDir, intent, timing.shots, photos, {
       ...timing.chained ? { continuous: true } : {},
@@ -792,12 +826,14 @@ function planStory(
       ...files.faceTake === true && storySong !== undefined ? { closeOnFace: true } : {},
       ...request.model === undefined ? {} : { model: request.model },
       ...storySong === undefined ? {} : { song: storySong },
+      ...captionLanguage === undefined ? {} : { captionLanguage },
     })
     : writeStoryPlan(ctx, intent, timing.shots, {
       opening: source === undefined,
       ...request.model === undefined ? {} : { model: request.model },
       ...storySong === undefined ? {} : { song: storySong },
       ...sungLyrics === undefined || sungLyrics.length === 0 ? {} : { sung: { lyrics: sungLyrics } },
+      ...captionLanguage === undefined ? {} : { captionLanguage },
     }))
   return storySong
 }
@@ -960,10 +996,12 @@ async function recordStory(
       shots: current.shots.map((shot) => {
         const source = shotPhotos(plan.sources ?? [], shot.index).source
         const beat = plan.beats[shot.index]
+        const caption = captionOf(plan, shot.index)
         return {
           ...shot,
           ...source === undefined ? {} : { source },
           ...beat === undefined || shot.prompt !== undefined ? {} : { prompt: beat },
+          ...caption === undefined ? {} : { caption: caption.text, captionLanguage: caption.language },
         }
       }),
     })).catch(() => undefined)
@@ -975,14 +1013,21 @@ async function recordStory(
  * @param manifest - the story's record.
  * @param record - the shot.
  * @param opts - the beat to use, the version its file carries, whether the
- *   video is cut again when it lands, the job it waits for, and the caller's
- *   model.
+ *   video is cut again when it lands, the job it waits for, the caller's
+ *   model, and the caption the record carries for that same beat.
  * @returns a queued job, not yet in the map.
  */
 function shotJob(
   manifest: StoryManifest,
   record: StoryShotRecord,
-  opts: { prompt: string; version: number; rebuild: boolean; follows?: string; model?: ModelRoute },
+  opts: {
+    prompt: string
+    version: number
+    rebuild: boolean
+    follows?: string
+    model?: ModelRoute
+    caption?: { text: string; language: string }
+  },
 ): ImagineJob {
   return {
     id: randomUUID(),
@@ -1003,6 +1048,7 @@ function shotJob(
     ...record.chain === undefined ? {} : { chain: record.chain },
     ...opts.follows === undefined ? {} : { follows: opts.follows },
     ...opts.model === undefined ? {} : { model: opts.model },
+    ...opts.caption === undefined ? {} : { caption: opts.caption.text, captionLanguage: opts.caption.language },
     redo: { storyId: manifest.storyId, index: record.index, version: opts.version, rebuild: opts.rebuild },
   }
 }
@@ -1036,11 +1082,21 @@ export async function startRedo(
   if (workflow === undefined) throw new Error(message('story.actionNotConfigured'))
   if (record.source === undefined) throw new Error(message('story.unknownSourcePhoto', { number: shot.index + 1 }))
   const beat = request.prompt.trim()
+  /*
+   * A redo with words of its own is a new beat: the caption of the recorded
+   * one describes something the shot no longer does, so it is left out and the
+   * record's own caption is cleared when the shot lands. Without words the
+   * shot is the same beat, and the caption still says what happens.
+   */
+  const caption = beat.length === 0 && record.caption !== undefined && record.captionLanguage !== undefined
+    ? { text: record.caption, language: record.captionLanguage }
+    : undefined
   const job = shotJob(manifest, record, {
     prompt: beat.length > 0 ? beat : (record.prompt ?? `videoclip ${manifest.label}`),
     version: manifest.finals.length + 1,
     rebuild: true,
     ...request.model === undefined ? {} : { model: request.model },
+    ...caption === undefined ? {} : { caption },
   })
   putJob(job.id, job)
   enqueueJob(ctx, workflow, workflows, outputDir, job)
@@ -1142,6 +1198,9 @@ async function resumeStory(
       prompt,
       version: record.file === undefined ? 1 : manifest.finals.length + 1,
       rebuild: index === last,
+      ...record.caption === undefined || record.captionLanguage === undefined
+        ? {}
+        : { caption: { text: record.caption, language: record.captionLanguage } },
       ...previous?.index === index - 1 ? { follows: previous.id } : {},
       ...opts.model === undefined ? {} : { model: opts.model },
     })

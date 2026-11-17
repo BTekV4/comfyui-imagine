@@ -1039,6 +1039,7 @@ export const en = {
   "imagine.detailsChanges": "Edits",
   "imagine.detailsAspect": "Aspect ratio",
   "imagine.detailsPrompt": "Prompt",
+  "imagine.beatCaption": "Caption",
   "imagine.detailsCopy": "Copy",
   "imagine.detailsCopied": "Copied",
   "imagine.detailsReuse": "Reuse in the chat",

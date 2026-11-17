@@ -3,7 +3,8 @@
  * the file, with which words, from which file, and what it is.
  */
 import { messageOf } from './message-of.ts'
-import { translate } from './locale-store.ts'
+import { translate, useLocale } from './locale-store.ts'
+import { sameLanguage } from '../../../shared/locale-names.ts'
 import { useEffect, useRef, useState } from 'react'
 import { askToLook, thumbUrlOf, THUMB_SMALL } from './gallery-api.ts'
 import type { GalleryItem } from '../../../shared/imagine-types.ts'
@@ -84,6 +85,17 @@ export function FileDetails({ item, anchor, onClose, onOpenSource, onReuse }: Fi
   const top = Math.max(8, Math.min(anchor.top, window.innerHeight - tall - 8))
   const origin = details?.origin
   const words = wordsOf(origin)
+  const pageLanguage = useLocale()
+  /*
+   * A story's shot carries its beat twice: the English line the video model
+   * was given, and the caption the director wrote in the page's language. The
+   * caption is shown when it is in the language the page is in now; an old
+   * story, or a page that changed language, keeps the beat, as before.
+   */
+  const caption = origin?.caption !== undefined && sameLanguage(origin.captionLanguage, pageLanguage)
+    ? origin.caption
+    : undefined
+  const realPrompt = details?.writtenPrompt ?? (caption === undefined ? undefined : origin?.prompt)
   const made = details === undefined ? undefined : momentLabel(new Date(details.mtime).toISOString(), 'full')
 
   return (
@@ -97,7 +109,13 @@ export function FileDetails({ item, anchor, onClose, onOpenSource, onReuse }: Fi
       {details !== undefined && (
         <>
           <p className={css.action}>{origin === undefined ? (details.name.startsWith('upload-') ? translate('imagine.fileUploaded') : translate('imagine.fileOriginUnknown')) : hostLineOf(origin) ?? actionLabelOf(origin.action) ?? origin.action}</p>
-          {words !== undefined && (
+          {caption !== undefined && (
+            <div className={css.section} data-imagine-caption={origin?.captionLanguage}>
+              <span className={css.label}>{translate('imagine.beatCaption')}</span>
+              <p className={css.text}>{caption}</p>
+            </div>
+          )}
+          {words !== undefined && caption === undefined && (
             <div className={css.section}>
               <span className={css.label}>{origin?.action === 'look' ? translate('imagine.look') : translate('imagine.detailsPrompt')}</span>
               <p className={css.text}>{words}</p>
@@ -166,12 +184,12 @@ export function FileDetails({ item, anchor, onClose, onOpenSource, onReuse }: Fi
                   )}
             </div>
           )}
-          {details.writtenPrompt !== undefined && (
+          {realPrompt !== undefined && (
             <div className={css.section}>
               <button type="button" className={css.toggle} onClick={() => { setShowPrompt(current => !current) }}>
                 {showPrompt ? translate('imagine.fileHidePrompt') : translate('imagine.fileShowPrompt')}
               </button>
-              {showPrompt && <pre className={css.prompt}>{details.writtenPrompt}</pre>}
+              {showPrompt && <pre className={css.prompt}>{realPrompt}</pre>}
             </div>
           )}
         </>

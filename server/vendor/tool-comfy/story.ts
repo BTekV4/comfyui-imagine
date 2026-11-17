@@ -20,6 +20,7 @@ import type { ModelRoute } from '../../../shared/imagine-types.ts'
 import { MAX_STORY_SECONDS, MIN_SHOT_SECONDS } from '../../../shared/imagine-media.ts'
 import { AAC_192K, FASTSTART, ffmpegTo } from './media-tools.ts'
 import { firstTextReply } from './text-pass.ts'
+import { languageName } from '../../../shared/locale-names.ts'
 
 /**
  * The camera movements a montage is built from, in the order they rotate.
@@ -150,6 +151,16 @@ export interface StoryPlan {
    * at. Absent on a single take, and on a montage cut in the order given.
    */
   readonly sources?: readonly string[]
+  /**
+   * One short caption per beat, in the language of the page the story was
+   * asked from: what the studio shows the person, while the beat itself stays
+   * the English line the video model reads. Aligned with {@link beats}, an
+   * entry may be empty. Absent on an English page, when the director wrote
+   * none, and on every story planned before captions existed.
+   */
+  readonly captions?: readonly string[]
+  /** The language {@link captions} are written in, as the page declared it. */
+  readonly captionLanguage?: string
 }
 
 /**
@@ -201,6 +212,12 @@ export interface StoryPlanOptions {
   closeOnFace?: boolean
   /** Whether the story starts from no photo and needs an opening frame. */
   opening: boolean
+  /**
+   * The language of the page the story was asked from. When it is not English,
+   * the director is asked for one short caption per beat in it, in the same
+   * reply: the studio shows the caption, the video model keeps the beat.
+   */
+  captionLanguage?: string
 }
 
 /**
@@ -242,6 +259,7 @@ export function storyPlanInstruction(
     ? ''
     : `\nThere is NO track to lay over the video: the video model generates the music and the singing itself, clip by clip. Spread the text below across the beats, IN ORDER and WITHOUT changing the words: in every beat write who sings and then sings: "<the exact words of that beat>". Give each beat the words that fit in its seconds (a short line every 4-5 seconds) and do not repeat words already sung.\nText to sing:\n"""\n${opts.sung.lyrics}\n"""\n`
   const asked = { intent, song, sung, list }
+  const captions = captionBrief(opts.captionLanguage)
   if (opts.cuts === true) {
     /*
      * A montage is the opposite film: every shot is generated from its own
@@ -284,6 +302,7 @@ export function storyPlanInstruction(
         opening: '',
         unit: 'shot',
         count: shots.length,
+        ...captions === undefined ? {} : { captions },
       })
     }
     return planPrompt({
@@ -313,6 +332,7 @@ export function storyPlanInstruction(
       opening: '',
       unit: 'shot',
       count: shots.length,
+      ...captions === undefined ? {} : { captions },
     })
   }
   return planPrompt({
@@ -336,6 +356,7 @@ export function storyPlanInstruction(
     opening: opts.opening ? OPENING_IMAGE_LINE : '',
     unit: 'beat',
     count: shots.length,
+    ...captions === undefined ? {} : { captions },
   })
 }
 
@@ -468,6 +489,30 @@ function ruleSinging(framed: boolean): string {
 }
 
 /**
+ * The paragraph that asks the director for the captions the studio shows.
+ *
+ * Written into the same reply as the beats on purpose: the director already
+ * has the plan in hand, so the caption costs no second call and no wait — the
+ * plan is written while the card is busy with the first clip. The beat stays
+ * the English line the video model reads; the caption is one short sentence
+ * for the person, and it is never sent to the model.
+ *
+ * The page's language decides: on an English page the beat already reads as
+ * the user's own, so nothing is asked and the reply is exactly what it was.
+ * @param language - the language of the page, as the request declared it.
+ * @returns the paragraph to place after the beats, or undefined for English.
+ */
+function captionBrief(language: string | undefined): string | undefined {
+  if (language === undefined || language.slice(0, 2).toLowerCase() === 'en') return undefined
+  return `
+
+Captions:
+After the numbered lines, add one caption per beat, in ${languageName(language)}, numbered the same way. Each caption is ONE short sentence (at most twenty words), in the present tense, saying only what happens in that shot: it is what the person reads in the studio under the clip, so no camera directions, no style words, no seconds, and never a note about the translation. These captions are not sent to the video model; the beats above are.
+1. <the caption of the first shot>
+`
+}
+
+/**
  * The shape every shot plan instruction shares: who the director is, the
  * user's line and the song, the shots to fill, the rules, and the numbered
  * reply.
@@ -487,6 +532,8 @@ function planPrompt(parts: {
   readonly unit: string
   /** How many beats the reply must carry: the shots of the film. */
   readonly count: number
+  /** The paragraph asking for the captions in the page's language, when wanted. */
+  readonly captions?: string
 }): string {
   return `${parts.header}
 
@@ -501,12 +548,12 @@ ${parts.rules.join('\n')}
 ${parts.opening}
 Write every beat in English and in the present tense: the video model is trained on English and reads the beat directly when the prompt pass is skipped. Dialogue, singing and on-screen text stay in their own language, word for word.
 
-Reply ONLY with the lines, with no preamble: ${parts.count === 1 ? 'ONE line for the shot' : `exactly ${String(parts.count)} lines, one per shot`}, numbered like this:
+Reply ONLY with the lines${parts.captions === undefined ? '' : ' and the captions'}, with no preamble: ${parts.count === 1 ? 'ONE line for the shot' : `exactly ${String(parts.count)} lines, one per shot`}, numbered like this:
 1. <what happens in ${parts.unit} 1>
 ${parts.count === 1 ? '' : `2. <what happens in ${parts.unit} 2>
 ...`}${parts.count === 1 ? `Inside that one line, the shot's own timeline, in order: first ..., then ..., finally .... The reply carries no second line.
 
-` : ''}`
+` : ''}${parts.captions ?? ''}`
 }
 
 /** Longest beat accepted; past this the model is writing the whole prompt. */
@@ -521,15 +568,24 @@ const MAX_BEAT_LENGTH = 600
  * back, and the caller runs the user's own line on every shot.
  * @param text - the model's reply.
  * @param count - how many shots the chain has.
+ * @param captionLanguage - the language the captions were asked in, when they were.
  * @returns the plan, or undefined when the reply carries no beat.
  */
-function parseStoryPlan(text: string | undefined, count: number): StoryPlan | undefined {
+function parseStoryPlan(text: string | undefined, count: number, captionLanguage?: string): StoryPlan | undefined {
   if (text === undefined) return undefined
   const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0)
-  const openingLine = lines.find(line => /^apertura\s*:/i.test(line))
+  /*
+   * The captions, when asked for, come after the beats under a line that says
+   * "Captions:". They are cut off before anything else looks at the reply:
+   * their numbered lines have the same shape as the beats, and read as extra
+   * shots otherwise.
+   */
+  const captionAt = lines.findIndex(line => /^(?:captions?|didascalie)\s*:/i.test(line))
+  const beatLines = captionAt < 0 ? lines : lines.slice(0, captionAt)
+  const openingLine = beatLines.find(line => /^apertura\s*:/i.test(line))
   const opening = openingLine?.replace(/^apertura\s*:\s*/i, '').trim()
   const beats: string[] = []
-  for (const line of lines) {
+  for (const line of beatLines) {
     const beat = /^(?:\d+\s*[.)]|[-*])\s*(.+)$/.exec(line)?.[1]?.trim()
     if (beat === undefined || beat.length === 0 || beat.length > MAX_BEAT_LENGTH) continue
     beats.push(beat)
@@ -539,9 +595,21 @@ function parseStoryPlan(text: string | undefined, count: number): StoryPlan | un
   // line: the tail of a plan continues the plan.
   const last = beats[beats.length - 1] ?? ''
   const filled = Array.from({ length: count }, (_unused, index) => beats[index] ?? last)
+  const said = captionAt < 0
+    ? []
+    : lines.slice(captionAt + 1).flatMap((line) => {
+      const caption = /^(?:\d+\s*[.)]|[-*])\s*(.+)$/.exec(line)?.[1]?.trim()
+      return caption === undefined || caption.length === 0 || caption.length > MAX_BEAT_LENGTH ? [] : [caption]
+    })
+  const captions = Array.from({ length: count }, (_unused, index) => said[index] ?? '')
   return {
     beats: filled,
     ...opening === undefined || opening.length === 0 ? {} : { opening },
+    // A caption block nobody wrote leaves the plan exactly as it was: the
+    // studio then shows the English beat, which is what it did before.
+    ...captionLanguage === undefined || captions.every(caption => caption.length === 0)
+      ? {}
+      : { captions, captionLanguage },
   }
 }
 
@@ -573,7 +641,7 @@ export async function writeStoryPlan(
    * just flatter.
    */
   const plan = await firstTextReply(ctx, opts.model, storyPlanInstruction(intent, shots, opts),
-    written => parseStoryPlan(written, shots.length), 'the video clip shot plan')
+    written => parseStoryPlan(written, shots.length, opts.captionLanguage), 'the video clip shot plan')
   return plan ?? { beats: shots.map(() => intent) }
 }
 

@@ -156,6 +156,11 @@ async function deliveredFiles(run: FinishRun): Promise<readonly ComfyProducedFil
       await updateStoryShot(job.redo.storyId, job.redo.index, {
         file: basename(mine.path),
         prompt: job.prompt,
+        // A redo with words of its own replaced the beat, and the recorded
+        // caption describes the shot it no longer is: it goes with the beat.
+        ...job.caption === undefined || job.captionLanguage === undefined
+          ? { caption: undefined, captionLanguage: undefined }
+          : { caption: job.caption, captionLanguage: job.captionLanguage },
         ...run.lipsync === undefined ? {} : { lipsync: run.lipsync },
       })
       if (job.redo.rebuild !== false) {
@@ -325,6 +330,9 @@ async function writeResult(run: FinishRun, files: readonly ComfyProducedFile[]):
     await updateStoryShot(shot.storyId, shot.index, {
       ...shotFile === undefined ? {} : { file: basename(shotFile.path) },
       prompt: job.prompt,
+      ...job.caption === undefined || job.captionLanguage === undefined
+        ? {}
+        : { caption: job.caption, captionLanguage: job.captionLanguage },
       ...lipsync === undefined ? {} : { lipsync },
     }).catch(() => undefined)
     if (finalFile !== undefined) {
@@ -354,6 +362,9 @@ async function writeResult(run: FinishRun, files: readonly ComfyProducedFile[]):
     ...job.size === undefined ? {} : { resolution: job.size },
     ...job.seconds === undefined ? {} : { seconds: job.seconds },
     ...job.source === undefined ? {} : { source: job.source },
+    ...job.caption === undefined || job.captionLanguage === undefined
+      ? {}
+      : { caption: job.caption, captionLanguage: job.captionLanguage },
     ...lipsync === undefined || shotOfFileName(name) === undefined ? {} : { lipsync },
     tookMs,
   })))

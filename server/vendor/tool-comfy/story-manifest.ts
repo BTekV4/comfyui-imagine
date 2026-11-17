@@ -36,6 +36,14 @@ export interface StoryShotRecord {
   readonly source?: string
   /** The beat the director wrote for it, as the sampler was told. */
   readonly prompt?: string
+  /**
+   * The same shot in the language of the page the story was asked from,
+   * written by the director beside the beat: what the studio shows. Absent on
+   * an old story and on one planned from an English page.
+   */
+  readonly caption?: string
+  /** The language {@link caption} is written in, as the page declared it. */
+  readonly captionLanguage?: string
   /** Its place in the chain of latents, when the shots continue each other. */
   readonly chain?: ComfyChainLink
   /** The file it produced, once it did. */
@@ -287,6 +295,10 @@ function sanitize(value: unknown): StoryManifest | undefined {
       ...typeof entry.songStart === 'number' ? { songStart: entry.songStart } : {},
       ...typeof entry.source === 'string' ? { source: entry.source } : {},
       ...typeof entry.prompt === 'string' ? { prompt: entry.prompt } : {},
+      ...typeof entry.caption === 'string' && entry.caption.length > 0 ? { caption: entry.caption } : {},
+      ...typeof entry.captionLanguage === 'string' && entry.captionLanguage.length > 0
+        ? { captionLanguage: entry.captionLanguage }
+        : {},
       ...typeof entry.file === 'string' ? { file: entry.file } : {},
       ...typeof entry.lipsync === 'number' && Number.isFinite(entry.lipsync) ? { lipsync: entry.lipsync } : {},
       ...typeof chain?.folder === 'string' && typeof chain.index === 'number'

@@ -86,3 +86,18 @@ export function localeName(code: string): string {
 export function languageName(language?: string): string {
   return LOCALE_NAMES[(language ?? 'en').slice(0, 2).toLowerCase()] ?? 'English'
 }
+
+/**
+ * Whether two language codes name the same language, whatever their region.
+ *
+ * A caption is written in the page's language (`it`, `en-GB`, `pt-BR`) and read
+ * back by a page that may spell the same language differently: comparing the
+ * first two letters is what keeps `it` and `it-IT` the same language, which is
+ * what the studio needs to decide whether the caption is in the user's own.
+ * @param a - one code, when there is one.
+ * @param b - the other code, when there is one.
+ * @returns true when both name the same language.
+ */
+export function sameLanguage(a: string | undefined, b: string | undefined): boolean {
+  return a !== undefined && b !== undefined && a.slice(0, 2).toLowerCase() === b.slice(0, 2).toLowerCase()
+}

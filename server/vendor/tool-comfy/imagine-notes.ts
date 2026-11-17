@@ -43,6 +43,14 @@ export interface ImagineFileOrigin {
   /** How well a sung shot's mouth followed the voice, 0-1, when measured. */
   readonly lipsync?: number
   /**
+   * A story's shot: the beat in the language of the page it was planned from,
+   * and that language. The `prompt` stays the English line the model read;
+   * this is the sentence «Dettagli» shows instead. Absent on every file the
+   * studio drew before captions existed.
+   */
+  readonly caption?: string
+  readonly captionLanguage?: string
+  /**
    * How long the run took, in milliseconds.
    *
    * The page reads it in "Dettagli" as "Generazione": how long this file was
@@ -209,5 +217,9 @@ function originOf(value: unknown): ImagineFileOrigin | undefined {
     ...text('subject') === undefined ? {} : { subject: text('subject') as string },
     ...typeof record.lipsync === 'number' && Number.isFinite(record.lipsync) ? { lipsync: record.lipsync } : {},
     ...typeof record.tookMs === 'number' && Number.isFinite(record.tookMs) ? { tookMs: record.tookMs } : {},
+    ...text('caption') === undefined || text('caption')?.length === 0 ? {} : { caption: text('caption') },
+    ...text('captionLanguage') === undefined || text('captionLanguage')?.length === 0
+      ? {}
+      : { captionLanguage: text('captionLanguage') },
   }
 }

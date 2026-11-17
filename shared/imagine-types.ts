@@ -342,6 +342,18 @@ export interface ImagineJobFields {
   /** How many shots the story has, for the studio to count them off. */
   readonly storyCount?: number
   /**
+   * The clip's beat in the language of the page the story was asked from.
+   *
+   * The beat itself stays English, because the video model reads it; this is
+   * the short sentence the studio shows instead, written by the director in
+   * the same reply. Absent on a story planned before captions existed, on an
+   * English page, and on a shot the director left without one — the tile then
+   * shows the beat, which is what it did before.
+   */
+  readonly caption?: string
+  /** The language {@link caption} is written in, as the page declared it. */
+  readonly captionLanguage?: string
+  /**
    * The music video this job belongs to, when it is a stage of one.
    *
    * A music video is queued in three waves — the photos, the song, and the

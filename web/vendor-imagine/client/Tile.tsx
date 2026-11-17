@@ -3,7 +3,8 @@
  * ImaginePage.tsx on 2026-10-20.
  */
 
-import { translate } from './locale-store.ts'
+import { translate, useLocale } from './locale-store.ts'
+import { sameLanguage } from '../../../shared/locale-names.ts'
 import { Fragment, memo, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
 import { IconSendOutlineRegular, Tooltip } from '../../shims/primitives/index.ts'
 import type { CanvasRect } from '../../../shared/imagine-projects.ts'
@@ -36,6 +37,15 @@ export const PendingTile = memo(function PendingTile({
   onStop: (id: string) => void
 }) {
   const progress = useJobProgress(job.id)?.progress
+  const pageLanguage = useLocale()
+  /*
+   * A story's shot is handed the English beat, which is what the video model
+   * reads; the tile shows the caption in the page's language when the director
+   * wrote one. An old story, or a page in another language, keeps the beat.
+   */
+  const shownPrompt = job.caption !== undefined && sameLanguage(job.captionLanguage, pageLanguage)
+    ? job.caption
+    : job.prompt
   const { percent, stage, eta } = stageLineOf(progress)
   return (
     <article
@@ -79,7 +89,7 @@ export const PendingTile = memo(function PendingTile({
           * hovering shows that one, so a result nobody expected can be read
           * back to the text that actually produced it.
           */}
-        <span className={css.pendingPrompt} title={job.writtenPrompt ?? job.prompt}>{job.prompt}</span>
+        <span className={css.pendingPrompt} title={job.writtenPrompt ?? job.prompt}>{shownPrompt}</span>
         <button
           type="button"
           className={css.pendingStop}

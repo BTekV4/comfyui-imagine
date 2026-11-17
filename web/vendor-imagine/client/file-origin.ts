@@ -22,6 +22,13 @@ export interface FileOrigin {
   readonly lipsync?: number
   /** How long the run took, in milliseconds, when the host measured it. */
   readonly tookMs?: number
+  /**
+   * A story's shot: the beat in the language of the page it was planned from,
+   * and that language. The card shows this when it is the page's own language
+   * and keeps the English text beside it, because that is what was sent.
+   */
+  readonly caption?: string
+  readonly captionLanguage?: string
 }
 
 /** The whole answer of `/api/file-details`. */

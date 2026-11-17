@@ -51,7 +51,7 @@ import {
 } from './swap-windows.ts'
 import { finishRun, type DeliveredShot } from './job-finish.ts'
 import {
-  dropHead, forgetStoryPlan, isLastOfStory, lipsyncScore, storyBeat, storyShotSources, vocalsBySong, vocalsOf,
+  dropHead, forgetStoryPlan, isLastOfStory, lipsyncScore, storyBeat, storyCaption, storyShotSources, vocalsBySong, vocalsOf,
   worthRetrying, type LipsyncProbe,
 } from './story-jobs.ts'
 
@@ -523,7 +523,11 @@ async function takeTurn(state: RunState): Promise<boolean> {
   // A redo carries its own line — the change the user asked for, or the beat
   // from the record — and the plan of a story still running must not undo it.
   const beat = job.redo === undefined ? await storyBeat(job) : undefined
+  const caption = job.redo === undefined ? await storyCaption(job) : undefined
   if (beat !== undefined && beat.trim().length > 0) job = { ...job, prompt: beat.trim() }
+  // The studio shows the caption in the page's language while the sampler is
+  // handed the English beat; a story planned before captions existed has none.
+  if (caption !== undefined) job = { ...job, caption: caption.text, captionLanguage: caption.language }
   // A montage's shot takes its photo from the plan, which may have cut the
   // photos in an order other than the one they were queued in.
   const planned = await storyShotSources(job)
@@ -542,6 +546,8 @@ async function takeTurn(state: RunState): Promise<boolean> {
   if (job !== queuedJob) {
     patchJob(job.id, {
       prompt: job.prompt,
+      ...job.caption === undefined ? {} : { caption: job.caption },
+      ...job.captionLanguage === undefined ? {} : { captionLanguage: job.captionLanguage },
       ...job.source === undefined ? {} : { source: job.source },
       ...job.lastSource === undefined ? {} : { lastSource: job.lastSource },
       ...job.chain === undefined ? {} : { chain: job.chain },
