@@ -36,6 +36,12 @@ export interface WorkflowSettingsEntry {
   readonly configured: boolean
   readonly path?: string
   readonly file?: string
+  /**
+   * True when this action's graph was changed inside the app and the user's
+   * copy wins over the one that ships with the program. Always false in an
+   * installation whose program is writable: there is no copy to speak of.
+   */
+  readonly overridden: boolean
   /** What the profile declares. */
   readonly composed: Readonly<Record<string, unknown>>
   /** What the settings file overrides. */

@@ -143,6 +143,8 @@ export interface WorkflowValues {
   readonly readOptions: (field: WorkflowField) => Promise<void>
   readonly filter: string
   readonly setFilter: (filter: string) => void
+  /** Whether this action's graph is the copy in the data folder. */
+  readonly isOverridden: (key: string) => boolean
 }
 
 /**
@@ -154,6 +156,41 @@ export function useWorkflowValues(view: ImagineSettingsView | undefined): Workfl
   const [workflowKey, setWorkflowKey] = useState<string>()
   const [filter, setFilter] = useState('')
   const [panel, dispatch] = useReducer(workflowPanel, WORKFLOW_PANEL_EMPTY)
+  /** The actions whose graph has a copy in the data folder, by configuration key. */
+  const [overridden, setOverridden] = useState<ReadonlySet<string>>(() => new Set())
+
+  // The settings read carries the flag for every action: seed from it, and
+  // seed again when the page rereads the settings.
+  useEffect(() => {
+    if (view === undefined) return
+    setOverridden(new Set(view.workflows.filter(entry => entry.overridden).map(entry => entry.key)))
+  }, [view])
+
+  // An apply makes the copy and «Restore default» removes it: the detail just
+  // read is the truth for that one action, so the mark follows without a page
+  // reload (and without asking for every action's detail). The copy belongs to
+  // a file, so every action that runs that same file follows it.
+  useEffect(() => {
+    const detail = panel.detail
+    if (view === undefined || detail === undefined) return
+    const entry = view.workflows.find(candidate => candidate.listedKey === detail.key)
+    if (entry === undefined) return
+    const keys = entry.path === undefined
+      ? [entry.key]
+      : view.workflows.filter(candidate => candidate.path === entry.path).map(candidate => candidate.key)
+    setOverridden((current) => {
+      let next: Set<string> | undefined
+      for (const key of keys) {
+        if (current.has(key) === detail.overridden) continue
+        next ??= new Set(current)
+        if (detail.overridden) next.add(key)
+        else next.delete(key)
+      }
+      return next ?? current
+    })
+  }, [panel.detail, view])
+
+  const isOverridden = useCallback((key: string): boolean => overridden.has(key), [overridden])
 
   // The first workflow the profile configured is the one worth opening.
   useEffect(() => {
@@ -265,7 +302,7 @@ export function useWorkflowValues(view: ImagineSettingsView | undefined): Workfl
 
   return {
     workflowKey, setWorkflowKey, listedKey, selected, rows, panel, dispatch, staged, applyValues, restoreDefault,
-    readOptions, filter, setFilter,
+    readOptions, filter, setFilter, isOverridden,
   }
 }
 
@@ -283,7 +320,7 @@ export function WorkflowTab({ view, values, context, labels }: {
   values: WorkflowValues
   context: ControlContext
 }) {
-  const { workflowKey, setWorkflowKey, listedKey, selected, rows, panel, dispatch, readOptions, filter, setFilter, staged } = values
+  const { workflowKey, setWorkflowKey, listedKey, selected, rows, panel, dispatch, readOptions, filter, setFilter, staged, isOverridden } = values
   const { detail, detailError, fieldDrafts, plan, applied, applyError, options, optionsError, restoredNote } = panel
   const groups = useMemo(() => groupFields(detail?.fields ?? [], filter), [detail, filter])
   const invalidFields = useMemo(() => new Set(staged.invalid), [staged])
@@ -308,7 +345,12 @@ export function WorkflowTab({ view, values, context, labels }: {
       <h3 className={css.sectionTitle}>{translate('imagine.settings.workflows')}</h3>
       <p className={css.sectionHint}>{translate('imagine.settings.workflowsHint')}</p>
       <label className={`${css.field} ${css.actionPick}`}>
-        <span className={css.fieldLabel}>{translate('imagine.settings.pickWorkflow')}</span>
+        <span className={css.fieldHead}>
+          <span className={css.fieldLabel}>{translate('imagine.settings.pickWorkflow')}</span>
+          {selected !== undefined && isOverridden(selected.key) && (
+            <span className={css.badge}>{translate('imagine.settings.modified')}</span>
+          )}
+        </span>
         <select
           className={css.select}
           value={workflowKey ?? ''}
@@ -318,9 +360,10 @@ export function WorkflowTab({ view, values, context, labels }: {
           {view.workflows.map((entry) => {
             const labelKey = labels[entry.key]
             const label = labelKey === undefined ? entry.label ?? entry.key : translate(labelKey)
+            const modified = isOverridden(entry.key) ? ` — ${translate('imagine.settings.modified')}` : ''
             return (
               <option key={entry.key} value={entry.key}>
-                {entry.configured ? label : `${label} — ${translate('imagine.settings.notConfigured')}`}
+                {entry.configured ? `${label}${modified}` : `${label}${modified} — ${translate('imagine.settings.notConfigured')}`}
               </option>
             )
           })}

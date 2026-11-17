@@ -825,6 +825,9 @@ async function describeImagineSettings(
       configured: path !== undefined,
       path,
       file: path === undefined ? undefined : basename(path),
+      // One pass over the inventory, so the page can mark every changed graph
+      // without asking for one workflow's detail per row.
+      overridden: listed === undefined ? false : inventory.overridden(listed.key),
       composed: config ?? {},
       override: override ?? {},
     }
