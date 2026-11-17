@@ -529,3 +529,9 @@ const shutdown = (): void => {
 }
 process.on('SIGTERM', shutdown)
 process.on('SIGINT', shutdown)
+/*
+ * Windows has no SIGTERM to receive, and a console Ctrl+Break is the signal a
+ * person or a launcher can still send: handled here so the disposers and the
+ * thumbnail cuts stop the same way they do on POSIX.
+ */
+if (process.platform === 'win32') process.on('SIGBREAK', shutdown)

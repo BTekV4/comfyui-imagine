@@ -7,6 +7,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A branch can be checked before it is a pull request:
+  # `gh workflow run ci.yml --ref <branch>`. The Windows job takes long enough
+  # that waiting for a pull request is worse than asking for the run.
+  workflow_dispatch:
 
 jobs:
   check:
@@ -28,9 +32,16 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+      # The tests never boot the built server: this starts it for real and
+      # asks the page, the health route and the first-run report to answer.
+      - name: Boot it
+        run: node scripts/smoke-server.mjs
+        env:
+          IMAGINE_SMOKE_REQUIRE_FFMPEG: '1'
 
   # Windows is where most people who use ComfyUI are, and it had never been
-  # tested: here the types and the tests run on the packaging platform itself.
+  # tested: here the types, the tests, the build and the boot run on the
+  # packaging platform itself.
   windows:
     runs-on: windows-latest
     defaults:
@@ -49,6 +60,15 @@ jobs:
         run: npm run typecheck
       - name: Tests
         run: npm test
+      - name: Build
+        run: npm run build
+      # The boot is where config paths, the data folder and the web build meet
+      # the real filesystem: on Windows a server that never answers is the
+      # first thing a user would meet, so CI starts it here.
+      - name: Boot it
+        run: node scripts/smoke-server.mjs
+        env:
+          IMAGINE_SMOKE_REQUIRE_FFMPEG: '1'
 
   # The portable package is built and really started: if the launcher or the
   # runtime PATH breaks, it shows up here and not in the release.
