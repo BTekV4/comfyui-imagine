@@ -54,7 +54,7 @@ export async function rememberWrittenPrompt(name: string, prompt: string): Promi
   try {
     // By rename: a continuation reading the prompt while it is written must
     // not get half of it.
-    await writeFileAtomic(path, prompt, { mode: 0o644 })
+    await writeFileAtomic(path, prompt, { mode: 0o600 })
   } catch {
     // Filed on a best-effort basis; see the module note.
   }

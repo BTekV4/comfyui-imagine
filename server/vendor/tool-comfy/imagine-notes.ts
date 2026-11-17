@@ -171,7 +171,7 @@ async function amend(name: string, change: (note: ImagineFileNote) => ImagineFil
         await unlinkNote(path)
         return
       }
-      await writeFileAtomic(path, JSON.stringify(next), { mode: 0o644 })
+      await writeFileAtomic(path, JSON.stringify(next), { mode: 0o600 })
     })
   } catch { /* the note is a convenience, the file is the deliverable */ }
 }

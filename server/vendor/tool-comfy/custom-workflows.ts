@@ -88,7 +88,7 @@ export function customGraphFile(path: string): string | undefined {
  * @param indent - the indentation the file is kept at.
  */
 async function writeCustomJson(path: string, value: unknown, indent: number): Promise<void> {
-  await writeFileAtomic(path, `${JSON.stringify(value, null, indent)}\n`, { mode: 0o644 })
+  await writeFileAtomic(path, `${JSON.stringify(value, null, indent)}\n`, { mode: 0o600 })
 }
 
 /**

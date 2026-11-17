@@ -648,7 +648,7 @@ export async function createPlugins(options: PluginsOptions): Promise<Plugins> {
   }
   const writeState = async (): Promise<void> => {
     if (stateFile === undefined) return
-    await writeFileAtomic(stateFile, `${JSON.stringify({ disabled: [...disabled].sort() }, null, 2)}\n`, { mode: 0o644 })
+    await writeFileAtomic(stateFile, `${JSON.stringify({ disabled: [...disabled].sort() }, null, 2)}\n`, { mode: 0o600 })
   }
   const isEnabled = (id: string): boolean => !disabled.has(id)
 

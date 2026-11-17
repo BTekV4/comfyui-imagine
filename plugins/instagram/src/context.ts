@@ -322,7 +322,7 @@ export function recordFile(path: string | (() => string), label: string, value: 
     get path() { return file() },
     get error() { return lastError },
     save: () => serialized(file(), async () => {
-      await writeFileAtomic(file(), JSON.stringify(value(), null, 1), { mode: 0o644 })
+      await writeFileAtomic(file(), JSON.stringify(value(), null, 1), { mode: 0o600 })
       lastError = undefined
     }).catch((error: unknown) => {
       lastError = `${label} not written (${error instanceof Error ? error.message : String(error)})`
@@ -399,7 +399,7 @@ export async function rememberRecent(path: string, text: string, what: string): 
   try {
     await serialized(path, async () => {
       const kept = [...await readRecent(path, RECENT_KEEP), text].slice(-RECENT_KEEP)
-      await writeFileAtomic(path, JSON.stringify(kept, null, 1), { mode: 0o644 })
+      await writeFileAtomic(path, JSON.stringify(kept, null, 1), { mode: 0o600 })
     })
   } catch (error: unknown) {
     log(`could not record the ${what}: ${errorText(error)}`)

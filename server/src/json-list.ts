@@ -32,7 +32,7 @@ export function jsonList(file: string): JsonList {
     update: change => serialized(file, async () => {
       const { answer, next } = await change(await read())
       if (next !== undefined) {
-        await writeFileAtomic(file, JSON.stringify(next), { mode: 0o644 })
+        await writeFileAtomic(file, JSON.stringify(next), { mode: 0o600 })
         entries = Promise.resolve(next)
       }
       return answer
