@@ -4,9 +4,24 @@ Notable changes, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project's
 versions follow [semantic versioning](https://semver.org/).
 
-## Unreleased
+## 0.3.1 — 2026-11-18
+
+### Added
+
+- **Story shots in the page's language.** The director writes a short caption
+  for each shot in the page's language in the same planning step; the queue
+  tile and the shot's Details show it, while the English beat still goes to the
+  video model (it stays under «Show the prompt sent to the model»). When the
+  plan comes back without captions, one short request fills them in without
+  delaying the clips.
+- **The open-studio banner can be hidden** for the whole studio, and comes
+  back when the listening address or the login changes. Settings → Access can
+  show it again.
 
 ### Changed
+
+- Speech synthesis and voice change no longer have a fixed deadline: they stop
+  only when the service stays silent for 10 minutes, or on Cancel.
 
 - **Packages carry only `yaml`.** The server, the MCP server and every plugin
   are self-contained bundles: `react`, `react-dom` (and `scheduler`), `immer`
@@ -25,6 +40,10 @@ versions follow [semantic versioning](https://semver.org/).
 
 ### Fixed
 
+- **H3 chain videos in 9:16 at 720p failed** with "width and height must be
+  positive multiples of 32": the frame is now snapped to the 32 px grid
+  (720x1280 becomes 736x1312), and a graph rejected by ComfyUI is no longer
+  retried.
 - **A local photo edit names one change and gives up after two redraws.**
   The photo edit redraws the whole picture, so a grounded prompt that also
   listed the clothing, the body and the background was read as a description
