@@ -466,6 +466,42 @@ Wait-Until "the server (pid $serverPid) to stop" 30 { -not (Test-Process $server
 Test-Port-Free $script:port
 Say "window closed, server $serverPid gone, port $($script:port) free"
 
+# 5c. The paths a real Windows user has: a name with a space, a folder with
+# accents. The program is started from a copy of itself in such a folder, with
+# its data in another one — a path built by hand, an unquoted argument or a
+# `PATH` joined with `:` instead of `;` would fail here.
+$spacedProgram = Join-Path $Work 'Programmi con spazi àè'
+$spacedData = Join-Path $Work 'dati con spazi àè'
+Say "copying the program to a path with spaces and accents: $spacedProgram"
+Copy-Item $dir $spacedProgram -Recurse -Force
+$savedData = $env:IMAGINE_DATA
+$env:IMAGINE_DATA = $spacedData
+try {
+  $copyApp = Start-Imagine (Join-Path $spacedProgram 'Imagine.exe') 'paths'
+  $copyReport = Read-Report
+  Assert-Window $copyReport $expected
+  if (-not $copyReport.data.Equals($spacedData, [StringComparison]::OrdinalIgnoreCase)) {
+    Fail "the studio used '$($copyReport.data)' as its data folder, not '$spacedData'"
+  }
+  if (-not $copyReport.pathHead.Equals($copyReport.ffmpegDir, [StringComparison]::OrdinalIgnoreCase)) {
+    Fail "the server's PATH does not start with the package's ffmpeg: '$($copyReport.pathHead)'"
+  }
+  if (-not $copyReport.ffmpegDir.StartsWith($spacedProgram, [StringComparison]::OrdinalIgnoreCase)) {
+    Fail "the studio runs '$($copyReport.ffmpegDir)', not the ffmpeg of the copied program"
+  }
+  if (-not (Test-Path (Join-Path $spacedData 'logs\imagine.log'))) {
+    Fail "no log was written in '$spacedData'"
+  }
+  Close-Imagine $copyApp
+  Wait-Until "the copied program's server (pid $($copyReport.serverPid)) to stop" 30 {
+    -not (Test-Process ([int]$copyReport.serverPid))
+  } | Out-Null
+  Say 'the window and the studio work from a path with spaces and accents'
+} finally {
+  $env:IMAGINE_DATA = $savedData
+  Remove-Item $spacedProgram -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 Uninstall-Silently $dir
 Assert-DataKept
 
