@@ -12,7 +12,8 @@
  * @module social/preview
  */
 import { execFile } from 'node:child_process'
-import { mkdtemp, rm, stat } from 'node:fs/promises'
+import { mkdtemp, stat } from 'node:fs/promises'
+import { rmWithRetry } from '../../../server/vendor/retry-fs/index.ts'
 import { tmpdir } from 'node:os'
 import { extname, isAbsolute, join } from 'node:path'
 import { promisify } from 'node:util'
@@ -82,10 +83,10 @@ export async function previewOf(file: string | undefined): Promise<Preview | und
     }
     if ((await stat(output)).size === 0) throw new Error('empty picture')
     const folder = dir
-    return { path: output, cleanup: () => rm(folder, { recursive: true, force: true }) }
+    return { path: output, cleanup: () => rmWithRetry(folder, { recursive: true, force: true }) }
   } catch (error: unknown) {
     log(`no picture for the notice (${file}): ${errorText(error)}`)
-    if (dir !== undefined) await rm(dir, { recursive: true, force: true }).catch(() => undefined)
+    if (dir !== undefined) await rmWithRetry(dir, { recursive: true, force: true }).catch(() => undefined)
     return undefined
   }
 }

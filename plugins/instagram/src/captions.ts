@@ -6,7 +6,8 @@
  * @module social/captions
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp } from 'node:fs/promises'
+import { rmWithRetry } from '../../../server/vendor/retry-fs/index.ts'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { SEED_MESSAGE_PREFIX, type ImagineMessage, type ImagineProject } from '../../../shared/imagine-projects.ts'
@@ -535,7 +536,7 @@ async function analyzeMedia(name: string | undefined, type: PostType, project: P
   if (kind !== 'image' && !isVideo) return undefined
   let target = path
   let dir: string | undefined
-  const cleanup = async (): Promise<void> => { if (dir !== undefined) await rm(dir, { recursive: true, force: true }).catch(() => undefined) }
+  const cleanup = async (): Promise<void> => { if (dir !== undefined) await rmWithRetry(dir, { recursive: true, force: true }).catch(() => undefined) }
   if (isVideo) {
     // One ffmpeg pulls the frame and shrinks it for the model.
     try {

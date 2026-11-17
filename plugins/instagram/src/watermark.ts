@@ -17,7 +17,8 @@
  * @module instagram/watermark
  */
 import { execFile } from 'node:child_process'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp } from 'node:fs/promises'
+import { rmWithRetry } from '../../../server/vendor/retry-fs/index.ts'
 import { tmpdir } from 'node:os'
 import { basename, extname, join } from 'node:path'
 import { promisify } from 'node:util'
@@ -141,7 +142,7 @@ export async function watermarkMedia(paths: readonly string[]): Promise<MarkedMe
   }
   const folder = await mkdtemp(join(tmpdir(), 'imagine-watermark-'))
   const cleanup = async (): Promise<void> => {
-    await rm(folder, { recursive: true, force: true }).catch(() => undefined)
+    await rmWithRetry(folder, { recursive: true, force: true }).catch(() => undefined)
   }
   const marked: string[] = []
   try {
