@@ -85,7 +85,9 @@ function absolutize(example, dataDir) {
 async function waitForPage(child, logs) {
   const deadline = Date.now() + BOOT_TIMEOUT_MS
   for (;;) {
-    if (child.exitCode !== null) throw new Error(`the server exited with ${String(child.exitCode)} before answering:\n${logs()}`)
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error(`the server exited (${String(child.exitCode ?? child.signalCode)}) before answering:\n${logs()}`)
+    }
     try {
       const page = await get('/')
       if (page.status === 200 && page.body.includes('<title>Imagine</title>')) return
@@ -99,7 +101,7 @@ async function waitForPage(child, logs) {
 
 /** Ask the child to stop and wait for its exit. */
 async function stop(child) {
-  if (child.exitCode !== null) return
+  if (child.exitCode !== null || child.signalCode !== null) return
   // SIGTERM is a real request on POSIX; on Windows Node maps it to a terminate,
   // which is the best the platform offers from another process.
   child.kill('SIGTERM')
@@ -148,7 +150,8 @@ try {
   }
 
   await stop(child)
-  if (child.exitCode === null) throw new Error('the server stopped without reporting an exit code')
+  if (child.exitCode === null && child.signalCode === null) throw new Error('the server stopped without reporting an exit')
+  const ended = child.exitCode ?? child.signalCode
   // The port must be free: a server that "stops" but keeps listening is a
   // second launch that cannot bind.
   let stillThere = false
@@ -162,12 +165,12 @@ try {
   if (process.platform !== 'win32' && child.exitCode !== 0) {
     throw new Error(`the server exited with ${String(child.exitCode)} after SIGTERM:\n${logs()}`)
   }
-  console.log(`[smoke] the studio answered on ${base}, reported its setup, and stopped (exit ${String(child.exitCode)})`)
+  console.log(`[smoke] the studio answered on ${base}, reported its setup, and stopped (${String(ended)})`)
 } catch (error) {
   console.error(`[smoke] ${error instanceof Error ? error.message : String(error)}`)
   if (output !== '') console.error(output)
   process.exitCode = 1
 } finally {
-  if (child !== undefined && child.exitCode === null) child.kill('SIGKILL')
+  if (child !== undefined && child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
   await rm(scratch, { recursive: true, force: true }).catch(() => undefined)
 }
