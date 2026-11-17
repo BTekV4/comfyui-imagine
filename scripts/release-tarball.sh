@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 #
-# Build the tarball a release ships: the studio already built, with the five
-# runtime packages, so installing is "unpack and run" and `npm install` never
-# happens on the user's machine.
+# Build the tarball a release ships: the studio already built, with the one
+# package its launchers read the config with (`yaml`; the server, the MCP server
+# and the plugins are bundles and import nothing from `node_modules`), so
+# installing is "unpack and run" and `npm install` never happens on the user's
+# machine.
 #
 #   scripts/release-tarball.sh              → release/comfyui-imagine-<ver>.tar.gz
 #   OUT_DIR=/tmp scripts/release-tarball.sh  → somewhere else

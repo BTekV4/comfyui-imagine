@@ -4,6 +4,33 @@ Notable changes, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project's
 versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+
+- **Packages carry only `yaml`.** The server, the MCP server and every plugin
+  are self-contained bundles: `react`, `react-dom` (and `scheduler`), `immer`
+  and `fflate` are build-time packages and are no longer installed with a
+  release. The tarball's `node_modules` goes from 11 MB to 1.3 MB (the tarball
+  from 6.5 MB to 5.0 MB) and the portable zips are 1.8 MB smaller; the AppImage
+  and the Windows installer already excluded `node_modules`, so they do not
+  change.
+- **ffmpeg is pinned, and every download is checked.** The Linux build is
+  johnvansickle 7.0.2 and the Windows one is a fixed BtbN `autobuild-…`
+  release, each with the SHA-256 of the exact bytes in
+  `scripts/package-portable.sh`; the fallbacks (ffbinaries 6.1, Linux and
+  Windows) are pinned the same way. A download that does not match is retried
+  and then refused, never packaged. The AppImage and the Windows installer take
+  those same binaries. The comment at the top of the pins says how to bump one.
+
+### Fixed
+
+- `scripts/check-windows.ps1` failed once on the upgraded install (2026-11-17)
+  on a blank screenshot: the window's DOM had rendered but the surface was
+  captured before its first paint. The self-test now waits for a painted frame,
+  looks at the pixels instead of trusting the file size, and retries a blank
+  capture before keeping the last one for the failure report.
+
 ## 0.3.0 — 2026-11-17
 
 ### Added

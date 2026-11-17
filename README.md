@@ -327,8 +327,9 @@ ship.
 ### The release tarball
 
 Every [release](https://github.com/BTekV4/comfyui-imagine/releases) ships the
-studio already built — the page, the server, the plugin bundles and the five
-runtime packages — so there is no `npm install` and no build step on your
+studio already built — the page, the server, the plugin bundles, and `yaml`,
+the one package the launchers read the config with — so there is no
+`npm install` and no build step on your
 machine, and nothing to compile if your Node is not a compiler.
 
 ```sh
