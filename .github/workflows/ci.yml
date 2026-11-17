@@ -87,7 +87,7 @@ jobs:
           set -euo pipefail
           NEXT=$(node -e "const v = require('./package.json').version.split('.'); v[2] = String(Number(v[2]) + 1); console.log(v.join('.'))")
           echo "the next version for the upgrade check: $NEXT"
-          OUT_DIR="$(cygpath -u "$RUNNER_TEMP")/pkg-next" VERSION="$NEXT" bash scripts/package-electron.sh windows-x64
+          OUT_DIR="$(cygpath -u "$RUNNER_TEMP")/pkg-next" BUILD_DIR="$PWD/build/electron-next" VERSION="$NEXT" bash scripts/package-electron.sh windows-x64
       # Install it the way a person does (double-click → silent here), start
       # the installed exe, look at the window, restart the studio, upgrade,
       # uninstall — see the script for what each step proves.

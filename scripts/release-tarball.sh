@@ -18,7 +18,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
-VERSION=$(node -p "require('./package.json').version")
+VERSION=${VERSION:-$(node -p "require('./package.json').version")}
 NAME="comfyui-imagine-$VERSION"
 OUT=${OUT_DIR:-$ROOT/release}
 STAGE=$(mktemp -d "${TMPDIR:-/tmp}/imagine-release.XXXXXX")

@@ -47,7 +47,9 @@ fi
 TREE="$OUT/Imagine-$VERSION-$TARGET"
 if [ ! -d "$TREE/dist" ] || [ ! -x "$TREE/runtime/ffmpeg/$FFMPEG_BIN" ]; then
   say "program: building the portable tree ($TARGET)"
-  OUT_DIR="$OUT" bash scripts/package-portable.sh "$TARGET" >/dev/null
+  # The version is handed down: the tree is named after it, and a release or an
+  # upgrade check builds one whose tree is not the package.json's name.
+  VERSION="$VERSION" OUT_DIR="$OUT" bash scripts/package-portable.sh "$TARGET" >/dev/null
 fi
 
 # The tree a release already built can be stale — the same folder survives from
@@ -58,6 +60,12 @@ say "program: staging $BUILD"
 rm -rf -- "$BUILD"
 mkdir -p "$BUILD/app" "$BUILD/ffmpeg" "$BUILD/pages"
 cp -a "$TREE/." "$BUILD/app/"
+# The program says the version this package is. The tree comes from the commit,
+# which has one `package.json` and one version; a release names the package
+# after its tag and the upgrade check after the next patch number, and the
+# installed program must agree with the file it came from (`Get-ProgramVersion`
+# in scripts/check-windows.ps1 reads exactly this line).
+node -e 'const fs = require("fs"); const [file, version] = process.argv.slice(1); const manifest = JSON.parse(fs.readFileSync(file, "utf8")); manifest.version = version; fs.writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`)' "$BUILD/app/package.json" "$VERSION"
 rm -rf -- "$BUILD/app/dist" "$BUILD/app/plugins"
 cp -a dist "$BUILD/app/dist"
 cp -a plugins "$BUILD/app/plugins"

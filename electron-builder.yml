@@ -63,7 +63,12 @@ linux:
 # folder to choose — puts an icon on the Desktop and in the Start menu, adds
 # itself to "Apps & features" and leaves %APPDATA%\Imagine alone when it is
 # removed. `npm run package:win` (scripts/package-electron.sh windows-x64)
-# builds it; CI installs, starts and uninstalls it before a release attaches it.
+# builds it; CI installs, starts, upgrades and uninstalls it before a release
+# attaches it.
+#
+# No certificate yet, so the installer is unsigned and Windows says so the first
+# time (README → "The app (Windows)"). Signing needs a paid certificate and is a
+# decision of the release owner, not a line of code.
 win:
   target:
     - nsis
@@ -94,7 +99,5 @@ nsis:
   # path), and keep %APPDATA%\Imagine on uninstall: that folder is the
   # projects, the media, the plugins and config.yaml, not the program.
   deleteAppDataOnUninstall: false
-  # No certificate yet: the installer is unsigned, and Windows says so the
-  # first time (see README → SmartScreen). Signing needs a paid certificate and
-  # is a decision of the release owner.
+  # The Finish page's checkbox: after install, Imagine opens.
   runAfterFinish: true

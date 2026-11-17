@@ -20,7 +20,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 TARGET=${1:?"the platform is required: linux-x64 | windows-x64 | macos-arm64 | macos-x64"}
-VERSION=$(node -p "require('./package.json').version")
+VERSION=${VERSION:-$(node -p "require('./package.json').version")}
 OUT=${OUT_DIR:-$PWD/release}
 CACHE=${CACHE_DIR:-${TMPDIR:-/tmp}/imagine-runtime-cache}
 mkdir -p "$OUT" "$CACHE"
@@ -62,7 +62,7 @@ fi
 
 # 1. the app tree: the same as the tarball, so the two shapes do not diverge
 say "app: building the tree"
-bash scripts/release-tarball.sh >/dev/null
+VERSION="$VERSION" bash scripts/release-tarball.sh >/dev/null
 APP="$OUT/Imagine-$VERSION-$TARGET"
 rm -rf -- "$APP"
 mkdir -p -- "$APP"
