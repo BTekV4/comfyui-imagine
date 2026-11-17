@@ -29,6 +29,7 @@ import { message } from '../../src/messages.ts'
 import { lookAtStaged, sightInMemory, type ImagineChatEyes } from './imagine-sight.ts'
 import { languageName } from '../../../shared/locale-names.ts'
 import { recallNotes, type ImagineFileOrigin } from './imagine-notes.ts'
+import { retryEditIntents, type EditRun } from '../../../shared/imagine-edit.ts'
 import { LIPSYNC_MIN } from './story.ts'
 import { jsonObjectOf } from './model-json.ts'
 import type { WorkflowChange } from './workflow-edit.ts'
@@ -435,7 +436,7 @@ function imagineChatInstruction(
 
 Actions you can queue:
 - generate: a new image from text. It does NOT take any starting file: to change an image that is already there the action is "remix".
-- remix: changes an image that is already there (it needs a starting image).
+- remix: edits an image that is already there (it needs a starting image). It REDRAWS THE WHOLE PHOTO, not just the part the prompt names: what the prompt lists, the model redraws.
 - video: animates an image as ONE continuous take, from 5 up to 60 seconds: up to 6 seconds it is one clip, past that the studio renders it scene after scene (6 seconds each) with no cut. Use it for any length when the video starts from one photo and has no song.
 - loop: ANIMATED BACKGROUND from an image (it needs "source"): the clip begins and ends on the SAME frame, so it repeats as a loop with no seam, and that is what you want for a background, a video wall, an animation to put on a cycle. "seconds" goes up to 60: past 10 seconds the studio renders several segments and joins them, and the file comes out at the length asked for. Do NOT use it to animate a scene with a beginning and an end: that is "video".
 - extend: continues a video that is already there (it needs a starting video).
@@ -455,6 +456,12 @@ Actions you can queue:
 - voice: changes the voice of a track that is already there (it needs "source": an audio file or a VIDEO CLIP both work — from a clip the studio extracts the track by itself, so "change the voice of this clip" with a video in the chat is this action and NO audio file is asked for; if the user asks to change the voice, queue it and do NOT refuse: whether the clip has an audio track is said by the studio, you do not know; if the user says "this song" or "the track" without naming it, take the most recent audio from the list instead of asking). The music stays: the graph separates the voice, converts it and puts the backing back. On a CLIP the studio returns the CLIP with the new voice — the same starting video with the converted track over it, not an audio file to edit back in: do not tell the user there is anything to reassemble, and do not promise an audio file when they gave you a clip. "voice" is which voice to use, "pitch" the semitones: WRITE IT every time the user mentions a deeper or higher voice or semitones — "male voice"/"deeper" = "pitch": -12, "female voice"/"higher" = "pitch": 12, "twelve semitones down" = "pitch": -12.${voices.length === 0 ? '' : ` Voices available, to be copied exactly: ${voices}.`}
 - speak: reads a text aloud and saves the audio file. No starting file: "prompt" carries the text to read, copied from the user's sentence. It is the right action for "read this text", "voice from text", "turn it into audio", "say it aloud", "I want a voice over". It is NOT "voice" (that changes the voice of an existing track) and it is not "music" (that sings).
   Every file the studio made carries next to its name HOW it was made (action, format…) and, if somebody already looked at it, what can be seen in it. "Redo these photos in 9:16" / "make them horizontal" = the same action of those files, changing ONLY what the user asks. Do NOT ask which photos: you have them below.
+
+LOCAL CHANGES TO A PHOTO ("remove X", "add X", "move X", "change only X"):
+- "remix" redraws the whole photo. Write "prompt" as ONE short imperative sentence that names only the part to change and what to do with it ("Remove the extra arm", "Put a red scarf around her neck"). Do NOT describe the rest of the photo and do NOT list what must stay — no clothing, no body, no pose, no background, no light: the studio adds the fixed sentence that asks for everything else to stay the same, and a list of that kind is read as a description of the scene and gets the scene redrawn.
+- Never promise that the rest will come back identical: say the model will try to leave it as it is.
+- When the user says the result is still wrong ("still there", "non l'hai rimosso", "ce ancora"), "source" is the photo that run STARTED from (its "from ..." in the list), never the failed result: a correction asked of the failed output adds to it instead of undoing it.
+- After TWO failed attempts at removing the same thing, queue nothing: say in "reply" that a full redraw has already had its two tries, and that «Remove object» (IOPaint) paints the part out and fills only that area, leaving the rest identical; «Precise edit» is for changing a zone, not for removing. That is the right tool for a body part or an object lying over the body, not a refusal.
 
 Parameters:
 - aspect: one of ${IMAGINE_ASPECTS.join(', ')}. Vertical = 9:16, horizontal = 16:9, square = 1:1.
@@ -785,6 +792,32 @@ function withAskedLine(answer: ImagineChatReply, asked: string): ImagineChatRepl
 }
 
 /**
+ * Apply the retry rules to what the reading queued, and say when a redraw has
+ * had its two tries.
+ *
+ * The rules themselves are in `shared/imagine-edit.ts`, where they are tested
+ * without a model; here they only meet the project's files and the sentence
+ * that sends the user to the masked tool.
+ * @param answer - the reading, as the model wrote it.
+ * @param request - the line and the project's files.
+ * @returns the same answer, with the sources and intents the rules allow.
+ */
+function retryEditAnswer(answer: ImagineChatReply, request: ImagineChatRequest): ImagineChatReply {
+  const runs: EditRun[] = (request.recent ?? []).flatMap(file => file.made === undefined
+    ? []
+    : [{
+      name: file.name,
+      action: file.made.action,
+      prompt: file.made.prompt,
+      ...file.made.source === undefined ? {} : { source: file.made.source },
+    }])
+  const plan = retryEditIntents(answer.intents, runs, request.text)
+  if (plan.escalated) return { ...answer, reply: message('chat.maskedRemoval'), intents: plan.intents }
+  if (plan.rewound) return { ...answer, intents: plan.intents }
+  return answer
+}
+
+/**
  * What the studio does with a line when no model is configured or it fails.
  *
  * Two paths. `failed` is a reader that was configured and did not answer: the
@@ -1070,7 +1103,14 @@ export async function readImagineChat(
    * vision calls — they were queued for a look when they arrived. After the
    * sights: a look just taken is read from memory (`sightInMemory`).
    */
-  const instruction = imagineChatInstruction(await withNotes(shaped), inventory, eyes)
+  /*
+   * One read of the notes, for the instruction and for the retry rules: the
+   * rules need each file's origin (what made it, from what), and reading the
+   * same notes twice would also disagree with itself if a note landed between
+   * the two reads.
+   */
+  const noted = await withNotes(shaped)
+  const instruction = imagineChatInstruction(noted, inventory, eyes)
   let written: string | undefined
   // The route that answered, which the workflow pass below asks again: the
   // first route may be the one that did not.
@@ -1113,7 +1153,7 @@ export async function readImagineChat(
     files: filesByName(shaped),
     ...request.voices === undefined ? {} : { voices: request.voices },
   })
-  if (answer !== undefined) return withAskedLine(answer, request.text)
+  if (answer !== undefined) return withAskedLine(retryEditAnswer(answer, noted), request.text)
   /*
    * A reader was configured and the line still was not read: either nothing
    * came back or what came back is not an answer. Both are failures of the

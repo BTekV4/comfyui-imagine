@@ -224,6 +224,10 @@ export const MESSAGES = {
     it: 'Non sono riuscito a leggere {label}. Riprova a dirmelo.',
     en: 'I could not read {label}. Try telling me again.',
   },
+  'chat.maskedRemoval': {
+    it: 'Due tentativi hanno rifatto tutta la foto e non hanno tolto quello che chiedevi: un altro remix rifarebbe di nuovo tutto. Per togliere una parte senza toccare il resto, apri la foto e usa «Rimuovi oggetto» (IOPaint): dipingi la zona da togliere, riempie solo quella e il resto resta identico. Per cambiare una zona invece di toglierla c\'è «Modifica precisa». Non avvio un altro remix.',
+    en: 'Two attempts already redrew the whole photo and did not take out what you asked: another remix would redraw it again. To take a part out without touching the rest, open the photo and use «Remove object» (IOPaint): paint the area to remove, it fills only that and leaves the rest identical. To change a zone instead of removing it, use «Precise edit». I am not starting another remix.',
+  },
   'settings.cannotSave': { it: 'imagine-settings.json non è valido, correggilo a mano prima di salvare: {problem}', en: 'imagine-settings.json is not valid, fix it by hand before saving: {problem}' },
   'path.invalid': { it: 'percorso non valido', en: 'invalid path' },
   'workflow.keyAndChanges': { it: 'servono key e changes', en: 'key and changes are needed' },
