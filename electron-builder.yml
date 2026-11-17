@@ -30,6 +30,12 @@ files:
   - preload.cjs
   - pages/**/*
   - icon.png
+  # electron-builder 26.18 also searches the folders above `directories.app`
+  # for node modules and packs what it finds: the project's production
+  # dependencies (react, react-dom, immer, yaml, fflate, scheduler) went into
+  # the asar — 10 MB the window never imports, since the studio runs from
+  # `resources/app` with a bundle of its own. The asar is the window only.
+  - "!node_modules/**/*"
 
 # `from` is relative to the project (this file's folder), not to `directories.app`.
 extraResources:
