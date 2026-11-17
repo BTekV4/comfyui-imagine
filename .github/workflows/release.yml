@@ -190,6 +190,12 @@ jobs:
       contents: write
     runs-on: ubuntu-24.04
     steps:
+      # The gate below is a script in this repository, and a job starts with
+      # no repository: v0.3.1's publish died on "scripts/check-release-assets.sh:
+      # No such file or directory" because this step was missing. The packages
+      # are downloaded into dist-artifacts, a folder of its own, so the
+      # checkout cannot put a repository file among the release's assets.
+      - uses: actions/checkout@v7
       # The packages, by artifact name — not every artifact of the run.
       # `desktop-windows-window` (imagine.log, the selftest-*.json and the
       # window-*.png of the Windows check) is what a person debugging Windows
