@@ -89,6 +89,14 @@ function bubblesOf(messages: readonly ImagineMessage[]): ChatBubble[] {
     // and out of the empty sweep — not something said in the chat: a new
     // project opens on an empty column (asked 2026-09-10).
     if (isSeedMessage(message)) continue
+    /*
+     * A line with nothing in it is not drawn. A status message can be left
+     * without text — a notice the studio now shows as the job's own row, a key
+     * a build does not know — and an empty bubble with only its hour under it
+     * read as a run that had nothing to say (seen 2026-11-17). A line carrying
+     * files is drawn whatever its text says: the files are the message.
+     */
+    if (message.text.trim() === '' && (message.files?.length ?? 0) === 0) continue
     if (message.role === 'assistant') {
       const bubble: ChatBubble = { message, ids: [message.id], count: 1, blocks: proseBlocks(message.text) }
       for (const jobId of message.jobIds ?? []) ownerByJob.set(jobId, bubble)

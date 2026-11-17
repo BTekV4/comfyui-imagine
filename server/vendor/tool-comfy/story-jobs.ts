@@ -37,7 +37,8 @@ import {
 } from './story.ts'
 import type { MediaKind, ModelRoute } from '../../../shared/imagine-types.ts'
 import {
-  getImagineJob, jobThatProduced, patchJob, putJob, renameJobFiles, setJobPromptId, type ImagineJob,
+  endRunControl, getImagineJob, jobThatProduced, patchJob, putJob, renameJobFiles, setJobPromptId,
+  startRunControl, type ImagineJob,
 } from './job-queue.ts'
 import type { ImagineJobRequest } from './job-request.ts'
 import { enqueueJob } from './run-job.ts'
@@ -365,6 +366,7 @@ export async function startStory(
    */
   if (!awaitsVoice(take, graphs.clips, request)) {
     const queued = await queueStory(ctx, workflows, outputDir, request, take, graphs, storyId, now, 'no-voice')
+    if (queued === undefined) throw new Error(message('story.empty'))
     return queued.first
   }
   const prep: ImagineJob = {
@@ -379,23 +381,44 @@ export async function startStory(
     ...request.clipId === undefined ? {} : { clipId: request.clipId },
   }
   putJob(prep.id, prep)
+  /*
+   * The preparation is a run of its own: it gets the job's controller, so that
+   * "Cancel" reaches the wait and not only the prompt on ComfyUI, and it is the
+   * same controller `stopRun` aborts for any other job.
+   */
+  const control = startRunControl(prep.id)
+  const stopped = (): boolean => getImagineJob(prep.id)?.status === 'cancelled'
   void withLanguage(undefined, () => voiceOf(ctx, workflows, outputDir, take.song ?? '', (promptId) => {
     setJobPromptId(ctx, prep.id, promptId)
-  }))
+  }, control.signal))
     // A probe that throws is a probe with no answer: the shots are cut, which is
-    // the safe side, and the log has said why.
+    // the safe side, and the log has said why. A probe that was stopped says
+    // nothing at all.
     .catch((): SungVoice => 'unknown')
     .then(async (voice) => {
-      // A preparation the user stopped queues nothing: the whole story stops
-      // with it, the way cancelling a shot stops the rest of the chain.
-      if (getImagineJob(prep.id)?.status === 'cancelled') return
-      const queued = await queueStory(ctx, workflows, outputDir, request, take, graphs, storyId, now, voice)
+      /*
+       * A preparation the user stopped queues nothing: the whole story stops
+       * with it, the way cancelling a shot stops the rest of the chain. The
+       * measurement may still answer — it was cancelled on ComfyUI, and one that
+       * lands anyway is a fact about the track, not about this story — and the
+       * answer is read here, where nothing happens with it.
+       */
+      if (stopped()) return
+      const queued = await queueStory(ctx, workflows, outputDir, request, take, graphs, storyId, now, voice, stopped)
+      // Cancelled while the timing was being read: the shots it made are not the
+      // user's any more, so they are stopped rather than left to render.
+      if (queued === undefined) {
+        console.info(`[imagine] the story was cancelled while its shots were being prepared, nothing was queued`)
+        return
+      }
       patchJob(prep.id, { status: 'done', notice: '', storyCount: queued.count, updatedAt: Date.now() })
       await adoptStoryJobs(prep.id, queued.jobs)
     })
     .catch((error: unknown) => {
+      if (stopped()) return
       patchJob(prep.id, { status: 'error', error: error instanceof Error ? error.message : String(error), updatedAt: Date.now() })
     })
+    .finally(() => { endRunControl(prep.id) })
   return prep
 }
 
@@ -433,11 +456,19 @@ async function queueStory(
   storyId: string,
   now: number,
   voice: SungVoice,
-): Promise<{ first: ImagineJob; count: number; jobs: readonly ImagineJob[] }> {
+  stopped: () => boolean = () => false,
+): Promise<{ first: ImagineJob; count: number; jobs: readonly ImagineJob[] } | undefined> {
   const timing = await storyTiming(outputDir, request, take, graphs.clips, voice)
   // After the timing: the close-up gives every shot a photo, not more shots.
   const files = await withFaceCloseUp(outputDir, take, graphs.clips, timing.shots.length)
   const storySong = planStory(ctx, outputDir, request, files, timing, storyId)
+  /*
+   * Read once more, after the timing and the close-up: a cancel that lands
+   * while those are being read would otherwise queue a whole chain the user has
+   * already given up on — and the queue would render it, because ComfyUI never
+   * heard about the stop.
+   */
+  if (stopped()) return undefined
   const queued = storyJobs(workflows, request, files, timing, graphs, storySong, storyId, now)
   for (const entry of queued) {
     putJob(entry.job.id, entry.job)
@@ -579,6 +610,7 @@ export type VoiceProbe = (
   outputDir: string,
   song: string,
   onPrompt?: (promptId: string) => void,
+  signal?: AbortSignal,
 ) => Promise<SungVoice>
 
 /**
@@ -618,11 +650,9 @@ export async function sungVoiceOf(
   outputDir: string,
   song: string,
   onPrompt: (promptId: string) => void = () => undefined,
+  signal: AbortSignal = new AbortController().signal,
 ): Promise<SungVoice> {
-  const vocal = await vocalsOf(ctx, workflows, outputDir, song, {
-    onPrompt,
-    signal: new AbortController().signal,
-  })
+  const vocal = await vocalsOf(ctx, workflows, outputDir, song, { onPrompt, signal })
   const share = vocal === undefined
     ? undefined
     : voicedShare(await loudnessOf(join(outputDir, vocal), 0, VOICE_SCAN_SECONDS))

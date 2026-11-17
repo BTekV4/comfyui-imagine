@@ -269,11 +269,18 @@ export function absorbJobFiles(
      * twice, and claiming the job here would silence its result. Its own
      * message id is the guard instead.
      */
-    if (job.notice !== undefined && notice !== undefined && !told.has(`note-${job.id}`)) {
+    /*
+     * A preparation notice is not spoken: it is a run of its own, and the column
+     * already carries it as a live row with its own Cancel — a line in the chat
+     * said the same thing with nothing to stop it, and stayed there after the
+     * job was cancelled (asked 2026-11-17).
+     */
+    const spokenNotice = job.notice === 'separating-voice' ? undefined : job.notice
+    if (spokenNotice !== undefined && notice !== undefined && !told.has(`note-${job.id}`)) {
       extraMessages.push({
         id: `note-${job.id}`,
         role: 'status',
-        text: notice(job.notice),
+        text: notice(spokenNotice),
         createdAt: Date.now(),
         jobId: job.id,
       })
