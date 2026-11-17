@@ -628,12 +628,63 @@ async function writeSelfTest() {
 }
 
 /**
+ * Ask the page to produce at least one frame before the window is captured.
+ *
+ * `#root` holding children says React rendered; it does not say the compositor
+ * has painted a frame. On 2026-11-17 the Windows check failed on the upgraded
+ * install with a 3377-byte screenshot of a window whose DOM had rendered: a
+ * flat surface captured before the first paint. Two
+ * `requestAnimationFrame` callbacks run just before the next two frames, so
+ * when this resolves a frame has been produced.
+ */
+async function waitForPaint() {
+  if (win === undefined || win.isDestroyed()) return
+  try {
+    await win.webContents.executeJavaScript(
+      'new Promise(done => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, 0))))',
+    )
+  } catch {
+    // The page is gone or navigating: capturePage will report what it can.
+  }
+}
+
+/**
+ * Whether a capture is a blank surface instead of the page.
+ *
+ * A blank window is a flat colour, and a flat colour compresses to a tiny PNG —
+ * the file size is only a proxy. This reads the pixels and asks how many
+ * different colours are in them; antialiased text alone is hundreds. The
+ * bitmap is sampled at a stride, so a full-size window costs nothing.
+ */
+function looksBlank(image) {
+  const { width, height } = image.getSize()
+  if (width === 0 || height === 0) return true
+  const bitmap = image.toBitmap() // BGRA, 4 bytes per pixel
+  const colours = new Set()
+  const pixels = width * height
+  const stride = Math.max(1, Math.floor(pixels / 4000))
+  for (let pixel = 0; pixel < pixels; pixel += stride) {
+    const at = pixel * 4
+    colours.add((bitmap[at] << 16) | (bitmap[at + 1] << 8) | bitmap[at + 2])
+    if (colours.size > 8) return false
+  }
+  return true
+}
+
+/**
  * `IMAGINE_APP_SCREENSHOT=<png>`: what the window is showing right now.
  *
  * `webContents.capturePage()` is used instead of a screen grab because it needs
  * no desktop and no compositor — it works on a headless Linux runner and on a
  * Windows runner's session alike — and because what it captures is the page the
  * studio drew, which is the thing a screenshot is meant to prove.
+ *
+ * The capture is asked for *after* a frame has been painted and it is retried
+ * when the surface is blank: a window the compositor still considers covered
+ * stops drawing, and one blank frame is not a finding. Eight attempts, a
+ * quarter of a second apart, and the window is brought up between them; after
+ * that the last capture is kept so a failing check has the picture it failed
+ * on.
  * @returns the file written, or undefined when there is nothing to write.
  */
 async function saveScreenshot() {
@@ -641,19 +692,38 @@ async function saveScreenshot() {
   if (target === '') return undefined
   const file = resolve(target)
   if (win === undefined || win.isDestroyed()) return undefined
-  try {
-    const image = await win.webContents.capturePage()
-    if (image.isEmpty()) {
-      log(`self-test: the screenshot of ${file} is empty`)
+  let last
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
+    if (attempt > 1) {
+      // A window the compositor thinks is covered stops producing frames:
+      // bring it up (without taking the focus) before asking again.
+      if (win.isVisible()) win.moveTop()
+      else win.showInactive()
+      await delay(250)
+    }
+    await waitForPaint()
+    try {
+      last = await win.webContents.capturePage()
+    } catch (error) {
+      log(`self-test: could not capture the window: ${String(error)}`)
       return undefined
     }
-    writeFileSync(file, image.toPNG())
-    log(`self-test: screenshot written to ${file}`)
-    return file
-  } catch (error) {
-    log(`self-test: could not write the screenshot ${file}: ${String(error)}`)
+    if (!last.isEmpty() && !looksBlank(last)) {
+      writeFileSync(file, last.toPNG())
+      log(`self-test: screenshot written to ${file} (${statSync(file).size} bytes, attempt ${attempt})`)
+      return file
+    }
+    log(`self-test: the capture is blank (attempt ${attempt} of 8), asking the window to paint again`)
+  }
+  if (last === undefined || last.isEmpty()) {
+    log(`self-test: the screenshot of ${file} is empty`)
     return undefined
   }
+  // Kept anyway: a check that fails must leave the picture it failed on, and
+  // "blank after eight paints" is then the finding, not an absent file.
+  writeFileSync(file, last.toPNG())
+  log(`self-test: the window stayed blank; kept the last capture in ${file}`)
+  return file
 }
 
 /* --------------------------------------------------------------------- boot */
