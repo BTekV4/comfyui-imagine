@@ -190,15 +190,44 @@ jobs:
       contents: write
     runs-on: ubuntu-24.04
     steps:
+      # The packages, by artifact name — not every artifact of the run.
+      # `desktop-windows-window` (imagine.log, the selftest-*.json and the
+      # window-*.png of the Windows check) is what a person debugging Windows
+      # looks at, and it stays on the run; v0.3.0 attached it to the release
+      # because this step downloaded the whole run and published `**`.
       - uses: actions/download-artifact@v8
         with:
+          name: tarball
           path: dist-artifacts
-          merge-multiple: true
+      - uses: actions/download-artifact@v8
+        with:
+          name: portable-linux-x64
+          path: dist-artifacts
+      - uses: actions/download-artifact@v8
+        with:
+          name: desktop-linux
+          path: dist-artifacts
+      - uses: actions/download-artifact@v8
+        with:
+          name: desktop-windows
+          path: dist-artifacts
+      # The exact list the release will carry, checked before anything is
+      # written: an unexpected file (or a package without its .sha256) fails
+      # here, with its name, instead of becoming an asset of the release.
+      - name: Only the packages may be attached
+        run: bash scripts/check-release-assets.sh dist-artifacts
       - name: Publish
         uses: softprops/action-gh-release@v3
         with:
           files: |
-            dist-artifacts/**
+            dist-artifacts/comfyui-imagine-*.tar.gz
+            dist-artifacts/comfyui-imagine-*.tar.gz.sha256
+            dist-artifacts/Imagine-*-linux-x64.zip
+            dist-artifacts/Imagine-*-linux-x64.zip.sha256
+            dist-artifacts/Imagine-*-linux-x64.AppImage
+            dist-artifacts/Imagine-*-linux-x64.AppImage.sha256
+            dist-artifacts/Imagine-*-windows-x64-setup.exe
+            dist-artifacts/Imagine-*-windows-x64-setup.exe.sha256
           fail_on_unmatched_files: true
           body: |
             **Choose your system, download, double-click.** Node and ffmpeg are
