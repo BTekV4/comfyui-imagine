@@ -26,13 +26,19 @@ CACHE=${CACHE_DIR:-${TMPDIR:-/tmp}/imagine-runtime-cache}
 mkdir -p "$OUT" "$CACHE"
 
 NODE_VERSION=${NODE_VERSION:-24.22.3}
-# johnvansickle: static, 77 MB per binary against the 169 of BtbN's full builds
-# — half the package, with what is needed (filters, libx264, aac). But on
-# 2026-11-16 its site answered a CI runner with an HTML page instead of the
-# archive (`xz: File format not recognized`): when the file is not a valid xz
-# we fall back to BtbN, which lives on GitHub and has no surprises.
+# johnvansickle: static, 79 MB per binary against the 176 of BtbN's full
+# builds — half the package, with what is needed (filters, libx264, aac). The
+# site answers a CI runner with an HTML page instead of the archive now and
+# then (`xz: File format not recognized`, seen on 2026-11-16 and again on
+# 2026-11-17): an invalid answer is fetched again before anything else, because
+# the next one is usually the file. Only after the retries does the fallback
+# run — and it is **the same size**: ffbinaries publishes the same static
+# builds from GitHub. BtbN's full GPL build is not used as the fallback: its
+# binaries are 176 MB each, and that is why the 0.3.0 zip went out at 195 MB
+# instead of 113.
 FFMPEG_LINUX_URL=${FFMPEG_LINUX_URL:-https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz}
-FFMPEG_LINUX_FALLBACK=https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz
+FFMPEG_LINUX_FALLBACK_FFMPEG=https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.1/ffmpeg-6.1-linux-64.zip
+FFMPEG_LINUX_FALLBACK_FFPROBE=https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.1/ffprobe-6.1-linux-64.zip
 FFMPEG_WIN_URL=${FFMPEG_WIN_URL:-https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip}
 
 PYTHON=${PYTHON:-$(command -v python3 || command -v python)}
@@ -95,15 +101,37 @@ if [ "$FFMPEG_KIND" = mac ]; then
 fi
 case "$FFMPEG_KIND" in
   linux)
-    fetch "$FFMPEG_LINUX_URL" "$CACHE/ffmpeg-linux.tar.xz"
-    # An archive is checked before it is used: `xz -t` costs nothing and says
-    # right away whether what arrived really is a .tar.xz.
-    if ! xz -t "$CACHE/ffmpeg-linux.tar.xz" 2>/dev/null; then
-      say "  the archive is not valid: falling back to BtbN's build"
+    # The archive is checked before it is used: `xz -t` costs nothing and says
+    # right away whether what arrived really is a .tar.xz. A page instead of
+    # the file is what the site does when it is busy, and that answer is
+    # transient — on 2026-11-17 the portable job got the page and the desktop
+    # job got the file from the same URL minutes later. Fetch it again before
+    # reaching for anything else.
+    FFMPEG_LINUX_LAYOUT=tar
+    attempt=1
+    while :; do
+      # A failed download and an HTML page are the same thing here: no archive
+      # to unpack. Both are retried, and only then does the fallback run.
+      if fetch "$FFMPEG_LINUX_URL" "$CACHE/ffmpeg-linux.tar.xz" \
+        && xz -t "$CACHE/ffmpeg-linux.tar.xz" 2>/dev/null; then break; fi
+      say "  the archive is not usable (attempt $attempt of 3)"
       rm -f "$CACHE/ffmpeg-linux.tar.xz" "$CACHE/ffmpeg-linux.tar.xz.url"
-      fetch "$FFMPEG_LINUX_FALLBACK" "$CACHE/ffmpeg-linux.tar.xz"
-      xz -t "$CACHE/ffmpeg-linux.tar.xz" || die "BtbN did not give a valid archive either"
-    fi
+      if [ "$attempt" -ge 3 ]; then
+        say "  falling back to ffbinaries' static builds (same size)"
+        FFMPEG_LINUX_LAYOUT=zip
+        fetch "$FFMPEG_LINUX_FALLBACK_FFMPEG" "$CACHE/ffmpeg-linux-fallback-ffmpeg.zip" \
+          || die "ffbinaries did not give ffmpeg"
+        fetch "$FFMPEG_LINUX_FALLBACK_FFPROBE" "$CACHE/ffmpeg-linux-fallback-ffprobe.zip" \
+          || die "ffbinaries did not give ffprobe"
+        "$PYTHON" -m zipfile -t "$CACHE/ffmpeg-linux-fallback-ffmpeg.zip" >/dev/null 2>&1 \
+          || die "ffbinaries' ffmpeg archive is not a zip"
+        "$PYTHON" -m zipfile -t "$CACHE/ffmpeg-linux-fallback-ffprobe.zip" >/dev/null 2>&1 \
+          || die "ffbinaries' ffprobe archive is not a zip"
+        break
+      fi
+      attempt=$((attempt + 1))
+      sleep "$attempt"
+    done
     ;;
   win)   fetch "$FFMPEG_WIN_URL"   "$CACHE/ffmpeg-win.zip" ;;
 esac
@@ -128,11 +156,19 @@ say "runtime: ffmpeg ($FFMPEG_KIND)"
 case "$FFMPEG_KIND" in
   linux)
     rm -rf "$CACHE/ffmpeg-linux" && mkdir -p "$CACHE/ffmpeg-linux"
-    tar xf "$CACHE/ffmpeg-linux.tar.xz" -C "$CACHE/ffmpeg-linux" --strip-components=1
-    # Two layouts out there: `bin/ffmpeg` (BtbN) and the binaries at the root
-    # (johnvansickle). The one that is there is taken.
-    FF_BIN="$CACHE/ffmpeg-linux/bin"; [ -d "$FF_BIN" ] || FF_BIN="$CACHE/ffmpeg-linux"
-    cp "$FF_BIN/ffmpeg" "$FF_BIN/ffprobe" "$APP/runtime/ffmpeg/"
+    if [ "$FFMPEG_LINUX_LAYOUT" = zip ]; then
+      # ffbinaries ships one binary per zip, at its root.
+      "$PYTHON" -m zipfile -e "$CACHE/ffmpeg-linux-fallback-ffmpeg.zip" "$CACHE/ffmpeg-linux"
+      "$PYTHON" -m zipfile -e "$CACHE/ffmpeg-linux-fallback-ffprobe.zip" "$CACHE/ffmpeg-linux"
+      chmod +x "$CACHE/ffmpeg-linux/ffmpeg" "$CACHE/ffmpeg-linux/ffprobe"
+      cp "$CACHE/ffmpeg-linux/ffmpeg" "$CACHE/ffmpeg-linux/ffprobe" "$APP/runtime/ffmpeg/"
+    else
+      tar xf "$CACHE/ffmpeg-linux.tar.xz" -C "$CACHE/ffmpeg-linux" --strip-components=1
+      # Two layouts out there: `bin/ffmpeg` (BtbN) and the binaries at the root
+      # (johnvansickle). The one that is there is taken.
+      FF_BIN="$CACHE/ffmpeg-linux/bin"; [ -d "$FF_BIN" ] || FF_BIN="$CACHE/ffmpeg-linux"
+      cp "$FF_BIN/ffmpeg" "$FF_BIN/ffprobe" "$APP/runtime/ffmpeg/"
+    fi
     ;;
   win)
     rm -rf "$CACHE/ffmpeg-win" && mkdir -p "$CACHE/ffmpeg-win"
