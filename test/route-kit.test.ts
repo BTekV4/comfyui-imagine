@@ -46,6 +46,17 @@ test('languageOf reads a well-formed x-app-language and nothing else', () => {
   assert.equal(languageOf(fake('/').req), undefined)
 })
 
+/**
+ * The variables `os.homedir()` reads: `HOME` on POSIX, `USERPROFILE` on
+ * Windows. A test that sets only `HOME` reads the runner's real profile there,
+ * because the child process inherits `USERPROFILE`.
+ * @param home - the folder the test wants to be the home.
+ * @returns the environment entries for this platform.
+ */
+function homeEnv(home: string): Record<string, string> {
+  return process.platform === 'win32' ? { HOME: home, USERPROFILE: home } : { HOME: home }
+}
+
 /** The data root a fresh process resolves under this environment. */
 async function rootUnder(env: Record<string, string | undefined>): Promise<string> {
   const clean: Record<string, string> = {}
@@ -65,13 +76,13 @@ test('the data root: IMAGINE_HOME, else ~/.imagine', async () => {
     // An absolute path of this platform: `/srv/a` is not one on Windows.
     const srvA = join(home, 'srv-a')
     const srvB = join(home, 'srv-b')
-    assert.equal(await rootUnder({ HOME: home, IMAGINE_HOME: srvA }), srvA)
+    assert.equal(await rootUnder({ ...homeEnv(home), IMAGINE_HOME: srvA }), srvA)
     // A blank variable is unset, not the working directory.
-    assert.equal(await rootUnder({ HOME: home, IMAGINE_HOME: '  ' }), join(home, '.imagine'))
-    assert.equal(await rootUnder({ HOME: home }), join(home, '.imagine'))
+    assert.equal(await rootUnder({ ...homeEnv(home), IMAGINE_HOME: '  ' }), join(home, '.imagine'))
+    assert.equal(await rootUnder(homeEnv(home)), join(home, '.imagine'))
     // The DSH names are gone: neither the variable nor an old ~/.dsh is read.
     await mkdir(join(home, '.dsh'))
-    assert.equal(await rootUnder({ HOME: home, DSH_HOME: srvB }), join(home, '.imagine'))
+    assert.equal(await rootUnder({ ...homeEnv(home), DSH_HOME: srvB }), join(home, '.imagine'))
   } finally {
     await rm(home, { recursive: true, force: true })
   }
