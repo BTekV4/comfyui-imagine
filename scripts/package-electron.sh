@@ -45,10 +45,17 @@ if [ ! -d "$TREE/dist" ] || [ ! -x "$TREE/runtime/ffmpeg/ffmpeg" ]; then
   OUT_DIR="$OUT" bash scripts/package-portable.sh "$TARGET" >/dev/null
 fi
 
+# The tree a release already built can be stale — the same folder survives from
+# a previous packaging, and an AppImage that silently carries the previous
+# program is the worst kind of bug to find. The two halves that come from the
+# build (`dist/`, the plugin bundles) are therefore always the ones just built.
 say "program: staging $BUILD"
 rm -rf -- "$BUILD"
 mkdir -p "$BUILD/app" "$BUILD/ffmpeg" "$BUILD/pages"
 cp -a "$TREE/." "$BUILD/app/"
+rm -rf -- "$BUILD/app/dist" "$BUILD/app/plugins"
+cp -a dist "$BUILD/app/dist"
+cp -a plugins "$BUILD/app/plugins"
 # The portable launcher and its runtime are not the app's: the window is the
 # launcher here, and Electron is the runtime.
 rm -rf -- "$BUILD/app/runtime" "$BUILD/app/Imagine.sh" "$BUILD/app/Imagine.desktop" \

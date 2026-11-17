@@ -108,7 +108,8 @@ function log(line) {
   try {
     const stamp = new Date().toISOString()
     const prefixed = text.replace(/^(?!$)/gm, `[${stamp}] `)
-    // `appendFileSync` keeps the order when the server writes fast.
+    // `writeFileSync` with the append flag keeps the order when the server
+    // writes fast, and needs no stream to flush on exit.
     writeFileSync(LOG_FILE, prefixed, { flag: 'a' })
   } catch {
     // Nowhere to write: the window still works.
@@ -183,6 +184,10 @@ function serverEnv(port) {
   env['IMAGINE_PROGRAM_DIR'] = PROGRAM
   env['IMAGINE_PORT'] = String(port)
   env['IMAGINE_HOST'] = '127.0.0.1'
+  // The studio stops when this window is gone, even when the window is killed
+  // (a logout, a crash): on Linux the app cannot run code at that moment, the
+  // server watches this pid instead (`server/src/parent-watch.ts`).
+  env['IMAGINE_PARENT_PID'] = String(process.pid)
   env['IMAGINE_LOCALES_SRC'] = join(PROGRAM, 'locales')
   env['IMAGINE_PLUGINS_SRC'] = join(PROGRAM, 'plugins')
   // ffmpeg and ffprobe are called by name (media-tools.ts): ours come first.
@@ -211,7 +216,7 @@ const logPath = LOG_FILE
 function iconPath() {
   const beside = join(HERE, 'icon.png')
   if (existsSync(beside)) return beside
-  const fromPage = join(PROGRAM, 'web', 'icon-512.png')
+  const fromPage = join(PROGRAM, 'dist', 'web', 'icon-512.png')
   return existsSync(fromPage) ? fromPage : undefined
 }
 
@@ -369,7 +374,7 @@ async function startStudio() {
         settle(new Error(`The studio did not answer within ${String(BOOT_TIMEOUT_MS / 1000)} seconds.`))
         return
       }
-      if (await answers(port)) done(port)
+      if (await answers(port)) settle(undefined)
       else setTimeout(() => { void poll() }, 300)
     }
     void poll()
@@ -524,6 +529,10 @@ async function writeSelfTest() {
     // The page's own report: the window is not blank.
     rootChildren: drawn.rootChildren,
     pageTitle: drawn.pageTitle,
+    // This process: a script that wants to close the window the way a person
+    // does (or kill it, to check the server does not outlive it) must signal
+    // this one, not the AppImage runtime in front of it.
+    appPid: process.pid,
     serverPid: server?.pid ?? null,
     data: DATA,
     log: LOG_FILE,

@@ -29,6 +29,7 @@ import { COVER_MAX_BYTES } from '../../shared/cover-kinds.ts'
 import { createAuth } from './auth.ts'
 import { absoluteFrom, anchoredToolComfy, programAsset } from './config-paths.ts'
 import { listenHost, listenPort, programDirFrom } from './boot-env.ts'
+import { parentPidFrom, watchParent } from './parent-watch.ts'
 import { coverIndex, coverKeyOf, coversDir, storeCover } from './covers.ts'
 import { createLlm, type ProviderConfig } from './llm.ts'
 import { createPlugins, createPluginsRoute } from './plugins.ts'
@@ -547,6 +548,15 @@ const shutdown = (): void => {
 }
 process.on('SIGTERM', shutdown)
 process.on('SIGINT', shutdown)
+
+/*
+ * Started by the desktop app (`IMAGINE_PARENT_PID`), the studio stops when the
+ * window that owns it is gone, however it went: closing it is handled above,
+ * a logout or a kill is not — on Linux the app's own process exits without
+ * running its handlers, so the child is the one that has to notice.
+ */
+const parentPid = parentPidFrom()
+if (parentPid !== undefined) watchParent(parentPid, shutdown)
 /*
  * Windows has no SIGTERM to receive, and a console Ctrl+Break is the signal a
  * person or a launcher can still send: handled here so the disposers and the
