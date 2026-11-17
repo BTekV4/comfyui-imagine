@@ -59,20 +59,22 @@ rm -rf -- "$DEST/dist" "$DEST/plugins"
 cp -a dist "$DEST/dist"
 cp -a plugins "$DEST/plugins"
 rm -rf -- "$DEST"/plugins/*/src
-# Source maps are for the person holding the repository, not for the person
-# running the studio: nothing at runtime opens a .map, the code is public
-# anyway, and they were 10.8 MB of a 28 MB tree (2.8 MB compressed, 29% of the
-# archive). They stay in the repository, produced by `npm run build`. The
-# portable package carries this same tree; the desktop packages stage their
-# `dist` from the build and drop their own copy of the maps the same way
-# (`scripts/package-electron.sh`).
-find "$DEST/dist" "$DEST/plugins" -type f -name '*.map' -delete
 
 # 4. The runtime packages, exactly as the lockfile pins them.
 ( cd "$DEST" && npm ci --omit=dev --no-audit --no-fund >/dev/null )
 # The lockfile is not needed once the tree is installed; the manifest is (the
 # server reads its version for the first-run card).
 rm -f -- "$DEST/package-lock.json"
+# Source maps are for the person holding the repository, not for the person
+# running the studio: nothing at runtime opens a .map, the code is public
+# anyway, and they were 10.8 MB of a 28 MB tree (2.8 MB compressed, 29% of the
+# archive). They stay in the repository, produced by `npm run build`; the
+# portable package carries this same tree, and the desktop packages stage their
+# `dist` from the build and drop their own copy the same way
+# (`scripts/package-electron.sh`).
+# After step 4, so the dependencies' own maps go too: five files of immer were
+# the last ones a release still carried.
+find "$DEST" -type f -name '*.map' -delete
 
 # 5. The files a release adds beside the commit: the installer, which may be
 #    newer than HEAD while it is being written. Docker is the repo's own way in
