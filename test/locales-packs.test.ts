@@ -12,7 +12,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { createLocalePacks, LocaleError } from '../server/src/locales.ts'
 
 /** A pack of `count` keys, as the repository would write it. */
@@ -107,7 +107,9 @@ test('a removed pack goes to locales-rimossi', async () => {
   const { dir, srcDir } = await folders({ it: packOf(2) }, { it: packOf(2) })
   const packs = await createLocalePacks({ dir, srcDir })
   const { movedTo } = await packs.remove('it')
-  assert.match(movedTo, /locales-rimossi\/it-.*\.json$/)
+  // The folder is compared by its basename: a Windows path cannot carry `/`.
+  assert.equal(basename(dirname(movedTo)), 'locales-rimossi')
+  assert.match(basename(movedTo), /^it-.*\.json$/)
   const [italian] = await packs.available()
   assert.equal(italian?.installed, false)
 })

@@ -62,13 +62,16 @@ async function rootUnder(env: Record<string, string | undefined>): Promise<strin
 test('the data root: IMAGINE_HOME, else ~/.imagine', async () => {
   const home = await mkdtemp(join(tmpdir(), 'imagine-home-'))
   try {
-    assert.equal(await rootUnder({ HOME: home, IMAGINE_HOME: '/srv/a' }), '/srv/a')
+    // An absolute path of this platform: `/srv/a` is not one on Windows.
+    const srvA = join(home, 'srv-a')
+    const srvB = join(home, 'srv-b')
+    assert.equal(await rootUnder({ HOME: home, IMAGINE_HOME: srvA }), srvA)
     // A blank variable is unset, not the working directory.
     assert.equal(await rootUnder({ HOME: home, IMAGINE_HOME: '  ' }), join(home, '.imagine'))
     assert.equal(await rootUnder({ HOME: home }), join(home, '.imagine'))
     // The DSH names are gone: neither the variable nor an old ~/.dsh is read.
     await mkdir(join(home, '.dsh'))
-    assert.equal(await rootUnder({ HOME: home, DSH_HOME: '/srv/b' }), join(home, '.imagine'))
+    assert.equal(await rootUnder({ HOME: home, DSH_HOME: srvB }), join(home, '.imagine'))
   } finally {
     await rm(home, { recursive: true, force: true })
   }

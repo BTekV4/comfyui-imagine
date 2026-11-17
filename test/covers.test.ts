@@ -9,7 +9,7 @@ import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { COVER_MAX_BYTES, COVER_TYPES, coverTypeOfBytes, coverTypeOfName } from '../shared/cover-kinds.ts'
 import { coverFileOf, coverIndex, coverKeyOf, listCoverFiles, removeCoverFiles, storeCover } from '../server/src/covers.ts'
 import { message } from '../server/src/messages.ts'
@@ -69,7 +69,7 @@ test('a video replaces the image of the same key, without leaving two', async ()
   const dir = join(root, 'replace')
   assert.equal((await storeCover(dir, 'clip', WEBP)).ok, true)
   assert.equal((await storeCover(dir, 'clip', MP4)).ok, true)
-  const names = (await listCoverFiles(dir)).map(entry => entry.file.split('/').pop())
+  const names = (await listCoverFiles(dir)).map(entry => basename(entry.file))
   assert.deepEqual(names, ['clip.mp4'])
 })
 

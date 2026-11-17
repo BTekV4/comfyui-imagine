@@ -226,7 +226,13 @@ test('the config is written atomically, 0600, with a backup; and the password is
   assert.equal(first.backup, null, 'the first save has nothing to back up')
   const file = join(dir, 'webhook', 'config.json')
   const info = await stat(file)
-  assert.equal(info.mode & 0o777, 0o600)
+  /*
+   * The 0600 is a POSIX promise. On Windows `chmod` only toggles the
+   * read-only attribute and `stat` reports 0666: the file is protected by the
+   * ACLs of the user's profile instead, so the bits are checked where they
+   * mean something.
+   */
+  if (process.platform !== 'win32') assert.equal(info.mode & 0o777, 0o600)
   assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), { url: 'https://a.test', secret: 's3gr3to', enabled: true })
   const second = await plugins.saveSettings('webhook', { url: 'https://b.test' })
   assert.ok(second.backup !== null)

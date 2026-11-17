@@ -99,7 +99,8 @@ test('"Send a test" sends a line and reports the message_id', async () => {
   // test checks that it is NOT in the route's answer and that the file is 0600.
   assert.equal(response.body.includes(TOKEN), false)
   const info = await stat(join(dir, 'telegram', 'config.json'))
-  assert.equal(info.mode & 0o777, 0o600)
+  // POSIX permission bits; Windows keeps the file inside the user's profile.
+  if (process.platform !== 'win32') assert.equal(info.mode & 0o777, 0o600)
   plugins.dispose()
 })
 
