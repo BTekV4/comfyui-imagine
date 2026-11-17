@@ -87,10 +87,18 @@ if (report.visible !== true) fail('the window is not visible')
 console.log(`check: window ok — ${report.url}, ${report.rootChildren} nodes in #root, ${report.node} on Electron ${report.electron}`)
 CHECK
 
-# A second double click must hand the window to the first one.
+# A second double click must hand the window to the first one: the second
+# process has to *exit*, cleanly and soon, and must not write a self-test (that
+# only happens once a studio of its own has loaded).
 say "second launch"
 export IMAGINE_APP_SELFTEST="$WORK/selftest-second.json"
-if timeout 40 "$APP" > "$WORK/second.log" 2>&1; then :; else true; fi
+if timeout 40 "$APP" > "$WORK/second.log" 2>&1; then
+  say "second launch exited cleanly"
+else
+  code=$?
+  cat "$WORK/second.log" || true
+  fail "the second launch did not exit cleanly (exit $code, 124 = it hung)"
+fi
 if [ -f "$IMAGINE_APP_SELFTEST" ]; then fail "a second launch started a second studio"; fi
 export IMAGINE_APP_SELFTEST="$WORK/selftest.json"
 say "second launch kept the first window"
