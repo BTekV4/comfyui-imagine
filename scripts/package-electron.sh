@@ -76,6 +76,10 @@ cp -a plugins "$BUILD/app/plugins"
 find "$BUILD/app/dist" "$BUILD/app/plugins" -type f -name '*.map' -delete
 # The portable launcher and its runtime are not the app's: the window is the
 # launcher here, and Electron is the runtime.
+# The desktop package carries the portable tree's ffmpeg: it is the one
+# `scripts/package-portable.sh` downloads at a pinned version and checks against
+# a SHA-256 written there. Nothing here downloads or chooses a second build, so
+# pinning it once pins the AppImage and the Windows installer too.
 rm -rf -- "$BUILD/app/runtime" "$BUILD/app/Imagine.sh" "$BUILD/app/Imagine.desktop" \
   "$BUILD/app/Start Imagine.bat" "$BUILD/app/README.txt"
 cp -a "$TREE/runtime/ffmpeg/." "$BUILD/ffmpeg/"
