@@ -7,7 +7,7 @@
 import { createReadStream } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { extname, join, normalize, resolve, sep } from 'node:path'
+import { extname, join, posix, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { brotliCompress, constants as zlibConstants, gzip } from 'node:zlib'
 import { coversDir, coverFileOf, coverKeyOf, coverPosterOf } from './covers.ts'
@@ -100,7 +100,15 @@ export async function serveStatic(webDir: string, req: IncomingMessage, res: Ser
     res.writeHead(400).end()
     return
   }
-  const relative = normalize(decoded).replace(/^(\.\.[/\\])+/, '').replace(/^\/+/, '')
+  /*
+   * A request path is a URL path, so it is normalized with the POSIX rules
+   * whatever the platform: `path.normalize` on Windows turns `/imagine/x.webp`
+   * into `\imagine\x.webp`, which no longer starts with `imagine/`, and the
+   * personal covers were never looked up (and a missing cover fell through to
+   * index.html with a day of cache). The separator is converted when `join`
+   * builds the filesystem path below.
+   */
+  const relative = posix.normalize(decoded).replace(/^(\.\.[/\\])+/, '').replace(/^\/+/, '')
   const isAsset = relative.startsWith('assets/')
   // Source maps stay on the box: the build is not published as source.
   if (relative.endsWith('.map')) {
