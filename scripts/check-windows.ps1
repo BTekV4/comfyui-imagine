@@ -383,7 +383,9 @@ if ($UpgradeTo -ne '' -and -not (Test-Path $UpgradeTo)) { Fail "no upgrade insta
 Remove-Item $Work -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Work | Out-Null
 # A runner is fresh, but a re-run of this script must not inherit a studio.
-Get-Process Imagine -ErrorAction SilentlyContinue | ForEach-Object { $_.Kill(); $_.WaitForExit(10000) }
+Get-Process Imagine -ErrorAction SilentlyContinue | ForEach-Object {
+  try { $_.Kill(); $_.WaitForExit(10000) } catch { }
+}
 Remove-Item $DataRoot -Recurse -Force -ErrorAction SilentlyContinue
 if ($null -ne (Get-InstallEntry)) { Fail 'an Imagine entry is already installed: this check needs a clean account' }
 
@@ -537,7 +539,8 @@ if ($UpgradeTo -ne '') {
   }
   foreach ($link in @($DesktopLink, $StartMenuLink)) {
     if (-not (Test-Path $link)) { Fail "the upgrade removed the shortcut $link" }
-    if ((New-Object -ComObject WScript.Shell).CreateShortcut($link).TargetPath -ne $exe) {
+    $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($link)
+    if ($shortcut.TargetPath -ne $exe) {
       Fail "after the upgrade the shortcut $link does not point at the program"
     }
   }
@@ -554,7 +557,9 @@ if ($UpgradeTo -ne '') {
   Assert-DataKept $marker
 }
 
-Get-Process Imagine -ErrorAction SilentlyContinue | ForEach-Object { $_.Kill() }
+Get-Process Imagine -ErrorAction SilentlyContinue | ForEach-Object {
+  try { $_.Kill() } catch { }
+}
 Save-Log
 Say 'all checks passed'
 Say "artifacts in $Work"

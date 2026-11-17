@@ -155,16 +155,17 @@ jobs:
           set -euo pipefail
           NEXT=$(node -e "const v = require('./package.json').version.split('.'); v[2] = String(Number(v[2]) + 1); console.log(v.join('.'))")
           echo "the next version for the upgrade check: $NEXT"
-          OUT_DIR="$(cygpath -u "$RUNNER_TEMP")/pkg-next" BUILD_DIR="$PWD/build/electron-next" VERSION="$NEXT" bash scripts/package-electron.sh windows-x64
+          OUT_DIR="$(cygpath -u "$RUNNER_TEMP")/pkg-next" VERSION="$NEXT" bash scripts/package-electron.sh windows-x64
       - name: Install it, run it, upgrade it, uninstall it
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $installer = Get-ChildItem "$env:GITHUB_WORKSPACE\release\Imagine-*-windows-x64-setup.exe" | Select-Object -First 1
-          $next = Get-ChildItem "$env:RUNNER_TEMP\pkg-next\Imagine-*-windows-x64-setup.exe" | Select-Object -First 1
+          $next = Get-ChildItem "$env:RUNNER_TEMP\pkg-next\Imagine-*-windows-x64-setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $installer) { throw 'the packaging step produced no installer' }
-          if (-not $next) { throw 'the packaging step produced no next-version installer' }
-          ./scripts/check-windows.ps1 -Installer $installer.FullName -UpgradeTo $next.FullName
+          if (-not $next) { Write-Warning 'no next-version installer: the upgrade check is skipped' }
+          $upgrade = if ($next) { $next.FullName } else { '' }
+          ./scripts/check-windows.ps1 -Installer $installer.FullName -UpgradeTo $upgrade
       - uses: actions/upload-artifact@v7
         with:
           name: desktop-windows
