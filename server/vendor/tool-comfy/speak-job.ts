@@ -12,6 +12,7 @@ import { rememberOrigin } from './imagine-notes.ts'
 import {
   endRunControl, isSettled, patchJob, putJob, startRunControl, type ImagineJob, type SpeakTarget,
 } from './job-queue.ts'
+import { readBodyTouched, speechClock, type SpeechClock } from './speech-silence.ts'
 
 /**
  * Read a line out loud and file the audio beside the other products.
@@ -48,14 +49,6 @@ export function startSpeak(
 }
 
 /**
- * How long the speech service may take over one line.
- *
- * It runs outside the GPU queue, so the job deadline never reached it: a
- * service that stopped answering left the tile `running` for good.
- */
-const SPEAK_TIMEOUT_MS = 300_000
-
-/**
  * The error a speech service's refusal is reported with: its status and the
  * start of what it said.
  * @param response - the answer that was not ok.
@@ -71,14 +64,18 @@ export async function serviceError(response: Response): Promise<Error> {
  *
  * The `speak` job and the `voice` job through the service sent the same
  * request each with its own copy until 2026-11-15; only the voice differs.
+ *
+ * The body is read chunk by chunk with the job's silence clock pushed back on
+ * every piece: a service that sent its headers and then went quiet used to
+ * hang a plain `arrayBuffer()` for good.
  * @param target - the configured speech endpoint.
  * @param text - what to say.
  * @param voice - the voice to say it in.
- * @param signal - the job's cancellation and deadline.
+ * @param clock - the request's silence clock and the job's cancellation.
  * @returns the audio, in `target.format`.
- * @throws {Error} when the service refuses or the request fails.
+ * @throws {Error} when the service refuses or the request fails or goes mute.
  */
-export async function speech(target: SpeakTarget, text: string, voice: string, signal: AbortSignal): Promise<Uint8Array> {
+export async function speech(target: SpeakTarget, text: string, voice: string, clock: SpeechClock): Promise<Uint8Array> {
   const response = await fetch(`${target.baseURL.replace(/\/+$/, '')}/audio/speech`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -88,20 +85,21 @@ export async function speech(target: SpeakTarget, text: string, voice: string, s
       voice,
       response_format: target.format,
     }),
-    signal,
+    signal: clock.signal,
   })
   if (!response.ok) throw await serviceError(response)
-  return new Uint8Array(await response.arrayBuffer())
+  return await readBodyTouched(response, clock.touch)
 }
 
 /** One speech request, run behind the job it belongs to; a cancel aborts it. */
 async function speakInto(target: SpeakTarget, outputDir: string, job: ImagineJob): Promise<void> {
   patchJob(job.id, { status: 'running', startedAt: Date.now() })
-  const controller = startRunControl(job.id)
-  const timer = setTimeout(() => { controller.abort() }, SPEAK_TIMEOUT_MS)
-  timer.unref()
+  const caller = startRunControl(job.id)
+  const clock = speechClock(caller.signal)
   try {
-    const bytes = await speech(target, job.prompt, target.voice, controller.signal)
+    const bytes = await speech(target, job.prompt, target.voice, clock)
+    // The service is done: filing the audio is local work, outside the clock.
+    clock.stop()
     // A cancel that landed while the audio was on its way wins: no file.
     if (isSettled(job.id)) return
     const name = `speak_text-${job.id.replace(/-/g, '').slice(0, 8)}.${target.format}`
@@ -113,12 +111,12 @@ async function speakInto(target: SpeakTarget, outputDir: string, job: ImagineJob
     patchJob(job.id, {
       status: 'error',
       updatedAt: Date.now(),
-      error: controller.signal.aborted
+      error: clock.expired()
         ? message('speak.timeout')
         : error instanceof Error ? error.message : message('speak.failed'),
     })
   } finally {
-    clearTimeout(timer)
+    clock.stop()
     endRunControl(job.id)
   }
 }

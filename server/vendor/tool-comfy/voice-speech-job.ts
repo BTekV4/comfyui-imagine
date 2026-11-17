@@ -25,14 +25,7 @@ import {
 import type { ImagineJobRequest } from './job-request.ts'
 import { ffmpegTo, muxAudio } from './media-tools.ts'
 import { serviceError, speech } from './speak-job.ts'
-
-/**
- * How long transcribing and reading a track back out may take together.
- *
- * Longer than the `speak` deadline on purpose: this job carries two requests to
- * the service, and the model may be loaded from nothing between them.
- */
-const VOICE_TIMEOUT_MS = 900_000
+import { readBodyTouched, speechClock, type SpeechClock } from './speech-silence.ts'
 
 /**
  * Queue a `voice` job that goes through the speech service.
@@ -66,11 +59,15 @@ export function startVoiceThroughSpeech(
 /** One transcription and one synthesis, run behind the job they belong to. */
 async function voiceInto(target: SpeakTarget, outputDir: string, job: ImagineJob): Promise<void> {
   patchJob(job.id, { status: 'running', startedAt: Date.now() })
-  const controller = startRunControl(job.id)
-  const timer = setTimeout(() => { controller.abort() }, VOICE_TIMEOUT_MS)
-  timer.unref()
+  const caller = startRunControl(job.id)
   const base = target.baseURL.replace(/\/+$/, '')
   const scratch: string[] = []
+  /*
+   * The clock starts with the first request to the service, not with the job:
+   * lifting the track out of a clip is local work, and a long one must not be
+   * counted as the service staying mute.
+   */
+  let clock: SpeechClock | undefined
   try {
     const name = job.source === undefined ? undefined : safeBasename(job.source)
     if (name === undefined) throw new Error(message('voice.sourceRequired'))
@@ -89,10 +86,14 @@ async function voiceInto(target: SpeakTarget, outputDir: string, job: ImagineJob
       await ffmpegTo(track, ['-v', 'error', '-y', '-i', path, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', track], 600_000)
       trackName = 'voice.wav'
     }
-    const text = await transcribe(target, base, trackName, await readFile(track), controller.signal)
+    clock = speechClock(caller.signal)
+    const text = await transcribe(target, base, trackName, await readFile(track), clock)
     if (text.length === 0) throw new Error(message('voice.noTranscript'))
     // The same words, read out in the voice the job asked for.
-    const spoken = await speech(target, text, job.voice ?? target.voice, controller.signal)
+    clock.touch()
+    const spoken = await speech(target, text, job.voice ?? target.voice, clock)
+    // The service is done: what follows is local work (writing, muxing).
+    clock.stop()
     // A cancel that landed while the audio was on its way wins: no file.
     if (isSettled(job.id)) return
     const short = job.id.replace(/-/g, '').slice(0, 8)
@@ -117,12 +118,12 @@ async function voiceInto(target: SpeakTarget, outputDir: string, job: ImagineJob
     patchJob(job.id, {
       status: 'error',
       updatedAt: Date.now(),
-      error: controller.signal.aborted
+      error: clock?.expired() === true
         ? message('speak.timeout')
         : error instanceof Error ? error.message : message('voice.failed'),
     })
   } finally {
-    clearTimeout(timer)
+    clock?.stop()
     endRunControl(job.id)
     await Promise.all(scratch.map(file => rmWithRetry(file, { force: true }).catch(() => undefined)))
   }
@@ -134,14 +135,14 @@ async function transcribe(
   base: string,
   name: string,
   bytes: Uint8Array,
-  signal: AbortSignal,
+  clock: SpeechClock,
 ): Promise<string> {
   const form = new FormData()
   form.set('file', new Blob([bytes as BlobPart]), name)
   form.set('model', target.asrModel ?? 'whisper-large-v3-turbo')
   form.set('response_format', 'json')
-  const response = await fetch(`${base}/audio/transcriptions`, { method: 'POST', body: form, signal })
+  const response = await fetch(`${base}/audio/transcriptions`, { method: 'POST', body: form, signal: clock.signal })
   if (!response.ok) throw await serviceError(response)
-  const answer = await response.json() as { text?: unknown }
+  const answer = JSON.parse(new TextDecoder().decode(await readBodyTouched(response, clock.touch))) as { text?: unknown }
   return typeof answer.text === 'string' ? answer.text.trim() : ''
 }
