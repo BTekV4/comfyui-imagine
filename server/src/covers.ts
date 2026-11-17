@@ -162,10 +162,15 @@ export async function coverIndex(dir: string): Promise<Record<string, { kind: Co
  * @param key - the cover key.
  */
 export async function removeCoverFiles(dir: string, key: string): Promise<void> {
+  // The listing may have been taken before the file this call has to remove:
+  // the folder's mtime can repeat on Windows, so drop it instead of trusting
+  // a timestamp that did not move.
+  listings.delete(dir)
   for (const entry of await listCoverFiles(dir)) {
     if (entry.key === key) await rmWithRetry(entry.file, { force: true })
   }
   await rmWithRetry(join(dir, `${key}.${POSTER_NAME}`), { force: true })
+  listings.delete(dir)
 }
 
 /** What happened to an upload. */
@@ -191,5 +196,8 @@ export async function storeCover(dir: string, key: string, body: Buffer): Promis
   await removeCoverFiles(dir, key)
   const file = join(dir, `${key}${type.ext}`)
   await writeFile(file, body)
+  // The write is the newest change: a later listing must read the folder, not
+  // a cached one whose mtime happens to be the same millisecond.
+  listings.delete(dir)
   return { ok: true, file, type, bytes: body.length }
 }
