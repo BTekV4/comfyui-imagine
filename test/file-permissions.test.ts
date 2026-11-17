@@ -12,9 +12,12 @@ import { join } from 'node:path'
 import { jsonList } from '../server/src/json-list.ts'
 import { recordFile } from '../plugins/instagram/src/context.ts'
 
+/** File modes do not exist on Windows: the writer ignores the mode there. */
+const WINDOWS = process.platform === 'win32'
+
 const modeOf = async (path: string): Promise<number> => (await stat(path)).mode & 0o777
 
-test('a like or a tag list is written 0600, even over a file that was wider', async () => {
+test('a like or a tag list is written 0600, even over a file that was wider', { skip: WINDOWS && 'file modes are not meaningful on Windows' }, async () => {
   const dir = await mkdtemp(join(tmpdir(), 'imagine-perm-'))
   try {
     const file = join(dir, 'likes.json')
@@ -28,7 +31,7 @@ test('a like or a tag list is written 0600, even over a file that was wider', as
   }
 })
 
-test('an Instagram queue or comment record is written 0600', async () => {
+test('an Instagram queue or comment record is written 0600', { skip: WINDOWS && 'file modes are not meaningful on Windows' }, async () => {
   const dir = await mkdtemp(join(tmpdir(), 'imagine-perm-'))
   try {
     const file = join(dir, 'comments.json')
