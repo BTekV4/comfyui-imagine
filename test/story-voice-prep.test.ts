@@ -32,7 +32,19 @@ process.env.IMAGINE_HOME = home
  */
 await run('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono', '-t', '45',
   '-c:a', 'aac', join(home, 'voice.m4a')])
-after(async () => { await rm(home, { recursive: true, force: true }) })
+after(async () => {
+  /*
+   * The work these tests start is deferred: a preparation job measures the
+   * track and only then writes the story's record and queues its shots, so the
+   * last write lands after the test that asked for it has answered. Removing
+   * the folder while that write is in flight is a rmdir of a directory that is
+   * not empty any more — ENOTEMPTY on Windows, where the test used to flake.
+   * Wait for the queue to go quiet first, then remove; the retries cover a
+   * write that lands between the two (rm retries ENOTEMPTY, EBUSY and EPERM).
+   */
+  await eventually(() => listImagineJobs().every(job => job.status !== 'queued' && job.status !== 'running'), 8000)
+  await rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+})
 
 const { startStory } = await import('../server/vendor/tool-comfy/story-jobs.ts')
 const { listImagineJobs } = await import('../server/vendor/tool-comfy/job-queue.ts')
@@ -72,6 +84,21 @@ function shotsOf(storyId: string): Job[] {
     .sort((a, b) => (a.storyIndex ?? 0) - (b.storyIndex ?? 0))
 }
 
+/**
+ * Wait until every job of one story has settled.
+ *
+ * A story writes: the preparation writes the record before its last shot is
+ * queued, and each shot writes when its turn comes. A test that ends with one
+ * of those still running ends with the data folder still changing, which is
+ * what the removal in `after` then trips over.
+ */
+async function settle(storyId: string, ms = 8000): Promise<boolean> {
+  return eventually(() => {
+    const jobs = listImagineJobs().filter(job => job.storyId === storyId)
+    return jobs.length > 0 && jobs.every(job => job.status !== 'queued' && job.status !== 'running')
+  }, ms)
+}
+
 const round = (value: number | undefined): number => Math.round((value ?? 0) * 1000) / 1000
 
 test('a story whose track still has to be measured answers at once, with a preparation job', async () => {
@@ -99,6 +126,7 @@ test('a story whose track still has to be measured answers at once, with a prepa
   assert.deepEqual(shots.map(shot => round(shot.songStart)), [0, 6.583])
   assert.equal(shots.every(shot => shot.chain === undefined), true)
   assert.ok(await eventually(() => listImagineJobs().some(job => job.id === prep.id && job.status === 'done')))
+  assert.ok(await settle(storyId))
 })
 
 test('an instrumental track chains the shots, decided before they exist', async () => {
@@ -109,6 +137,7 @@ test('an instrumental track chains the shots, decided before they exist', async 
   // The chain gives back the head every shot after the first carries.
   assert.deepEqual(shotsOf(storyId).map(shot => round(shot.songStart)), [0, 5.667])
   assert.equal(shotsOf(storyId).every(shot => shot.chain !== undefined), true)
+  assert.ok(await settle(storyId))
 })
 
 test('a separation that fails cuts the shots, like a track with a voice', async () => {
@@ -117,6 +146,7 @@ test('a separation that fails cuts the shots, like a track with a voice', async 
   assert.ok(await eventually(() => shotsOf(storyId).length === 2))
   assert.deepEqual(shotsOf(storyId).map(shot => round(shot.songStart)), [0, 6.583])
   assert.equal(shotsOf(storyId).every(shot => shot.chain === undefined), true)
+  assert.ok(await settle(storyId))
 })
 
 test('a story with no track answers the way it always did, with no preparation job', async () => {
@@ -125,4 +155,5 @@ test('a story with no track answers the way it always did, with no preparation j
   // answer, and no preparation job is queued at all.
   assert.equal(first.notice, undefined)
   assert.equal(first.storyIndex, 0)
+  assert.ok(await settle(first.storyId ?? ''))
 })
