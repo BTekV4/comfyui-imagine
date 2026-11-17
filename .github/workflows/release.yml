@@ -17,8 +17,8 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -33,7 +33,7 @@ jobs:
         run: npm run build
       - name: Tarball
         run: bash scripts/release-tarball.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: tarball
           path: |
@@ -56,8 +56,8 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -84,7 +84,7 @@ jobs:
             sleep 1
           done
           curl -fsS http://127.0.0.1:3095/setup-status
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: portable-${{ matrix.target }}
           path: |
@@ -97,8 +97,8 @@ jobs:
   desktop:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -117,7 +117,7 @@ jobs:
         run: OUT_DIR=release bash scripts/package-electron.sh
       - name: Boot it, twice, and close the window
         run: bash scripts/check-appimage.sh "$GITHUB_WORKSPACE"/release/Imagine-*-linux-x64.AppImage "$RUNNER_TEMP/check"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: desktop-linux
           path: |
@@ -129,12 +129,12 @@ jobs:
     needs: [tarball, portable, desktop]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist-artifacts
           merge-multiple: true
       - name: Publish
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist-artifacts/**
