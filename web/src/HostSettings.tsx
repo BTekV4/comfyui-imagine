@@ -111,6 +111,9 @@ export function HostSettings({ sections = 'all', onPending }: {
     try {
       setView(await send<View>('/api/host-settings', 'POST', draft, 'HTTP'))
       setDraft({})
+      // The login switch and the password may have moved: the page's rail and
+      // its warning read `/api/access` again.
+      window.dispatchEvent(new Event('imagine:access-changed'))
     } catch (error: unknown) {
       setStatus({ kind: 'error', text: translate('imagine.settings.unsaved', { error: messageOf(error) }) })
       throw error

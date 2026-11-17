@@ -24,6 +24,7 @@ import { IMAGINE_ASPECTS } from '../../../shared/imagine-media.ts'
 import type { FrameCard } from './FrameExtractor.tsx'
 import type { GalleryItem, ImagineAction } from '../../../shared/imagine-types.ts'
 import type { WorkflowProposal } from '../../../shared/imagine-chat.ts'
+import { getJson } from './http.ts'
 import { readDismissedScans, rememberDismissedScan } from './dismissed-scans.ts'
 import { approveImagineSetup, uploadGalleryItem, startMusicClip, type SocialPost } from './gallery-api.ts'
 import { CHAT_DEFAULT, CHAT_OLD_DEFAULT, CHAT_MAX, CHAT_MIN, type ImagineView } from './gallery-store.ts'
@@ -117,6 +118,25 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
    * event rewrote the whole store to localStorage.
    */
   const [canvasSession] = useState(createCanvasSession)
+  /**
+   * What `/api/access` says about who may open this studio: the rail offers
+   * "Log out" only when the login is on, and the page warns when a non-loopback
+   * studio has no password. The settings page says when to read it again.
+   */
+  const [access, setAccess] = useState<{ loginRequired: boolean; passwordSet: boolean; exposed: boolean; listenHost: string }>()
+  useEffect(() => {
+    let alive = true
+    const read = (): void => {
+      void getJson<{ loginRequired: boolean; passwordSet: boolean; exposed: boolean; listenHost: string }>('/api/access', 'HTTP')
+        .then((next) => { if (alive) setAccess(next) }, () => undefined)
+    }
+    read()
+    window.addEventListener('imagine:access-changed', read)
+    return () => {
+      alive = false
+      window.removeEventListener('imagine:access-changed', read)
+    }
+  }, [])
   /** What the composer and the panels hold: see composer-store. */
   const [composer] = useState(createComposerStore)
   /** The trace of the reading in progress: see reading-trace. */
@@ -709,6 +729,13 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
   const onChatResize = useEvent((event: WidthDragStart) => { chat.start(event, liveChatWidth, width => Math.min(chatCap, width)) })
   // A click on the rail leaves the full-screen viewer and still does what it
   // was aimed at, so the viewer never hides the page it opened.
+  const onLogout = useEvent(() => {
+    // POST, so a link or an image cannot log the visitor out; the route clears
+    // the cookie and lands on the form.
+    void fetch('/logout', { method: 'POST', redirect: 'manual' })
+      .catch(() => undefined)
+      .finally(() => { location.assign('/login') })
+  })
   const onRailClick = useEvent(() => { if (selected !== undefined) setSelected(undefined) })
   const onCloseDrawer = useEvent(() => { setRailDrawer(false) })
   // From inside a workflow card too: "New generation" is the grid of tools.
@@ -927,9 +954,19 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
         onNewGeneration={onNewGeneration}
         onNewProject={onNewProject}
         onDeleteProject={onDeleteProject}
+        canLogout={access?.loginRequired === true}
+        onLogout={onLogout}
       />
 
       <div className={css.stage}>
+        {access !== undefined && access.exposed && !access.loginRequired && (
+          <div className={css.accessWarning} role="status">
+            <span>{translate('imagine.access.exposed', { host: access.listenHost })}</span>
+            <button type="button" className={css.accessWarningAction} onClick={() => { actions.go('settings') }}>
+              {translate('imagine.access.openSettings')}
+            </button>
+          </div>
+        )}
         <StageHeader
           view={view}
           hasProject={current !== undefined}

@@ -93,13 +93,16 @@ interface RailProps {
   readonly onNewGeneration: () => void
   readonly onNewProject: () => void
   readonly onDeleteProject: (id: string) => void
+  /** The login is on: offer a way out of this browser's session. */
+  readonly canLogout: boolean
+  readonly onLogout: () => void
 }
 
 export const Rail = memo(function Rail(props: RailProps) {
   const {
     actions, view, projectId, railCollapsed, narrow, listed, usedAtById, query, onQuery, renaming, onRenaming,
     menuId, onMenuId, pendingPosts, apps, items, onOpenFile, onRailClick, onCloseDrawer, onNewGeneration,
-    onNewProject, onDeleteProject,
+    onNewProject, onDeleteProject, canLogout, onLogout,
   } = props
   /** Whether the rail lists every project, not only the first RAIL_PROJECTS. */
   const [railExpanded, setRailExpanded] = useState(false)
@@ -493,6 +496,23 @@ export const Rail = memo(function Rail(props: RailProps) {
             <span>{translate('imagine.settings.title')}</span>
           </button>
         </Tooltip>
+        {/* Only with the login on: without it there is no session to end. */}
+        {canLogout && (
+          <Tooltip label={translate('imagine.access.logout')} side="right" delayMs={400} disabled={!railCollapsed}>
+            <button
+              type="button"
+              className={css.navBtn}
+              aria-label={translate('imagine.access.logout')}
+              onClick={onLogout}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M6.5 14H3.25A1.25 1.25 0 0 1 2 12.75v-9.5A1.25 1.25 0 0 1 3.25 2H6.5" />
+                <path d="M10.5 11 14 8l-3.5-3M14 8H6" />
+              </svg>
+              <span>{translate('imagine.access.logout')}</span>
+            </button>
+          </Tooltip>
+        )}
       </div>
     </aside>
   )

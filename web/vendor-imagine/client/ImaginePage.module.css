@@ -162,3 +162,39 @@
     transition: none !important;
   }
 }
+
+/* A studio listening beyond loopback with no password: a quiet strip that stays
+   above the stage until the owner turns the login on (Settings → Access). It is
+   in the stage's flow, so it pushes the header down instead of covering it. */
+.accessWarning {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid color-mix(in srgb, #d29922 45%, transparent);
+  background: color-mix(in srgb, #d29922 16%, var(--imagine-bg));
+  color: var(--imagine-ink);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.accessWarning span {
+  flex: 1;
+  min-width: 0;
+}
+
+.accessWarningAction {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--imagine-ink) 25%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.accessWarningAction:hover {
+  background: color-mix(in srgb, var(--imagine-ink) 10%, transparent);
+}

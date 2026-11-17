@@ -342,6 +342,14 @@ async function coverUploadRoute(req: IncomingMessage, res: ServerResponse): Prom
   })
 }
 
+/* The address the studio listens on: the warning about an open, non-loopback
+ * studio and the desktop app's loopback-only window both read it. */
+const listenOn = { port: listenPort(config.port), host: listenHost(config.host) }
+
+/** The addresses that mean "this machine only", where no network visitor can arrive. */
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1'])
+const exposedToNetwork = !LOOPBACK_HOSTS.has(listenOn.host.toLowerCase())
+
 const auth = createAuth({
   passwordFile: config.passwordFile,
   secretFile: config.secretFile,
@@ -351,6 +359,7 @@ const auth = createAuth({
 
 const own: WebRoute[] = [
   { kind: 'exact', path: '/login', handler: (req, res) => auth.handleLogin(req, res) },
+  { kind: 'exact', path: '/logout', handler: (req, res) => { auth.handleLogout(req, res) } },
   {
     kind: 'exact',
     path: '/api/models',
@@ -366,6 +375,9 @@ const own: WebRoute[] = [
         try {
           const view = await settings.save(patch)
           applyModels()
+          // A password change bumped the session generation: this browser gets
+          // a cookie for the new one, every other browser gets a 401.
+          await auth.renew(req, res)
           sendJson(res, 200, view)
         } catch (error: unknown) {
           sendJson(res, 400, { error: error instanceof Error ? error.message : String(error) })
@@ -397,6 +409,24 @@ const own: WebRoute[] = [
     }),
   },
   { kind: 'exact', path: '/api/health', handler: (_req, res) => { sendJson(res, 200, { ok: true }) } },
+  {
+    /*
+     * What the page needs to warn the owner: a studio listening beyond loopback
+     * with no password is open to the network. The desktop app is always on
+     * 127.0.0.1, so it never sees the warning; `/api/access` itself needs no
+     * login, or the page could not draw it before the form.
+     */
+    kind: 'exact',
+    path: '/api/access',
+    handler: (_req, res) => {
+      sendJson(res, 200, {
+        loginRequired: now().requireLogin,
+        passwordSet: settings.view().passwordSet,
+        exposed: exposedToNetwork,
+        listenHost: listenOn.host,
+      })
+    },
+  },
   { kind: 'exact', path: '/api/trim', handler: createTrimRoute(outputDir) },
   { kind: 'exact', path: '/api/merge', handler: createMergeRoute(outputDir) },
   { kind: 'exact', path: '/api/likes', handler: createLikesRoute(dataPath('comfy', 'likes.json'), outputDir) },
@@ -497,8 +527,8 @@ function match(table: readonly WebRoute[], path: string): WebRoute | undefined {
 }
 
 /** Route one request; may throw, synchronously or not: the listener catches both. */
-function handle(req: IncomingMessage, res: ServerResponse, path: string): void | Promise<void> {
-  if (path !== '/api/health' && !auth.guard(req, res, path)) return
+async function handle(req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
+  if (path !== '/api/health' && !(await auth.guard(req, res, path))) return
   const route = match(own, path) ?? match(routes, path)
   if (route !== undefined) return route.handler(req, res)
   // An API path nobody serves is a 404, not the page: a GET of a mistyped or
@@ -533,7 +563,6 @@ server.requestTimeout = 0
  * the environment: a studio started beside a service on 3090 (or behind the
  * app) must not collide with it.
  */
-const listenOn = { port: listenPort(config.port), host: listenHost(config.host) }
 server.listen(listenOn.port, listenOn.host, () => {
   warmThumbnails(outputDir)
   console.log(`[imagine] listening on http://${listenOn.host}:${String(listenOn.port)}`)
