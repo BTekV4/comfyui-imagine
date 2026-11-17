@@ -29,7 +29,7 @@ import { COVER_MAX_BYTES } from '../../shared/cover-kinds.ts'
 import { createAuth } from './auth.ts'
 import { applySecurityHeaders, stateChangeAllowed } from './security.ts'
 import { absoluteFrom, anchoredToolComfy, programAsset } from './config-paths.ts'
-import { listenHost, listenPort, programDirFrom } from './boot-env.ts'
+import { listenHost, listenPort, listensBeyondLoopback, programDirFrom } from './boot-env.ts'
 import { parentPidFrom, watchParent } from './parent-watch.ts'
 import { coverIndex, coverKeyOf, coversDir, storeCover } from './covers.ts'
 import { createLlm, type ProviderConfig } from './llm.ts'
@@ -347,9 +347,7 @@ async function coverUploadRoute(req: IncomingMessage, res: ServerResponse): Prom
  * studio and the desktop app's loopback-only window both read it. */
 const listenOn = { port: listenPort(config.port), host: listenHost(config.host) }
 
-/** The addresses that mean "this machine only", where no network visitor can arrive. */
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1'])
-const exposedToNetwork = !LOOPBACK_HOSTS.has(listenOn.host.toLowerCase())
+const exposedToNetwork = listensBeyondLoopback(listenOn.host)
 
 const auth = createAuth({
   passwordFile: config.passwordFile,

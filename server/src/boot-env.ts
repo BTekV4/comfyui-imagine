@@ -51,6 +51,22 @@ export function listenPort(configPort: number | undefined, env: NodeJS.ProcessEn
 }
 
 /**
+ * Whether an address is reachable from beyond this machine.
+ *
+ * The page warns when the studio listens on one of these with no password: the
+ * desktop app always passes `127.0.0.1`, so it never warns. `0.0.0.0`, `::`
+ * and every LAN address count as exposed; the whole `127.0.0.0/8` block and
+ * IPv6's `::1` do not.
+ * @param host - the address passed to `server.listen`.
+ * @returns true when a visitor on the network could reach it.
+ */
+export function listensBeyondLoopback(host: string): boolean {
+  const value = host.trim().toLowerCase().replace(/^\[|\]$/g, '')
+  if (value === '' || value === 'localhost' || value === '::1' || value === '::ffff:127.0.0.1') return false
+  return !/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(value)
+}
+
+/**
  * The address to listen on: `IMAGINE_HOST` when set, else the config's, else
  * `0.0.0.0` (what every installation so far expects).
  * @param configHost - `host:` as written in the config file.

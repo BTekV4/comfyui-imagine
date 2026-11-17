@@ -11,7 +11,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { resolve } from 'node:path'
-import { listenHost, listenPort, programDirFrom } from '../server/src/boot-env.ts'
+import { listenHost, listenPort, listensBeyondLoopback, programDirFrom } from '../server/src/boot-env.ts'
 
 test('with nothing in the environment the config is the only word', () => {
   assert.equal(programDirFrom({}), undefined)
@@ -46,4 +46,13 @@ test('a port from the app wins, and a broken one is ignored', () => {
 test('the app listens on loopback unless the config says otherwise', () => {
   assert.equal(listenHost('0.0.0.0', { IMAGINE_HOST: '127.0.0.1' }), '127.0.0.1')
   assert.equal(listenHost('0.0.0.0', { IMAGINE_HOST: '  ' }), '0.0.0.0')
+})
+
+test('the page warns only for an address the network can reach', () => {
+  for (const local of ['127.0.0.1', '127.0.0.2', 'localhost', '::1', '::ffff:127.0.0.1', '[::1]']) {
+    assert.equal(listensBeyondLoopback(local), false, local)
+  }
+  for (const exposed of ['0.0.0.0', '::', '192.168.1.10', 'imagine.example.com', '10.0.0.5']) {
+    assert.equal(listensBeyondLoopback(exposed), true, exposed)
+  }
 })
