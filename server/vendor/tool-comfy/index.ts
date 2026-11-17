@@ -27,6 +27,7 @@ import { message } from '../../src/messages.ts'
 import { ComfyError, newMetaBatchId, type ComfyGraph } from '../comfyui/index.ts'
 import { imageInputNode, promptNode, seedNode, sizeNode, videoInputNode } from '../comfyui/graph.ts'
 import { dataPath } from '../home-paths/index.ts'
+import { programDirFrom } from '../../src/boot-env.ts'
 import { list, number, object, oneOf, string, type Check } from '../../src/config-schema.ts'
 import { AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, kindOf, pixelsOfVideoBytes } from './gallery.ts'
 import { resumeUnfinishedStories } from './imagine-jobs.ts'
@@ -45,6 +46,7 @@ import {
 } from './workflow-fields.ts'
 import { loadWorkflows, type GraphHolder } from './workflow-load.ts'
 import { graphEditor, workflowInventory } from './workflow-inventory.ts'
+import { createWorkflowOverlay } from './workflow-overlay.ts'
 import { customCoverHandler, customWorkflowsHandler } from './custom-workflow-routes.ts'
 import { mediaHandler, zipHandler } from './media-routes.ts'
 
@@ -1167,7 +1169,17 @@ export function apply(ctx: ImagineHost, config: Config, host: ApplyOptions = {})
     setPersona(undefined)
   }
   const composedWorkflows = config.workflows ?? {}
-  const { rows, byRun: configuredWorkflows, holders } = loadWorkflows(mergeWorkflowMaps(composedWorkflows, settings.overrides.workflows ?? {}))
+  /*
+   * Where the graphs are read from and written to. A service, a container and
+   * the portable packages write the files `config.yaml` names; a packaged app
+   * has a read-only program, so a graph that ships with it is copied into the
+   * data folder at the first edit and the copy wins until «Restore default»
+   * (`workflow-overlay.ts`).
+   */
+  const overlay = createWorkflowOverlay({ programDir: programDirFrom() })
+  const { rows, byRun: configuredWorkflows, holders } = loadWorkflows(
+    mergeWorkflowMaps(composedWorkflows, settings.overrides.workflows ?? {}), overlay,
+  )
   /*
    * The uploaded graphs join the configured ones under `custom:<id>`. The map
    * is mutable on purpose: a workflow saved from the page has to run without a
@@ -1201,8 +1213,10 @@ export function apply(ctx: ImagineHost, config: Config, host: ApplyOptions = {})
       const file = customGraphFile(key)
       if (file !== undefined && loaded !== undefined) yield { file, loaded: loaded as LoadedWorkflow }
     }
-  })
-  const { inventory, applyKeyed, addLora, removeLora: removeLoraOf, lorasOf, tuneLora } = workflowInventory(ctx, rows, editor)
+  }, overlay)
+  const {
+    inventory, applyKeyed, addLora, removeLora: removeLoraOf, lorasOf, tuneLora, restoreDefault,
+  } = workflowInventory(ctx, rows, editor, overlay)
   /*
    * What the settings page reads of the layers this entry booted with. The
    * composed values come from `config.yaml`, the applied ones from the settings
@@ -1243,6 +1257,7 @@ export function apply(ctx: ImagineHost, config: Config, host: ApplyOptions = {})
     path: '/comfy-imagine',
     handler: imagineHandler({
       ctx, inventory, applyWorkflow: applyKeyed, addLora, removeLora: removeLoraOf, lorasOf, tuneLora,
+      restoreWorkflow: async key => ({ restored: (await restoreDefault(key)).restored }),
       workflows: imagineWorkflows, outputDir, settings: settingsSurface, speak: config.tts,
     }),
   })

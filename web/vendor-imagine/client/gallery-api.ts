@@ -964,6 +964,18 @@ export async function fetchWorkflowDetail(key: string): Promise<WorkflowDetail> 
 }
 
 /**
+ * Go back to the graph that ships with the program, throwing away this app's
+ * copy of it (POST /comfy-imagine/workflows/<key>/restore). Only an
+ * installation whose program is read-only has a copy to throw away; elsewhere
+ * the graph is the file in place and the answer says nothing was restored.
+ * @param key - the workflow's key.
+ * @returns whether a copy was removed.
+ */
+export async function restoreWorkflow(key: string): Promise<{ restored: boolean }> {
+  return await send<{ restored: boolean }>(`/comfy-imagine/workflows/${encodeURIComponent(key)}/restore`, 'POST', undefined, 'workflow')
+}
+
+/**
  * Work out what a set of node values would change, writing nothing
  * (POST /comfy-imagine/workflows/plan).
  * @param key - the workflow's key.

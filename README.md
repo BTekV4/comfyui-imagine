@@ -253,9 +253,12 @@ first-run card, as in every package) — the window says what it is and offers
 **Try again**, **Open log folder** and **Open data folder**. The same two folders
 are in the **File** menu, next to **Restart studio**.
 
-The graphs an action runs come with the program, so they cannot be changed from
-inside the app (the Settings → Workflows edit reports the read-only file); the
-personal workflows you add live in your data folder and stay editable.
+The graphs an action runs come with the program, so a new version can improve
+them. Change one from **Settings → Workflow** and the change goes into a copy in
+your data folder (`workflows/`): from then on that copy wins — updates included
+— and the card says so, with **Restore default** to throw the copy away and get
+the program's graph (and its updates) back. The workflows you add yourself
+already live in the data folder and are never touched by an update.
 
 It needs `libfuse2` (Debian/Ubuntu: `apt install libfuse2`). Without it the
 kernel cannot mount it and the file answers *"dlopen(): error loading

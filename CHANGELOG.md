@@ -23,6 +23,12 @@ versions follow [semantic versioning](https://semver.org/).
   was.
 - A log in the data folder (`logs/imagine.log`, rotated at 5 MB) and **File →
   Open log folder** / **Open data folder** in the menu.
+- **The bundled graphs can be changed without losing the updates.** The first
+  edit to a workflow from **Settings → Workflow** copies that one file into the
+  data folder (`workflows/<the same relative path>`) and writes there; the copy
+  wins from then on, and **Restore default** on the workflow's card deletes it,
+  so the program's graph is in use again. Every other installation (service,
+  container, tarball, portable zip) keeps writing the file itself, as before.
 - `scripts/check-appimage.sh`: starts the AppImage on a virtual screen and checks
   that the window really loaded the studio (address, title, what `#root` holds),
   that a second launch does not start a second studio, and that closing the

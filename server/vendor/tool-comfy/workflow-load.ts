@@ -8,13 +8,14 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs'
-import { ComfyError } from '../comfyui/index.ts'
+import { ComfyError, type ComfyGraph } from '../comfyui/index.ts'
 import { customGraphFile, isCustomPath } from './custom-workflows.ts'
 import { finite, isPlainObject } from './guards.ts'
 import { isHighInputValue, migrateRetiredPika, type HighInput } from './high-inputs.ts'
 import type { WorkflowMap } from './imagine-settings.ts'
 import type { LoadedWorkflow, WorkflowConfig, WorkflowExtras } from './index.ts'
 import { ALL_WORKFLOW_FIELDS, WORKFLOW_ROWS, type FieldSpec, type WorkflowGraphs } from './workflow-fields.ts'
+import { writableOverlay, type WorkflowOverlay } from './workflow-overlay.ts'
 
 /**
  * One configured field as the loaded workflow keeps it, or undefined when the
@@ -89,43 +90,64 @@ export function workflowFile(path: string): string {
 }
 
 /**
+ * One graph file, read and checked at the file boundary.
+ *
+ * Every node is checked here, so the parameterizing code can address
+ * `node.inputs` as the type promises. Shared with the restore path
+ * (`workflow-inventory.ts`), which reads the program's file again after the
+ * user's copy has been removed: a graph that was edited is not the only one
+ * this process can meet, and both have to be refused the same way.
+ * @param file - the file to read.
+ * @param label - how the failure names it (the `path:` of the config entry).
+ * @returns the API-format graph.
+ * @throws {ComfyError} when the file cannot be read or is not an API graph.
+ */
+export function readGraphFile(file: string, label: string = file): ComfyGraph {
+  let raw: string
+  try {
+    raw = readFileSync(file, 'utf8')
+  } catch (error: unknown) {
+    throw new ComfyError(`cannot read workflow ${label}`, 'COMFY_SUBMIT_FAILED', { cause: error })
+  }
+  let graph: unknown
+  try {
+    graph = JSON.parse(raw)
+  } catch (error: unknown) {
+    throw new ComfyError(`workflow ${label} is not valid JSON`, 'COMFY_SUBMIT_FAILED', { cause: error })
+  }
+  if (!isPlainObject(graph)) {
+    throw new ComfyError(`workflow ${label} is not an API-format graph`, 'COMFY_SUBMIT_FAILED')
+  }
+  for (const [id, node] of Object.entries(graph)) {
+    const entry = node as { class_type?: unknown; inputs?: unknown } | null
+    if (typeof entry !== 'object' || entry === null
+      || typeof entry.class_type !== 'string'
+      || !isPlainObject(entry.inputs)) {
+      throw new ComfyError(`workflow ${label} node "${id}" is not an API-format node`, 'COMFY_SUBMIT_FAILED')
+    }
+  }
+  return graph as ComfyGraph
+}
+
+/**
  * Load and validate one API-format workflow at plugin activation.
+ *
+ * The file read is the one the overlay names: in a packaged app that is the
+ * user's copy once it exists, and the program's file until then
+ * (`workflow-overlay.ts`).
  * @param config - the workflow entry.
+ * @param overlay - where this installation reads its graphs from.
  * @returns the graph with the pins the entry configured.
  * @throws {ComfyError} when the file cannot be read or is not an API graph.
  */
-function loadWorkflow(config: WorkflowConfig & WorkflowExtras): LoadedWorkflow {
+function loadWorkflow(config: WorkflowConfig & WorkflowExtras, overlay: WorkflowOverlay): LoadedWorkflow {
   /*
    * A `custom:<id>` path reads the graph from the workflows the user uploaded,
    * not from the repo: so a `config.yaml` action can point at a personal graph
    * — with its LoRA — without that file joining the tracked ones.
    */
   const source = workflowFile(config.path)
-  let raw: string
-  try {
-    raw = readFileSync(source, 'utf8')
-  } catch (error: unknown) {
-    throw new ComfyError(`cannot read workflow ${config.path}`, 'COMFY_SUBMIT_FAILED', { cause: error })
-  }
-  let graph: unknown
-  try {
-    graph = JSON.parse(raw)
-  } catch (error: unknown) {
-    throw new ComfyError(`workflow ${config.path} is not valid JSON`, 'COMFY_SUBMIT_FAILED', { cause: error })
-  }
-  if (!isPlainObject(graph)) {
-    throw new ComfyError(`workflow ${config.path} is not an API-format graph`, 'COMFY_SUBMIT_FAILED')
-  }
-  // Every node is checked here, at the file boundary, so the parameterizing
-  // code can address `node.inputs` as the type promises.
-  for (const [id, node] of Object.entries(graph)) {
-    const entry = node as { class_type?: unknown; inputs?: unknown } | null
-    if (typeof entry !== 'object' || entry === null
-      || typeof entry.class_type !== 'string'
-      || !isPlainObject(entry.inputs)) {
-      throw new ComfyError(`workflow ${config.path} node "${id}" is not an API-format node`, 'COMFY_SUBMIT_FAILED')
-    }
-  }
+  const graph: ComfyGraph = readGraphFile(overlay.active(source), config.path)
   const loaded: Record<string, unknown> = { graph }
   for (const [field, spec] of Object.entries(ALL_WORKFLOW_FIELDS)) {
     if (field === 'path') continue
@@ -166,10 +188,12 @@ export interface GraphHolder {
  * about it — the key and label the chat and the settings page show. An entry
  * without a path is one the deployment did not configure.
  * @param workflows - the workflow entries, settings page over `config.yaml`.
+ * @param overlay - where the graphs are read from (the user's copy, in a
+ *   packaged app); every installation without one reads the files as they are.
  * @returns the loaded rows, the graphs by the job runner's name, and every
  *   loaded graph with its file (the high-recipe ones included).
  */
-export function loadWorkflows(workflows: WorkflowMap): {
+export function loadWorkflows(workflows: WorkflowMap, overlay: WorkflowOverlay = writableOverlay): {
   readonly rows: readonly LoadedRow[]
   readonly byRun: WorkflowGraphs
   readonly holders: readonly GraphHolder[]
@@ -178,7 +202,7 @@ export function loadWorkflows(workflows: WorkflowMap): {
   workflows = retiredPikaMigrated(workflows)
   const rows = WORKFLOW_ROWS.map((row): LoadedRow => {
     const entry = workflows[row.config] as (WorkflowConfig & WorkflowExtras) | undefined
-    const loaded = entry?.path === undefined || entry.path === '' ? undefined : loadWorkflow(entry)
+    const loaded = entry?.path === undefined || entry.path === '' ? undefined : loadWorkflow(entry, overlay)
     if (loaded !== undefined && entry !== undefined) holders.push({ file: workflowFile(entry.path), loaded })
     return {
       run: row.run,
@@ -201,7 +225,7 @@ export function loadWorkflows(workflows: WorkflowMap): {
     const entry = workflows[row.config] as (WorkflowConfig & WorkflowExtras) | undefined
     if (entry?.pathHigh === undefined || entry.pathHigh === '') continue
     const { highInputs: _overrides, ...pins } = entry
-    const loaded = loadWorkflow({ ...pins, path: entry.pathHigh })
+    const loaded = loadWorkflow({ ...pins, path: entry.pathHigh }, overlay)
     high[row.run] = loaded
     holders.push({ file: workflowFile(entry.pathHigh), loaded })
   }

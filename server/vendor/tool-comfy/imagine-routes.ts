@@ -58,6 +58,11 @@ export interface ImagineRoutes extends JobStartContext {
    */
   readonly tuneLora: (key: string, node: string, strength: number) =>
   Promise<{ backup: string; loras: readonly LoraInGraph[] }>
+  /**
+   * Throws away this app's copy of a graph, so the one that ships with the
+   * program is used again (and its updates with it).
+   */
+  readonly restoreWorkflow: (key: string) => Promise<{ restored: boolean }>
   /** The configuration layers this entry booted with. */
   readonly settings: ImagineSettingsSurface
 }
@@ -508,7 +513,7 @@ const ROUTES: Readonly<Record<string, Route>> = {
 async function workflowRoute(
   req: IncomingMessage,
   res: ServerResponse,
-  { ctx, inventory, addLora, removeLora, lorasOf, tuneLora }: ImagineRoutes,
+  { ctx, inventory, addLora, removeLora, lorasOf, tuneLora, restoreWorkflow }: ImagineRoutes,
   target: string,
 ): Promise<void> {
   if (target === 'plan') {
@@ -548,6 +553,18 @@ async function workflowRoute(
       })
       return
     }
+    /*
+     * «Restore default»: the graph this app changed goes back to the one that
+     * ships with the program. Its own path and a POST, because it writes:
+     * the copy is deleted and every loaded workflow read from that file is
+     * replaced with the program's graph, without a restart.
+     */
+    if (sub === 'restore') {
+      if (!allowOnly(req, res, 'POST')) return
+      const done = await restoreWorkflow(key)
+      sendJson(res, 200, { ok: true, restored: done.restored, overridden: inventory.overridden(key) })
+      return
+    }
     if (sub !== 'options') {
       sendJson(res, 404, { error: message('route.notFound') })
       return
@@ -572,6 +589,7 @@ async function workflowRoute(
     file: listed.file,
     fields: inventory.fields(key) ?? [],
     warnings: inventory.warnings(key) ?? [],
+    overridden: inventory.overridden(key),
   } satisfies WorkflowDetail)
 }
 

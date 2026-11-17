@@ -287,6 +287,13 @@ export interface WorkflowInventory {
    */
   warnings(key: string): readonly string[] | undefined
   /**
+   * Whether this workflow was changed inside the app, so that the user's copy
+   * of the graph wins over the one that ships with the program.
+   * @param key - the workflow's key.
+   * @returns true when a copy exists.
+   */
+  overridden(key: string): boolean
+  /**
    * The values one node input accepts, when the server publishes a list.
    * @param key - the workflow's key.
    * @param node - the node id inside the graph.

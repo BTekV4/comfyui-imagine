@@ -54,3 +54,19 @@ Its own data folder is `IMAGINE_DATA` when set, else the folder Electron gives
 an app (`~/.config/Imagine` on Linux, `%APPDATA%\Imagine` on Windows), else
 `~/.local/share/imagine/app` when that is where the previous AppImage kept
 everything.
+
+### The graphs inside a read-only program
+
+A graph `config.yaml` names under the program (`./workflows/…`) is read from the
+program until somebody changes it. The first edit from **Settings → Workflow**
+— a value, a LoRA, anything that used to write the file — copies that one file
+to `<data>/workflows/<the same relative path>` (so
+`<data>/workflows/workflows/<file>.json`) and writes the copy; from then on the
+copy is what the studio loads, update or not. The workflow's card says so and
+offers **Restore default**, which deletes the copy (and the `.bak-…` files kept
+beside it) and loads the program's graph again without a restart — the only way
+back to that graph's updates.
+
+A path outside the program (an absolute path to a graph kept elsewhere, a
+`custom:<id>`) is not copied: it is read and written where it is, as in every
+other installation.

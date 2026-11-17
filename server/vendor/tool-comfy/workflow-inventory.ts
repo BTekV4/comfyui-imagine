@@ -21,7 +21,8 @@ import {
   editWorkflowFile, listWorkflowFields, patchWorkflow, planWorkflowPatch, replaceGraphInPlace, stalePins,
   summariseWorkflow, type WorkflowChange,
 } from './workflow-edit.ts'
-import { workflowFile, type GraphHolder, type LoadedRow } from './workflow-load.ts'
+import { readGraphFile, workflowFile, type GraphHolder, type LoadedRow } from './workflow-load.ts'
+import { writableOverlay, type WorkflowOverlay } from './workflow-overlay.ts'
 
 /** The names the settings page gives the pins it has always reported. */
 const PIN_NAMES: Readonly<Record<string, string>> = {
@@ -65,11 +66,18 @@ export interface GraphEdit {
   readonly graph: ComfyGraph
 }
 
+/** What a restore came to: whether there was a copy to remove, and the graph now in use. */
+export interface GraphRestore {
+  readonly restored: boolean
+  readonly graph: ComfyGraph
+}
+
 /** The graph-edit step every route uses; see {@link graphEditor}. */
 export interface GraphEditor {
   /**
    * Change one graph file (checked, backed up, written by rename) and every
-   * loaded workflow read from it.
+   * loaded workflow read from it. In a packaged app the file written is the
+   * user's copy, made from the program's file the first time.
    */
   readonly edit: (file: string, change: (graph: ComfyGraph) => ComfyGraph) => Promise<GraphEdit>
   /**
@@ -77,6 +85,13 @@ export interface GraphEditor {
    * did not go through {@link GraphEditor.edit} (a personal card uploaded again).
    */
   readonly adopt: (file: string, graph: ComfyGraph) => void
+  /**
+   * Drop the user's copy of one graph and load the program's file again, so
+   * the updates of that file come back. Nothing happens, and the graph is
+   * returned unchanged, when there is no copy (or the installation writes
+   * the program's own file).
+   */
+  readonly restore: (file: string, current: ComfyGraph) => Promise<GraphRestore>
 }
 
 /**
@@ -89,9 +104,11 @@ export interface GraphEditor {
  * copy is found by its file here, at the moment of the write, so a card
  * reloaded since boot is found too.
  * @param holders - every loaded graph with its file, read at each write.
- * @returns the edit step and the adopt step.
+ * @param overlay - where this installation reads and writes its graphs: the
+ *   program's files, or the user's copies of them (`workflow-overlay.ts`).
+ * @returns the edit step, the adopt step and the restore step.
  */
-export function graphEditor(holders: () => Iterable<GraphHolder>): GraphEditor {
+export function graphEditor(holders: () => Iterable<GraphHolder>, overlay: WorkflowOverlay = writableOverlay): GraphEditor {
   const adopt = (file: string, graph: ComfyGraph): void => {
     const target = resolve(file)
     for (const holder of holders()) {
@@ -99,11 +116,27 @@ export function graphEditor(holders: () => Iterable<GraphHolder>): GraphEditor {
     }
   }
   const edit = async (file: string, change: (graph: ComfyGraph) => ComfyGraph): Promise<GraphEdit> => {
-    const done = await editWorkflowFile(file, change)
+    /*
+     * The graph is written where the user's copy is, and in a packaged app
+     * that copy is made here, from the program's file, on the first edit —
+     * `editWorkflowFile` then reads and rewrites that one. The loaded copies
+     * are found by the configured file, which does not change when a copy is
+     * made, so an edit reaches every one of them either way.
+     */
+    const target = await overlay.ensureWritable(file)
+    const done = await editWorkflowFile(target, change)
     adopt(file, done.graph)
     return done
   }
-  return { edit, adopt }
+  const restore = async (file: string, current: ComfyGraph): Promise<GraphRestore> => {
+    if (!await overlay.restore(file)) return { restored: false, graph: current }
+    // Read first, swap after: a program file that no longer parses must leave
+    // the graph in memory as it was, not blank.
+    const graph = readGraphFile(file)
+    adopt(file, graph)
+    return { restored: true, graph }
+  }
+  return { edit, adopt, restore }
 }
 
 /** A LoRA edit's answer: the backup and the LoRAs the graph now carries. */
@@ -118,9 +151,16 @@ type LoraEdit = Promise<{ backup: string; loras: readonly LoraInGraph[] }>
  * @param ctx - plugin context, for the node options ComfyUI reports.
  * @param rows - the loaded rows.
  * @param editor - the graph-edit step.
+ * @param overlay - where this installation reads and writes its graphs: it
+ *   answers whether a graph was changed here (`workflow-overlay.ts`).
  * @returns the inventory the chat and the routes read, and the apply steps.
  */
-export function workflowInventory(ctx: ImagineHost, rows: readonly LoadedRow[], editor: GraphEditor): {
+export function workflowInventory(
+  ctx: ImagineHost,
+  rows: readonly LoadedRow[],
+  editor: GraphEditor,
+  overlay: WorkflowOverlay = writableOverlay,
+): {
   readonly inventory: WorkflowInventory
   readonly applyKeyed: (key: string, changes: readonly WorkflowChange[]) => Promise<{ backup: string; applied: number }>
   /** Adds a LoRA to one workflow's model chain, and stores the graph. */
@@ -131,6 +171,10 @@ export function workflowInventory(ctx: ImagineHost, rows: readonly LoadedRow[], 
   readonly lorasOf: (key: string) => readonly LoraInGraph[] | undefined
   /** Changes one LoRA's strength, keeping the node where it is. */
   readonly tuneLora: (key: string, node: string, strength: number) => LoraEdit
+  /** Whether this workflow was changed, and the user's copy wins over the program's. */
+  readonly overridden: (key: string) => boolean
+  /** Drop the user's copy: the program's file, and its updates, are in use again. */
+  readonly restoreDefault: (key: string) => Promise<GraphRestore>
 } {
   const editable: {
     key: string
@@ -186,6 +230,15 @@ export function workflowInventory(ctx: ImagineHost, rows: readonly LoadedRow[], 
     loraEdit(key, graph => removeLora(graph, node))
   const tuneLora = (key: string, node: string, strength: number): LoraEdit =>
     loraEdit(key, graph => setLoraStrength(graph, node, strength))
+  /** Whether this workflow's copy exists: the program's file is not the one in use. */
+  const overriddenOf = (key: string): boolean => {
+    const entry = workflowOfKey(key)
+    return entry === undefined ? false : overlay.overridden(entry.file)
+  }
+  const restoreDefault = async (key: string): Promise<GraphRestore> => {
+    const entry = entryOf(key)
+    return await editor.restore(entry.file, entry.loaded.graph)
+  }
   const lorasOf = (key: string): readonly LoraInGraph[] | undefined => {
     const entry = workflowOfKey(key)
     return entry === undefined ? undefined : listLoras(entry.loaded.graph)
@@ -204,6 +257,7 @@ export function workflowInventory(ctx: ImagineHost, rows: readonly LoadedRow[], 
       const entry = workflowOfKey(key)
       return entry === undefined ? undefined : stalePins(entry.loaded.graph, entry.pins)
     },
+    overridden: overriddenOf,
     options: async (key, node, field) => {
       const classType = workflowOfKey(key)?.loaded.graph[node]?.class_type
       return classType === undefined ? undefined : await ctx.comfy.nodeOptions(classType, field)
@@ -220,5 +274,5 @@ export function workflowInventory(ctx: ImagineHost, rows: readonly LoadedRow[], 
       }
     },
   }
-  return { inventory, applyKeyed, addLora, removeLora: removeLoraOf, lorasOf, tuneLora }
+  return { inventory, applyKeyed, addLora, removeLora: removeLoraOf, lorasOf, tuneLora, overridden: overriddenOf, restoreDefault }
 }

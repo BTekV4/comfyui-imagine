@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import {
-  applyWorkflowChanges, fetchWorkflowDetail, fetchWorkflowOptions, planWorkflowValues,
+  applyWorkflowChanges, fetchWorkflowDetail, fetchWorkflowOptions, planWorkflowValues, restoreWorkflow,
   type ImagineSettingsView, type WorkflowDetail,
 } from './gallery-api.ts'
 import { COVER_MAX_BYTES } from '../../../shared/cover-kinds.ts'
@@ -65,6 +65,8 @@ interface WorkflowPanelState {
   /** The values ComfyUI allows per node input, once asked for. */
   readonly options: Readonly<Record<string, readonly string[]>>
   readonly optionsError?: string | undefined
+  /** The last «Restore default» succeeded: the program's graph is in use again. */
+  readonly restoredNote?: boolean | undefined
 }
 
 /** What can happen to the workflow section. */
@@ -76,6 +78,7 @@ type WorkflowPanelEvent =
   | { readonly type: 'planned'; readonly plan: WorkflowPlan }
   | { readonly type: 'applying' }
   | { readonly type: 'applied'; readonly count: number; readonly backup: string; readonly diff: WorkflowPlan['diff'] }
+  | { readonly type: 'restored'; readonly detail: WorkflowDetail }
   | { readonly type: 'reloaded'; readonly detail: WorkflowDetail }
   | { readonly type: 'failed'; readonly error: string }
   | { readonly type: 'settled' }
@@ -100,7 +103,9 @@ function workflowPanel(state: WorkflowPanelState, event: WorkflowPanelEvent): Wo
     case 'edited': return { ...state, fieldDrafts: { ...state.fieldDrafts, [event.key]: event.text }, plan: undefined, applied: undefined }
     case 'planned': return { ...state, plan: event.plan }
     case 'applying': return { ...state, applying: true, applyError: undefined }
-    case 'applied': return { ...state, applied: { count: event.count, backup: event.backup, diff: event.diff }, plan: undefined, fieldDrafts: {} }
+    case 'applied': return { ...state, applied: { count: event.count, backup: event.backup, diff: event.diff }, plan: undefined, fieldDrafts: {}, restoredNote: undefined }
+    // The program's graph came back: its field values are the ones to show.
+    case 'restored': return { ...state, detail: event.detail, fieldDrafts: {}, plan: undefined, applied: undefined, restoredNote: true }
     case 'reloaded': return { ...state, detail: event.detail }
     case 'failed': return { ...state, applyError: event.error }
     case 'settled': return { ...state, applying: false }
@@ -133,6 +138,8 @@ export interface WorkflowValues {
   readonly staged: ReturnType<typeof nodeValueChanges>
   /** Plans and writes the staged values in one go; throws what failed. */
   readonly applyValues: () => Promise<void>
+  /** Throws away this app's copy of the graph: the program's file is used again. */
+  readonly restoreDefault: () => Promise<void>
   readonly readOptions: (field: WorkflowField) => Promise<void>
   readonly filter: string
   readonly setFilter: (filter: string) => void
@@ -201,6 +208,25 @@ export function useWorkflowValues(view: ImagineSettingsView | undefined): Workfl
     }
   }, [listedKey, staged])
 
+  /**
+   * «Restore default»: the only way back from a graph changed in the app.
+   * Without it the copy in the data folder would win forever, and that graph
+   * would never receive the updates that come with a new version.
+   */
+  const restoreDefault = useCallback(async (): Promise<void> => {
+    if (listedKey === undefined) return
+    dispatch({ type: 'applying' })
+    try {
+      await restoreWorkflow(listedKey)
+      dispatch({ type: 'restored', detail: await fetchWorkflowDetail(listedKey) })
+    } catch (error: unknown) {
+      dispatch({ type: 'failed', error: messageOf(error) })
+      throw error
+    } finally {
+      dispatch({ type: 'settled' })
+    }
+  }, [listedKey])
+
   const askedOptions = useRef<Set<string>>(new Set())
   const askedForDetail = useRef<unknown>(undefined)
 
@@ -237,7 +263,10 @@ export function useWorkflowValues(view: ImagineSettingsView | undefined): Workfl
     }
   }, [panel.detail, panel.options, readOptions])
 
-  return { workflowKey, setWorkflowKey, listedKey, selected, rows, panel, dispatch, staged, applyValues, readOptions, filter, setFilter }
+  return {
+    workflowKey, setWorkflowKey, listedKey, selected, rows, panel, dispatch, staged, applyValues, restoreDefault,
+    readOptions, filter, setFilter,
+  }
 }
 
 /**
@@ -255,7 +284,7 @@ export function WorkflowTab({ view, values, context, labels }: {
   context: ControlContext
 }) {
   const { workflowKey, setWorkflowKey, listedKey, selected, rows, panel, dispatch, readOptions, filter, setFilter, staged } = values
-  const { detail, detailError, fieldDrafts, plan, applied, applyError, options, optionsError } = panel
+  const { detail, detailError, fieldDrafts, plan, applied, applyError, options, optionsError, restoredNote } = panel
   const groups = useMemo(() => groupFields(detail?.fields ?? [], filter), [detail, filter])
   const invalidFields = useMemo(() => new Set(staged.invalid), [staged])
   /** What came of the last cover upload. */
@@ -364,6 +393,30 @@ export function WorkflowTab({ view, values, context, labels }: {
         </div>
       )}
       {coverNote !== undefined && <p className={css.muted} role="status">{coverNote}</p>}
+      {/*
+        * A graph changed inside the app: the edit went into a copy in the data
+        * folder, which wins over the one shipped with the program — updates
+        * included. «Restore default» is the way back, and only a graph with a
+        * copy offers it (a service writes the file itself, so there is no copy
+        * and no need for one).
+        */}
+      {detail?.overridden === true && (
+        <div className={css.field}>
+          <span className={css.hint}>{translate('imagine.settings.overridden')}</span>
+          <button
+            type="button"
+            className={css.button}
+            style={{ alignSelf: 'flex-start' }}
+            disabled={panel.applying}
+            onClick={() => { void values.restoreDefault() }}
+          >
+            {translate('imagine.settings.restoreDefault')}
+          </button>
+        </div>
+      )}
+      {restoredNote === true && (
+        <p className={css.ok} role="status">{translate('imagine.settings.restored')}</p>
+      )}
       {detailError !== undefined && <p className={css.error} role="status">{detailError}</p>}
       {listedKey === undefined && (
         <p className={css.muted} role="status">{translate('imagine.settings.noGraph')}</p>

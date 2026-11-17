@@ -1516,5 +1516,8 @@
   "imagine.setup.hintModel": "Aggiungi un provider e un modello a config.yaml, come fa config.example.yaml.",
   "imagine.setup.hintOutput": "Crea la cartella, o punta toolComfy.outputDir a una scrivibile.",
   "imagine.setup.recheck": "Controlla di nuovo",
-  "imagine.setup.checking": "Controllo…"
+  "imagine.setup.checking": "Controllo…",
+  "imagine.settings.overridden": "Questo grafo è stato modificato qui: vale la copia nella tua cartella dati, non quella arrivata col programma, e gli aggiornamenti di quella non gli arrivano.",
+  "imagine.settings.restoreDefault": "Ripristina l'originale",
+  "imagine.settings.restored": "Ripristinato: questo grafo è di nuovo quello del programma e seguirà i suoi aggiornamenti."
 }

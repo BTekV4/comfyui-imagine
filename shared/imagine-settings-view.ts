@@ -17,6 +17,12 @@ export interface WorkflowDetail {
   readonly fields: readonly WorkflowField[]
   /** Pins the profile declares that the graph no longer carries. */
   readonly warnings: readonly string[]
+  /**
+   * True when the graph was changed inside the app and the user's copy wins
+   * over the one that ships with the program: only then is there a copy to
+   * throw away, and the updates of that file are not reaching this graph.
+   */
+  readonly overridden: boolean
 }
 
 /** One workflow's configuration in the layer the page reads it from. */
