@@ -381,6 +381,7 @@ export const en = {
   "imagine.itemCountOne": "1 item",
   "imagine.errOffline": "I cannot reach the generation server. Check that it is running and try again.",
   "imagine.errValidation": "The workflow failed validation. Try again with different parameters.",
+  "imagine.errFrameGrid": "The model refused the frame size: each side must be a multiple of 32. This is not retried, because the same frame would fail the same way.",
   "imagine.errNotInList": "Node {node} ({class}) does not accept \"{value}\" for {field}: it is not one of the allowed values.",
   "imagine.errRefused": "Node {node} ({class}) refused {field}: {reason}.",
   "imagine.errBadImage": "Image file not valid for this workflow.",

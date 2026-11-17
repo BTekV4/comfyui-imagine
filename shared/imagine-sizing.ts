@@ -135,6 +135,41 @@ export function sizeFor(aspect: ImagineAspect, resolution: ImagineResolution): s
 }
 
 /**
+ * The pixel grid the H3 graphs take an explicit frame on.
+ *
+ * `MiniMaxH3ChainPlanModern` (the chain's Production Plan) and the other H3
+ * nodes that carry `width`/`height` refuse a side that is not a multiple of
+ * 32: the composer's ladder names 720x1280 at 9:16 720p, and 720 is not on
+ * that grid, so the plan node failed the whole run before drawing a frame.
+ */
+export const H3_FRAME_MULTIPLE = 32
+
+/**
+ * A frame the H3 graphs accept: both sides positive multiples of 32, the
+ * chosen shape kept.
+ *
+ * The short side moves to the nearest step and the long side follows the
+ * shape, which is the frame ResolutionSelector's own arithmetic lands on for
+ * the same budget (0.9 MP at 9:16 is 736x1312). A side already on the grid is
+ * left alone, so a size a graph or a caller already got right does not move.
+ * @param width - the frame's width in pixels.
+ * @param height - the frame's height in pixels.
+ * @returns the frame on the grid, or undefined when it is not a positive frame.
+ */
+export function h3Frame(width: number, height: number): { width: number; height: number } | undefined {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) return undefined
+  const step = H3_FRAME_MULTIPLE
+  const portrait = width <= height
+  const short = Math.min(width, height)
+  const long = Math.max(width, height)
+  const snappedShort = Math.max(step, Math.round(short / step) * step)
+  const snappedLong = Math.max(step, Math.round((snappedShort * long / short) / step) * step)
+  return portrait
+    ? { width: snappedShort, height: snappedLong }
+    : { width: snappedLong, height: snappedShort }
+}
+
+/**
  * MiniMax ResolutionSelector label for this aspect.
  * @param aspect - composer aspect.
  * @returns the workflow enum string.

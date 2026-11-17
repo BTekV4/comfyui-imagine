@@ -32,6 +32,7 @@ import { list, number, object, oneOf, string, type Check } from '../../src/confi
 import { AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, kindOf, pixelsOfVideoBytes } from './gallery.ts'
 import { resumeUnfinishedStories } from './imagine-jobs.ts'
 import type { ImagineQuality, ImagineSpeed, MediaKind } from '../../../shared/imagine-types.ts'
+import { h3Frame } from '../../../shared/imagine-sizing.ts'
 import { GUIDE_FRAMES } from './extend-video.ts'
 import { FPS } from './media-tools.ts'
 import { loadImagineOverrides, mergeWorkflowMaps } from './imagine-settings.ts'
@@ -606,6 +607,40 @@ const SONG_PREROLL_SECONDS = 1
 const SEEDVR2_UPSCALER = 'SeedVR2VideoUpscaler'
 
 /**
+ * Put every H3 node's explicit frame on the 32px grid the node accepts.
+ *
+ * The graphs that plan and chain their own clips carry `width`/`height` as
+ * plain values (the Production Plan, the refiner's Image to Video), unlike the
+ * sampler graphs that take a ResolutionSelector's label and megapixels and
+ * round inside the node. A file saved with 720x1280 at 9:16 — the composer's
+ * 720p frame — therefore reached the plan node as it was, and the node
+ * refused the run before rendering: "H3 chain width and height must be
+ * positive multiples of 32". The same write also catches a size a request
+ * carries, so both the saved value and the requested one end up on the grid.
+ * @param graph - the graph about to be sent.
+ * @throws {ComfyError} `COMFY_GRAPH_REJECTED` when a frame is not positive.
+ */
+function enforceH3Frames(graph: ComfyGraph): void {
+  for (const node of Object.values(graph)) {
+    // The H3 nodes are the ones with this constraint; the still graphs round
+    // on their own and must keep the size the composer asked for.
+    if (!node.class_type.startsWith('MiniMaxH3')) continue
+    const width = node.inputs.width
+    const height = node.inputs.height
+    if (typeof width !== 'number' || typeof height !== 'number') continue
+    const frame = h3Frame(width, height)
+    if (frame === undefined) {
+      throw new ComfyError(
+        message('graph.frameInvalid', { width: String(width), height: String(height) }),
+        'COMFY_GRAPH_REJECTED',
+      )
+    }
+    node.inputs.width = frame.width
+    node.inputs.height = frame.height
+  }
+}
+
+/**
  * One input file the graph takes: the bytes to upload and where the name
  * ComfyUI gives back is written.
  */
@@ -940,6 +975,13 @@ function parameterize(
       setInput(graph, { nodeId: workflow.chain.saveNodeId, field: 'clip_index' }, link.index + 1)
     }
   }
+
+  /*
+   * Last, after every value has been written: the frame an H3 node ends up
+   * with is the one the file and the request left there, so the grid is
+   * enforced once on the finished graph rather than at each write.
+   */
+  enforceH3Frames(graph)
 
   return { graph, uploads }
 }

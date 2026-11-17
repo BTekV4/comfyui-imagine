@@ -360,6 +360,7 @@
   "imagine.itemCountOne": "1 elemento",
   "imagine.errOffline": "Non riesco a contattare il server di generazione. Controlla che sia acceso e riprova.",
   "imagine.errValidation": "Il workflow ha fallito la validazione. Riprova con parametri diversi.",
+  "imagine.errFrameGrid": "Il modello ha rifiutato le dimensioni del fotogramma: ogni lato deve essere un multiplo di 32. Non riprovo, tanto rifarebbe lo stesso errore.",
   "imagine.errNotInList": "Il nodo {node} ({class}) non accetta «{value}» per {field}: non è tra i valori ammessi.",
   "imagine.errRefused": "Il nodo {node} ({class}) ha rifiutato {field}: {reason}.",
   "imagine.errBadImage": "File immagine non valido per il workflow.",

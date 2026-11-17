@@ -250,6 +250,25 @@ function executionError(
   return undefined
 }
 
+/**
+ * Whether a failed run refused a parameter rather than failing at its work.
+ *
+ * These failures are deterministic: the same graph with the same values is
+ * refused the same way on every try, so a retry only spends card time and the
+ * user waits for a second identical error. The wording is the one the nodes
+ * use for their own argument checks — the H3 chain's frame grid ("must be
+ * positive multiples of 32"), an audio trim's times, a value out of range. A
+ * numerical accident, an interruption or an out-of-memory is deliberately not
+ * matched: those can come out differently.
+ * @param reason - the exception text ComfyUI recorded for the run.
+ * @returns true when retrying cannot change the answer.
+ */
+export function isGraphValidationError(reason: string): boolean {
+  return /must be (a )?(positive )?multiple/i.test(reason)
+    || /must be (positive|greater than|less than|within|between|at least|at most)/i.test(reason)
+    || /(out of range|not supported|invalid (size|width|height|value|input|duration|frame|time))/i.test(reason)
+}
+
 /** The meta-batch id a VHS graph already carries, when it has one. */
 /**
  * A fresh VHS meta-batch id, the one shape both the studio and the client
@@ -1034,9 +1053,20 @@ export class ComfyUi {
           // reached the caller as "failed" and an OOM was indistinguishable
           // from a bad graph.
           const reason = executionError(record.status.messages)
+          /*
+           * A node that refuses a parameter fails the same way on every take,
+           * so it is marked as a rejected graph rather than a generic failure:
+           * the run that retries a shot must not spend a second render on it.
+           * OOM is checked first, and stays its own code.
+           */
+          const code = reason !== undefined && isOutOfMemory(reason)
+            ? 'COMFY_OUT_OF_MEMORY'
+            : reason !== undefined && isGraphValidationError(reason)
+              ? 'COMFY_GRAPH_REJECTED'
+              : 'COMFY_WAIT_FAILED'
           throw new ComfyError(
             reason === undefined ? `ComfyUI run ${promptId} failed` : `ComfyUI run ${promptId} failed: ${reason}`,
-            reason !== undefined && isOutOfMemory(reason) ? 'COMFY_OUT_OF_MEMORY' : 'COMFY_WAIT_FAILED',
+            code,
           )
         }
         if (record.status?.status_str === 'success' || record.outputs !== undefined) {

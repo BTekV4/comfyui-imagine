@@ -99,6 +99,12 @@ function friendlyError(raw: string): string {
   const refused = refusedNote(raw)
   if (refused !== undefined) return refused
   if (raw.includes('prompt_outputs_failed_validation')) return translate('imagine.errValidation')
+  /*
+   * A graph that refuses its frame is a deterministic failure, not something
+   * another try can fix: the host does not retry it either. The node's own
+   * sentence names the grid, which means nothing to the person reading it.
+   */
+  if (/must be (a )?(positive )?multiples? of 32/i.test(raw)) return translate('imagine.errFrameGrid')
   if (raw.includes('Invalid image file')) return translate('imagine.errBadImage')
   if (raw.includes('Custom validation failed')) {
     const match = /"details":"([^"]+)"/.exec(raw)

@@ -235,6 +235,10 @@ export const MESSAGES = {
   'graph.fieldWithoutNode': { it: 'campo "{field}" senza nodo', en: 'field "{field}" has no node' },
   'graph.noNodeForField': { it: 'nessun nodo {node} per il campo {field}', en: 'no node {node} for field {field}' },
   'graph.noField': { it: 'il nodo {node} non ha un campo {field}', en: 'node {node} has no field {field}' },
+  'graph.frameInvalid': {
+    it: 'il fotogramma {width}x{height} non è valido: i due lati devono essere positivi',
+    en: 'the frame {width}x{height} is not valid: both sides must be positive',
+  },
   'graph.brokenLinks': { it: 'collegamenti rotti: {links}', en: 'broken links: {links}' },
   'file.noFreeName': { it: 'nessun nome libero per {name}', en: 'no free name for {name}' },
   'workflow.classNodeField': { it: 'servono class o node, e field', en: 'class or node, and field, are needed' },

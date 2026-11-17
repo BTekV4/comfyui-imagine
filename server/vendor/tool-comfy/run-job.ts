@@ -1711,9 +1711,15 @@ async function retryChainedShot(
    * wedged ComfyUI took five shots of a music video that way, each
    * burning its ladder against a server executing nothing. Let it fail as
    * what it is, and the cut queues it again.
+   *
+   * The same goes for a graph that refused its parameters (`COMFY_GRAPH_
+   * REJECTED`): the frame a plan node will not take is the same frame with
+   * any seed, so a second render only shows the user the same error again.
    */
   if (error instanceof ComfyError
-    && (error.code === 'COMFY_TIMEOUT' || error.code === 'COMFY_UNREACHABLE')) throw error
+    && (error.code === 'COMFY_TIMEOUT' || error.code === 'COMFY_UNREACHABLE' || error.code === 'COMFY_GRAPH_REJECTED')) {
+    throw error
+  }
   const oom = error instanceof ComfyError && error.code === 'COMFY_OUT_OF_MEMORY'
   try {
     if (oom) throw error
