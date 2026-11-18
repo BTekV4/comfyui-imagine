@@ -276,3 +276,16 @@ test('a precise edit zone outside the photo is dropped, not sent', async () => {
   const answer = await readImagineChat(host, ask('cambia la zona in alto a destra'), inventoryOf())
   assert.equal(answer.intents[0]?.region, undefined)
 })
+
+test('the reading is told when a workflow applies, and which cards it may run', async () => {
+  const host = hostSaying(JSON.stringify({ reply: 'ok', intents: [] }))
+  await readImagineChat(host, ask('ciao'), inventoryOf({ cards: [CARD] }))
+  const instruction = host.prompts[0] ?? ''
+  assert.ok(
+    instruction.includes('when to use it: Draw a new photo from a sentence.'),
+    'the workflow description never reached the reading',
+  )
+  assert.ok(instruction.includes(CARD.id), 'the card id never reached the reading')
+  assert.ok(instruction.includes('Lookbook'), 'the card title never reached the reading')
+  assert.ok(instruction.includes('276.title'), 'the card inputs never reached the reading')
+})
