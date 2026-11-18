@@ -35,6 +35,11 @@ jobs:
       - name: ffmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: npm ci --no-audit --no-fund
+      # What a release ships is the production tree: this fails the check when
+      # a runtime dependency has an advisory of high severity or worse. It
+      # stays inside this job, so the required status checks do not change.
+      - name: Audit the production dependencies
+        run: npm audit --omit=dev --audit-level=high
       - name: Types
         run: npm run typecheck
       - name: Tests

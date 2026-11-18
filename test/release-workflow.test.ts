@@ -106,3 +106,31 @@ test('ci.yml: the release rehearsal runs the publish job\'s gate on the same fol
     typeof step.run === 'string' && step.run.includes('scripts/check-release-assets.sh dist-artifacts'))
   assert.ok(gate.length > 0, 'the rehearsal never runs the publish gate on dist-artifacts')
 })
+
+test('ci.yml: the check job audits the production dependencies after npm ci', () => {
+  const jobs = workflow('ci.yml').jobs
+  assert.ok(jobs, 'ci.yml has no jobs')
+  const steps = jobs.check?.steps
+  assert.ok(steps, 'ci.yml has no check job')
+
+  const install = steps.findIndex((step) => typeof step.run === 'string' && /\bnpm ci\b/.test(step.run))
+  assert.ok(install >= 0, 'the check job does not run npm ci')
+  const audit = steps.findIndex((step) => typeof step.run === 'string' && /\bnpm audit\b/.test(step.run))
+  assert.ok(audit >= 0, 'the check job does not audit the dependencies')
+  assert.ok(audit > install, 'the audit runs before npm ci has installed the production tree')
+  assert.equal(
+    steps[audit]?.run?.trim(),
+    'npm audit --omit=dev --audit-level=high',
+    'the audit does not check the production tree at high severity',
+  )
+
+  // The ruleset requires the `check` job: an audit job of its own would add a
+  // status check nobody asked for, so the step stays here.
+  for (const [name, job] of Object.entries(jobs)) {
+    if (name === 'check') continue
+    const elsewhere = (job.steps ?? []).some(
+      (step) => typeof step.run === 'string' && /\bnpm audit\b/.test(step.run),
+    )
+    assert.ok(!elsewhere, `${name} runs npm audit: keep it in the check job so the ruleset does not change`)
+  }
+})
