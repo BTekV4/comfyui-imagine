@@ -35,6 +35,8 @@ const ONE_PIXEL_PNG = Buffer.from(
 /** A media folder holding that PNG, for the tools that start from a file. */
 const mediaDir = await mkdtemp(join(tmpdir(), 'imagine-agent-media-'))
 await writeFile(join(mediaDir, 'photo.png'), ONE_PIXEL_PNG)
+// The media tools only need the file to exist; the bytes are not probed.
+await writeFile(join(mediaDir, 'clip.mp4'), Buffer.alloc(8))
 
 /** One scripted model: a list of event groups, one per call. */
 function scriptedModel(scripts: readonly (readonly AgentModelEvent[])[]) {
@@ -413,6 +415,19 @@ test('a cancel is only ever a proposal, and the yes really stops the run', async
   const second = await readAgentChat({ ...deps, request: { ...deps.request, confirmation: { token: first.pending?.token ?? '', accept: true } } })
   assert.deepEqual(cancelled, ['live-1'])
   assert.equal(second.reply, 'L\'ho fermato.')
+
+})
+
+test('a declined cancel says what the run is doing now', async () => {
+  const { deps, model } = turn([
+    toolCall('cancel_job', { job: 'live-2' }),
+    text('Va bene, lo lascio andare.'),
+  ], { existingJobs: [{ id: 'live-2', action: 'video', prompt: 'un clip', status: 'running', createdAt: Date.now() }] })
+  const first = await readAgentChat(deps)
+  assert.equal(first.pending?.kind, 'cancel')
+  await readAgentChat({ ...deps, request: { ...deps.request, confirmation: { token: first.pending?.token ?? '', accept: false } } })
+  const message = model.requests[1]?.messages.at(-1)
+  assert.match(message?.content ?? '', /"state":"running"/)
 })
 
 test('a count and a length the user named are recovered from their line', () => {
@@ -464,7 +479,6 @@ test('a personal card runs with its own exposed inputs, and nothing else', async
 
 test('a track is laid over a clip on the host, with no run and no question', async () => {
   await writeFile(join(mediaDir, 'track.mp3'), Buffer.alloc(8))
-  await writeFile(join(mediaDir, 'clip.mp4'), Buffer.alloc(8))
   const realFetch = globalThis.fetch
   let asked: { url: string; body: unknown } | undefined
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -484,4 +498,76 @@ test('a track is laid over a clip on the host, with no run and no question', asy
   } finally {
     globalThis.fetch = realFetch
   }
+})
+
+test('run_action reaches object swap, relight and recreate with the studio fields', async () => {
+  const swap = turn([
+    toolCall('run_action', {
+      action: 'objectSwap', prompt: 'la bottiglia diventa blu', source: 'clip.mp4', reference: 'photo.png',
+      extras: { objectMode: 'change', swapResolution: '480p' },
+    }),
+    text('Fatto.'),
+  ], { outputDir: mediaDir })
+  await readAgentChat(swap.deps)
+  assert.equal(swap.started[0]?.action, 'objectSwap')
+  assert.equal(swap.started[0]?.objectMode, 'change')
+  assert.equal(swap.started[0]?.source, 'clip.mp4')
+  assert.equal(swap.started[0]?.reference, 'photo.png')
+  assert.equal(swap.started[0]?.swapResolution, '480p')
+
+  const { RELIGHT_LOOKS } = await import('../shared/relight-looks.ts')
+  const light = turn([
+    toolCall('run_action', { action: 'relight', prompt: '', source: 'photo.png', extras: { light: RELIGHT_LOOKS[0]?.id ?? 'cold_beam' } }),
+    text('Fatto.'),
+  ], { outputDir: mediaDir })
+  await readAgentChat(light.deps)
+  assert.equal(light.started[0]?.action, 'relight')
+  assert.equal(light.started[0]?.light, RELIGHT_LOOKS[0]?.id)
+
+  const reshot = turn([
+    toolCall('run_action', { action: 'recreate', prompt: 'più vicino', source: 'clip.mp4', extras: { keepAudio: true } }),
+    text('Fatto.'),
+  ], { outputDir: mediaDir })
+  await readAgentChat(reshot.deps)
+  assert.equal(reshot.started[0]?.action, 'recreate')
+  assert.equal(reshot.started[0]?.keepAudio, true)
+})
+
+test('run_action refuses an unknown action, a field it does not know and a missing file', async () => {
+  const unknown = turn([toolCall('run_action', { action: 'makeCoffee' }), text('No.')])
+  await readAgentChat(unknown.deps)
+  assert.equal(unknown.started.length, 0)
+  const refused = JSON.parse(unknown.model.requests[1]?.messages.at(-1)?.content ?? '{}') as { error?: string }
+  assert.match(refused.error ?? '', /action must be one of/)
+
+  const extra = turn([toolCall('run_action', { action: 'bg', source: 'photo.png', extras: { projectId: 'x' } }), text('No.')], { outputDir: mediaDir })
+  await readAgentChat(extra.deps)
+  assert.equal(extra.started.length, 0)
+  const wrong = JSON.parse(extra.model.requests[1]?.messages.at(-1)?.content ?? '{}') as { error?: string }
+  assert.match(wrong.error ?? '', /not a field of a studio request/)
+
+  const missing = turn([toolCall('run_action', { action: 'video', prompt: 'gira' }), text('No.')], { outputDir: mediaDir })
+  await readAgentChat(missing.deps)
+  assert.equal(missing.started.length, 0)
+  const needed = JSON.parse(missing.model.requests[1]?.messages.at(-1)?.content ?? '{}') as { error?: string }
+  assert.match(needed.error ?? '', /starts from a file/)
+})
+
+test('run_action goes through the confirmation gate too', async () => {
+  const cases: readonly (readonly [string, Record<string, unknown>])[] = [
+    ['story', { prompt: 'un viaggio', source: 'photo.png', extras: { seconds: 30 } }],
+    ['music', { prompt: 'jazz', extras: {} }],
+    ['video', { prompt: 'gira', source: 'photo.png', extras: { seconds: 20 } }],
+    ['upscale', { source: 'photo.png', extras: { upscaleTo: 2160 } }],
+  ]
+  for (const [action, fields] of cases) {
+    const { deps, started } = turn([toolCall('run_action', { action, ...fields }), text('ok')], { outputDir: mediaDir })
+    const answer = await readAgentChat(deps)
+    assert.equal(answer.pending?.tool, 'run_action', `${action} asks first`)
+    assert.equal(started.length, 0)
+  }
+  // Under the limit, a video does not ask.
+  const plain = turn([toolCall('run_action', { action: 'video', prompt: 'gira', source: 'photo.png', extras: { seconds: 10 } }), text('ok')], { outputDir: mediaDir })
+  assert.equal((await readAgentChat(plain.deps)).pending, undefined)
+  assert.equal(plain.started.length, 1)
 })

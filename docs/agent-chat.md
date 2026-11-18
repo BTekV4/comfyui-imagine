@@ -1,9 +1,9 @@
 # The agent chat
 
-Status: F2 built on branch `agent-chat-media-20261118` (2026-11-18), on top of
-the F1 lane that was merged into `main` (PR #11). The parity tool is its own
-branch, `agent-chat-parity-20261118`. F0 was approved and its three open
-questions are decided below. The classic lane is still there, and it is what
+Status: F2 built on two branches (2026-11-18), on top of the F1 lane merged
+into `main` (PR #11): `agent-chat-media-20261118` holds the media tools and
+the confirmation gate, and `agent-chat-parity-20261118` (on top of it) adds
+`run_action`. F0 was approved and its three open questions are decided below. The classic lane is still there, and it is what
 reads a line when the model cannot call tools or the switch is off.
 
 The chat inside a project reads one written line with one JSON call and answers
@@ -186,22 +186,22 @@ way a person would be told what is wrong.
 | `change_voice` | `source`, `voice?`, `pitch?` | Queues `voice` on a track or a clip. |
 | `upscale` | `source`, `upscaleTo?` | Queues `upscale`; 4K on a still is always confirmed. |
 | `run_card` | `customWorkflowId`, `prompt?`, `customFields?`, `customFiles?` | Queues `custom`; the card's id and inputs are checked against the inventory. Always confirmed. |
+| `run_action` | `action`, `prompt?`, `source?`, `reference?`, `extras?` | Any other studio action with its own fields: object swap, character swap, recreate, relight, compose, bg, redo, resume, scanFrame, regenerate, custom. The fields are whitelisted and validated; the same confirmation gate applies. |
 | `cancel_job` | `job` | Only ever proposes: the user's yes cancels the run. |
 
 `redo_shot` and `resume_music_video` are not separate tools: they are
-`run_action` with `redo`/`resume`, the studio's own actions (the parity
-branch).
+`run_action` with `redo`/`resume`, the studio's own actions.
 
 ### Parity
 
-The model must not be weaker in agent mode than the fields were. Every action
-the studio can run gets a tool eventually; the parity branch adds a single
-`run_action` tool with the studio's own fields (`IMAGINE_ACTIONS` plus the
-validated extras the MCP's `imagine_run_action` already takes), so object swap,
-character swap, recreate, relight, compose, redo, resume, background removal
-and the rest are reachable. The media branch answers "not in this version yet"
-for those, never with an invented action. The parity gap is a phase boundary,
-not a design choice.
+The model must not be weaker in agent mode than the fields were. `run_action`
+takes the studio's own fields (`IMAGINE_ACTIONS` plus a whitelist of the
+request fields the MCP's `imagine_run_action` already carries), so object
+swap, character swap, recreate, relight, compose, redo, resume, background
+removal and the rest are reachable. Every named file is checked against the
+gallery, every closed choice against the studio's own lists, and the action
+runs through the same `startFromBody` and the same confirmation gate as a
+dedicated tool. A body field the studio does not know is refused, not dropped.
 
 ### F3 — the surface
 

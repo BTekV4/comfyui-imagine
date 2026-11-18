@@ -8,6 +8,12 @@ versions follow [semantic versioning](https://semver.org/).
 
 ### Added
 
+- **The agent chat reaches every studio action.** A single `run_action` tool
+  carries the studio's own fields for object swap, character swap, recreate,
+  relight, compose, background removal, redo, resume and the rest: the files
+  are checked against the gallery, the closed lists against the studio's own,
+  and the same confirmation gate applies. A field the studio does not know is
+  refused, not dropped.
 - **The agent chat renders video, sound and cards, and asks before the
   expensive work.** The agent lane of a project's chat now has tools for a
   clip from a picture, a continuation, an animated loop, a story, a piece of
