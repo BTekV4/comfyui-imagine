@@ -56,20 +56,38 @@ NODE_VERSION=${NODE_VERSION:-24.22.3}
 #      They are the same small static builds johnvansickle publishes; BtbN's
 #      full GPL build is 176 MB per binary and doubled the 0.3.0 zip, so it is
 #      not the fallback.
-#   4. Download the file, check `sha256sum <file>` against the publisher's
+#   4. Attach both archives, byte for byte, to a release of this repository
+#      whose tag is `deps-ffmpeg-<version>`. It is a `deps-*` tag, so the
+#      release workflow (it runs on `v*`) never starts for it. This copy is
+#      tried first: on 2026-11-18 johnvansickle stopped answering from the CI
+#      runners and the desktop job sat on the connection until its 60-minute
+#      timeout, and a package build must not depend on one third-party host
+#      being up. Both copies are checked against the same digest below, so
+#      whichever answers is the pinned build. The tag's assets are named after
+#      the upstream files (`ffmpeg-<version>-amd64-static.tar.xz` and BtbN's
+#      `ffmpeg-N-…-win64-gpl.zip`), and the URLs below expect exactly that.
+#   5. Download the file, check `sha256sum <file>` against the publisher's
 #      checksum (or compute it when there is none), update the version, URL and
 #      digest below, then prove both paths in one run:
 #
+#        FFMPEG_LINUX_STABLE_URL= \
 #        FFMPEG_LINUX_URL=https://example.invalid/ffmpeg.tar.xz \
 #          OUT_DIR=release bash scripts/package-portable.sh linux-x64
 #        OUT_DIR=release bash scripts/package-portable.sh windows-x64
 #
 #      The first command forces the fallback (`example.invalid` answers
-#      nothing); CI's `release-rehearsal` job runs exactly that and checks the
-#      package is the small one. `scripts/check-windows.ps1` then proves on a
-#      real Windows runner that the packaged binary starts.
+#      nothing, and the stable copy is skipped by emptying its URL); CI's
+#      `release-rehearsal` job runs exactly that and checks the package is the
+#      small one. `scripts/check-windows.ps1` then proves on a real Windows
+#      runner that the packaged binary starts.
 FFMPEG_LINUX_VERSION=7.0.2
 FFMPEG_LINUX_SHA256=abda8d77ce8309141f83ab8edf0596834087c52467f6badf376a6a2a4c87cf67
+# The release that carries our copies of both archives (see step 4 above).
+FFMPEG_DEPS_TAG=${FFMPEG_DEPS_TAG:-deps-ffmpeg-$FFMPEG_LINUX_VERSION}
+# Ours first: the same bytes, on a host that answers while the publisher does
+# not. Emptying this URL skips it (`release-rehearsal` does that).
+FFMPEG_LINUX_STABLE_URL=${FFMPEG_LINUX_STABLE_URL:-https://github.com/BTekV4/comfyui-imagine/releases/download/$FFMPEG_DEPS_TAG/ffmpeg-$FFMPEG_LINUX_VERSION-amd64-static.tar.xz}
+# Then the publisher: the same bytes, checked against the same digest.
 FFMPEG_LINUX_URL=${FFMPEG_LINUX_URL:-https://johnvansickle.com/ffmpeg/releases/ffmpeg-$FFMPEG_LINUX_VERSION-amd64-static.tar.xz}
 # ffbinaries' 6.1 zips: the Linux fallback.
 FFMPEG_LINUX_FALLBACK_VERSION=6.1
@@ -82,6 +100,8 @@ FFMPEG_LINUX_FALLBACK_FFPROBE_SHA256=cb690c360042b51d9e901db2b0185c585330c1067b5
 FFMPEG_WIN_BUILD=autobuild-2026-11-17-12-40
 FFMPEG_WIN_ASSET=ffmpeg-N-129000-g64f6bcffaf-win64-gpl.zip
 FFMPEG_WIN_SHA256=187a56f79cbbd9606d6937b9b45eaed8c49fb206272c18f48a14eb2003b7a310
+# The same two sources as Linux, in the same order.
+FFMPEG_WIN_STABLE_URL=${FFMPEG_WIN_STABLE_URL:-https://github.com/BTekV4/comfyui-imagine/releases/download/$FFMPEG_DEPS_TAG/$FFMPEG_WIN_ASSET}
 FFMPEG_WIN_URL=${FFMPEG_WIN_URL:-https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/$FFMPEG_WIN_BUILD/$FFMPEG_WIN_ASSET}
 # ffbinaries' 6.1 zips: the Windows fallback.
 FFMPEG_WIN_FALLBACK_VERSION=6.1
@@ -100,13 +120,27 @@ PYTHON=${PYTHON:-$(command -v python3 || command -v python)}
 say() { printf '%s\n' "$*"; }
 die() { printf 'package: %s\n' "$*" >&2; exit 3; }
 
+# Every download is bounded. On 2026-11-18 johnvansickle.com stopped answering
+# from the CI runners: `curl` waited 133 s on the connect, the old
+# `--retry 3 -fsSL` multiplied that by every retry, and the desktop job sat
+# there until its 60-minute timeout. 15 s to connect and 5 min for the whole
+# transfer, with two retries inside one curl, is what a package build can
+# afford; the retry over sources is the loop below, and it is finite.
+CURL_OPTS=(--fail --silent --show-error --location
+  --connect-timeout 15 --max-time 300 --retry 2 --retry-connrefused --retry-delay 2)
+
 # The cache is keyed by URL, not by name: two different ffmpeg builds with the
 # same file name already cost a 186 MB package that seemed not to change.
-fetch() { # url → file in the cache, downloaded once
+fetch() { # url file → 0 when this url's answer is already in the cache
   local url=$1 out=$2
-  [ -s "$out" ] && [ "$(cat "$out.url" 2>/dev/null)" = "$url" ] && return 0
-  say "  downloading $(basename "$out")"
-  curl -fsSL --retry 3 -o "$out" "$url"
+  if [ -s "$out" ] && [ "$(cat "$out.url" 2>/dev/null)" = "$url" ]; then return 0; fi
+  say "  downloading $(basename "$out") from $url"
+  rm -f -- "$out"
+  if ! curl "${CURL_OPTS[@]}" --output "$out" "$url"; then
+    rm -f -- "$out"
+    say "  download failed: $url"
+    return 1
+  fi
   printf '%s' "$url" > "$out.url"
 }
 
@@ -124,19 +158,31 @@ digest_matches() { # file expected
   [ "$(digest_of "$1")" = "$2" ]
 }
 
-# fetch + digest, twice: a cached file from an older pin is dropped, never
-# trusted. The caller decides what a second failure means (retry, fallback).
-fetch_pinned() { # url file sha256 what
-  local url=$1 out=$2 want=$3 what=$4
-  local attempt=1
-  while :; do
+# fetch + digest, twice by default: a cached file from an older pin is dropped,
+# never trusted. Two tries per source, then the caller moves to the next
+# source: there is no `while :` that can run until the job's timeout.
+fetch_pinned() { # url file sha256 what [tries]
+  local url=$1 out=$2 want=$3 what=$4 tries=${5:-2} attempt
+  for ((attempt = 1; attempt <= tries; attempt++)); do
     if fetch "$url" "$out" && digest_matches "$out" "$want"; then return 0; fi
-    say "  $what: the download is missing or its SHA-256 is not the pinned one (attempt $attempt of 2)"
-    rm -f "$out" "$out.url"
-    [ "$attempt" -ge 2 ] && return 1
-    attempt=$((attempt + 1))
-    sleep 1
+    say "  $what: the download is missing or its SHA-256 is not the pinned one (attempt $attempt of $tries)"
+    rm -f -- "$out" "$out.url"
+    if [ "$attempt" -lt "$tries" ]; then sleep 2; fi
   done
+  return 1
+}
+
+# One source for one archive, with the whole ffmpeg download on a clock: a host
+# that answers slowly (or not at all) must end in a failed job with a message,
+# not in a job that sits there until its timeout.
+ffmpeg_from() { # url file sha256 what
+  if [ "$SECONDS" -ge "$FFMPEG_DEADLINE" ]; then
+    say "  ffmpeg: no source finished within $FFMPEG_SOURCE_SECONDS s; stopping"
+    return 1
+  fi
+  fetch_pinned "$1" "$2" "$3" "$4" 2 && return 0
+  rm -f -- "$2" "$2.url"
+  return 1
 }
 
 # 0. The version is printed by the BUILD: a dist/ built before bumping the
@@ -177,78 +223,84 @@ case "$TARGET" in
 esac
 NODE_ARCHIVE="$CACHE/node-v$NODE_VERSION-$NODE_OS.$NODE_EXT"
 NODE_URL="https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-$NODE_OS.$NODE_EXT"
+# The clock for every ffmpeg source: a host that does not answer costs a few
+# minutes and a failed job with a message, never the job's 60-minute timeout.
+FFMPEG_SOURCE_SECONDS=${FFMPEG_SOURCE_SECONDS:-480}
+FFMPEG_DEADLINE=$((SECONDS + FFMPEG_SOURCE_SECONDS))
 if [ "$FFMPEG_KIND" = mac ]; then
   # evermeet.cx publishes the single binaries for macOS (not pinned: no
   # package ships them yet, see the note where the versions are declared).
-  fetch "$FFMPEG_MAC_FFMPEG_URL" "$CACHE/ffmpeg-mac.zip"
-  fetch "$FFMPEG_MAC_FFPROBE_URL" "$CACHE/ffprobe-mac.zip"
+  fetch "$FFMPEG_MAC_FFMPEG_URL" "$CACHE/ffmpeg-mac.zip" \
+    || die "evermeet.cx did not give ffmpeg for macOS: not packaging it"
+  fetch "$FFMPEG_MAC_FFPROBE_URL" "$CACHE/ffprobe-mac.zip" \
+    || die "evermeet.cx did not give ffprobe for macOS: not packaging it"
 fi
 case "$FFMPEG_KIND" in
   linux)
-    # The archive is checked before it is used: `xz -t` costs nothing and says
-    # right away whether what arrived really is a .tar.xz, and the SHA-256 says
-    # whether it is the build this file pins. A page instead of the file is
-    # what the site does when it is busy, and that answer is transient — on
-    # 2026-11-17 the portable job got the page and the desktop job got the file
-    # from the same URL minutes later. Fetch it again before reaching for
-    # anything else.
+    # Two sources, one digest: ours first, then the publisher. A page instead
+    # of the archive, a truncated transfer and a file from another pin are the
+    # same thing here — `fetch_pinned` drops it, and after its two tries the
+    # next source is used. `xz -t` checks that the bytes really are the .tar.xz
+    # they were pinned as.
     FFMPEG_LINUX_LAYOUT=tar
-    attempt=1
-    while :; do
-      # A failed download, an HTML page and a file that is not the pinned one
-      # are the same thing here: no archive to unpack. Each is retried, and
-      # only after three attempts does the fallback run.
-      if fetch_pinned "$FFMPEG_LINUX_URL" "$CACHE/ffmpeg-linux.tar.xz" "$FFMPEG_LINUX_SHA256" "ffmpeg $FFMPEG_LINUX_VERSION" \
-        && xz -t "$CACHE/ffmpeg-linux.tar.xz" 2>/dev/null; then break; fi
-      say "  the archive is not usable (attempt $attempt of 3)"
-      rm -f "$CACHE/ffmpeg-linux.tar.xz" "$CACHE/ffmpeg-linux.tar.xz.url"
-      if [ "$attempt" -ge 3 ]; then
-        say "  falling back to ffbinaries $FFMPEG_LINUX_FALLBACK_VERSION (pinned, verified)"
-        FFMPEG_LINUX_LAYOUT=zip
-        fetch_pinned "$FFMPEG_LINUX_FALLBACK_FFMPEG" "$CACHE/ffmpeg-linux-fallback-ffmpeg.zip" \
-          "$FFMPEG_LINUX_FALLBACK_FFMPEG_SHA256" "ffbinaries' ffmpeg" \
-          || die "ffbinaries did not give ffmpeg (or not the pinned build)"
-        fetch_pinned "$FFMPEG_LINUX_FALLBACK_FFPROBE" "$CACHE/ffmpeg-linux-fallback-ffprobe.zip" \
-          "$FFMPEG_LINUX_FALLBACK_FFPROBE_SHA256" "ffbinaries' ffprobe" \
-          || die "ffbinaries did not give ffprobe (or not the pinned build)"
-        "$PYTHON" -m zipfile -t "$CACHE/ffmpeg-linux-fallback-ffmpeg.zip" >/dev/null 2>&1 \
-          || die "ffbinaries' ffmpeg archive is not a zip"
-        "$PYTHON" -m zipfile -t "$CACHE/ffmpeg-linux-fallback-ffprobe.zip" >/dev/null 2>&1 \
-          || die "ffbinaries' ffprobe archive is not a zip"
+    ffmpeg_linux_ok=0
+    for url in "$FFMPEG_LINUX_STABLE_URL" "$FFMPEG_LINUX_URL"; do
+      [ -n "$url" ] || continue
+      say "  ffmpeg $FFMPEG_LINUX_VERSION: $url"
+      if ffmpeg_from "$url" "$CACHE/ffmpeg-linux.tar.xz" "$FFMPEG_LINUX_SHA256" "ffmpeg $FFMPEG_LINUX_VERSION" \
+        && xz -t "$CACHE/ffmpeg-linux.tar.xz" 2>/dev/null; then
+        ffmpeg_linux_ok=1
         break
       fi
-      attempt=$((attempt + 1))
-      sleep "$attempt"
+      say "  that source did not give the pinned archive; next source"
     done
+    if [ "$ffmpeg_linux_ok" -eq 0 ]; then
+      say "  falling back to ffbinaries $FFMPEG_LINUX_FALLBACK_VERSION (pinned, verified)"
+      FFMPEG_LINUX_LAYOUT=zip
+      ffmpeg_from "$FFMPEG_LINUX_FALLBACK_FFMPEG" "$CACHE/ffmpeg-linux-fallback-ffmpeg.zip" \
+        "$FFMPEG_LINUX_FALLBACK_FFMPEG_SHA256" "ffbinaries' ffmpeg" \
+        || die "ffmpeg: no source gave the pinned Linux build (sha256 $FFMPEG_LINUX_SHA256) and the ffbinaries fallback failed. Tried '$FFMPEG_LINUX_STABLE_URL', '$FFMPEG_LINUX_URL' and ffbinaries $FFMPEG_LINUX_FALLBACK_VERSION. Upload the archive to the $FFMPEG_DEPS_TAG release (see the header) or fix the network: the job stops here."
+      ffmpeg_from "$FFMPEG_LINUX_FALLBACK_FFPROBE" "$CACHE/ffmpeg-linux-fallback-ffprobe.zip" \
+        "$FFMPEG_LINUX_FALLBACK_FFPROBE_SHA256" "ffbinaries' ffprobe" \
+        || die "ffmpeg: ffbinaries gave ffmpeg but not ffprobe (sha256 $FFMPEG_LINUX_FALLBACK_FFPROBE_SHA256): the job stops here."
+      "$PYTHON" -m zipfile -t "$CACHE/ffmpeg-linux-fallback-ffmpeg.zip" >/dev/null 2>&1 \
+        || die "ffbinaries' ffmpeg archive is not a zip"
+      "$PYTHON" -m zipfile -t "$CACHE/ffmpeg-linux-fallback-ffprobe.zip" >/dev/null 2>&1 \
+        || die "ffbinaries' ffprobe archive is not a zip"
+    fi
     ;;
   win)
-    # The same shape as Linux: a pinned tag, a digest, a verified fallback.
+    # The same shape as Linux: the two sources in the same order, one digest,
+    # and a verified fallback only when both are gone.
     FFMPEG_WIN_LAYOUT=zip
-    attempt=1
-    while :; do
-      if fetch_pinned "$FFMPEG_WIN_URL" "$CACHE/ffmpeg-win.zip" "$FFMPEG_WIN_SHA256" "ffmpeg $FFMPEG_WIN_BUILD"; then break; fi
-      say "  the archive is not usable (attempt $attempt of 3)"
-      rm -f "$CACHE/ffmpeg-win.zip" "$CACHE/ffmpeg-win.zip.url"
-      if [ "$attempt" -ge 3 ]; then
-        say "  falling back to ffbinaries $FFMPEG_WIN_FALLBACK_VERSION (pinned, verified)"
-        FFMPEG_WIN_LAYOUT=zip-fallback
-        fetch_pinned "$FFMPEG_WIN_FALLBACK_FFMPEG" "$CACHE/ffmpeg-win-fallback-ffmpeg.zip" \
-          "$FFMPEG_WIN_FALLBACK_FFMPEG_SHA256" "ffbinaries' ffmpeg" \
-          || die "ffbinaries did not give ffmpeg (or not the pinned build)"
-        fetch_pinned "$FFMPEG_WIN_FALLBACK_FFPROBE" "$CACHE/ffmpeg-win-fallback-ffprobe.zip" \
-          "$FFMPEG_WIN_FALLBACK_FFPROBE_SHA256" "ffbinaries' ffprobe" \
-          || die "ffbinaries did not give ffprobe (or not the pinned build)"
+    ffmpeg_win_ok=0
+    for url in "$FFMPEG_WIN_STABLE_URL" "$FFMPEG_WIN_URL"; do
+      [ -n "$url" ] || continue
+      say "  ffmpeg $FFMPEG_WIN_BUILD: $url"
+      if ffmpeg_from "$url" "$CACHE/ffmpeg-win.zip" "$FFMPEG_WIN_SHA256" "ffmpeg $FFMPEG_WIN_BUILD" \
+        && "$PYTHON" -m zipfile -t "$CACHE/ffmpeg-win.zip" >/dev/null 2>&1; then
+        ffmpeg_win_ok=1
         break
       fi
-      attempt=$((attempt + 1))
-      sleep "$attempt"
+      say "  that source did not give the pinned archive; next source"
     done
+    if [ "$ffmpeg_win_ok" -eq 0 ]; then
+      say "  falling back to ffbinaries $FFMPEG_WIN_FALLBACK_VERSION (pinned, verified)"
+      FFMPEG_WIN_LAYOUT=zip-fallback
+      ffmpeg_from "$FFMPEG_WIN_FALLBACK_FFMPEG" "$CACHE/ffmpeg-win-fallback-ffmpeg.zip" \
+        "$FFMPEG_WIN_FALLBACK_FFMPEG_SHA256" "ffbinaries' ffmpeg" \
+        || die "ffmpeg: no source gave the pinned Windows build (sha256 $FFMPEG_WIN_SHA256) and the ffbinaries fallback failed. Tried '$FFMPEG_WIN_STABLE_URL', '$FFMPEG_WIN_URL' and ffbinaries $FFMPEG_WIN_FALLBACK_VERSION. Upload the archive to the $FFMPEG_DEPS_TAG release (see the header) or fix the network: the job stops here."
+      ffmpeg_from "$FFMPEG_WIN_FALLBACK_FFPROBE" "$CACHE/ffmpeg-win-fallback-ffprobe.zip" \
+        "$FFMPEG_WIN_FALLBACK_FFPROBE_SHA256" "ffbinaries' ffprobe" \
+        || die "ffmpeg: ffbinaries gave ffmpeg but not ffprobe (sha256 $FFMPEG_WIN_FALLBACK_FFPROBE_SHA256): the job stops here."
+    fi
     ;;
 esac
 
 say "runtime: Node $NODE_VERSION ($NODE_OS)"
-fetch "$NODE_URL" "$NODE_ARCHIVE"
-fetch "https://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt" "$CACHE/SHASUMS256-$NODE_VERSION.txt"
+fetch "$NODE_URL" "$NODE_ARCHIVE" || die "nodejs.org did not give Node $NODE_VERSION: not packaging it"
+fetch "https://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt" "$CACHE/SHASUMS256-$NODE_VERSION.txt" \
+  || die "nodejs.org did not give the digests for Node $NODE_VERSION: not packaging it"
 ( cd "$CACHE" && grep " node-v$NODE_VERSION-$NODE_OS.$NODE_EXT\$" "SHASUMS256-$NODE_VERSION.txt" | sha256sum -c --quiet - ) \
   || die "Node's digest does not match: not packaging it"
 rm -rf "$CACHE/node-v$NODE_VERSION-$NODE_OS"

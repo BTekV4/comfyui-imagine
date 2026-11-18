@@ -70,7 +70,17 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Build
         run: npm run build
+      # The pinned archive, kept between runs: a release build must not wait on
+      # the one third-party host that went silent on 2026-11-18. The script
+      # still checks the SHA-256, so a cache entry from another pin is dropped.
+      - name: The pinned ffmpeg archive (cache)
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/imagine-runtime-cache
+          key: imagine-runtime-ffmpeg-7.0.2-abda8d77ce830914
       - name: Package
+        env:
+          CACHE_DIR: ${{ runner.temp }}/imagine-runtime-cache
         run: OUT_DIR=release bash scripts/package-portable.sh ${{ matrix.target }}
       # The check that matters: the package opens and the page answers.
       - name: Boot it
@@ -116,7 +126,14 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Build
         run: npm run build
+      - name: The pinned ffmpeg archive (cache)
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/imagine-runtime-cache
+          key: imagine-runtime-ffmpeg-7.0.2-abda8d77ce830914
       - name: The AppImage
+        env:
+          CACHE_DIR: ${{ runner.temp }}/imagine-runtime-cache
         run: OUT_DIR=release bash scripts/package-electron.sh
       - name: Boot it, twice, and close the window
         run: bash scripts/check-appimage.sh "$GITHUB_WORKSPACE"/release/Imagine-*-linux-x64.AppImage "$RUNNER_TEMP/check"
