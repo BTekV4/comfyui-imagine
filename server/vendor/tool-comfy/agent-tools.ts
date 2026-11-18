@@ -27,7 +27,10 @@ import {
 } from '../../../shared/imagine-media.ts'
 import { VIDEO_RESOLUTIONS, megapixelsFor, sizeFor, videoAspectLabel } from '../../../shared/imagine-sizing.ts'
 import type { ImagineChatEvent } from '../../../shared/imagine-chat.ts'
-import type { GalleryItem, ImagineJobView, ImagineRegion, MediaFileRef, ModelRoute } from '../../../shared/imagine-types.ts'
+import {
+  IMAGINE_ACTIONS, type GalleryItem, type ImagineAction, type ImagineJobView, type ImagineRegion,
+  type MediaFileRef, type ModelRoute,
+} from '../../../shared/imagine-types.ts'
 import type { AgentToolSchema } from '../../../shared/agent-chat.ts'
 import { languageName } from '../../../shared/locale-names.ts'
 import { featherMask, maskDataUrl, rectangleMask } from '../../../shared/masks.ts'
@@ -40,7 +43,7 @@ import { sightInMemory } from './imagine-sight.ts'
 import { loadImagineStore } from './imagine-store.ts'
 import { lookWith } from './imagine-models.ts'
 import type { ImagineJob } from './job-queue.ts'
-import type { JobBody } from './job-start.ts'
+import { jobBodyProblem, type JobBody } from './job-start.ts'
 import { customFieldsOf, type WorkflowInventory } from './imagine-chat.ts'
 
 /** What one tool call produced: the result the model reads, and the runs to wait for. */
@@ -1014,6 +1017,105 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
     schema: {
       type: 'function',
       function: {
+        name: 'run_action',
+        description: 'Run any other studio action with the studio\'s own fields, for parity with the composer: objectSwap (objectMode change, remove, background or add; a photo in `reference` replaces the object), swapPerson (a video and the photo of the new person), recreate (a video shot again; `extras.keepAudio`), relight (a photo and a `light` id), compose (a person and a reference photo), bg, redo, resume, scanFrame, regenerate, custom. Use the dedicated tool when one exists. `extras` carries the action\'s own fields exactly as the studio sends them.',
+        parameters: {
+          type: 'object',
+          properties: {
+            action: { type: 'string', enum: [...IMAGINE_ACTIONS], description: 'The studio action to run.' },
+            prompt: { type: 'string', description: 'What to do, in the user\'s words; empty when the action does not take one.' },
+            source: { type: 'string', description: 'The main file, by gallery name, when the action starts from one.' },
+            reference: { type: 'string', description: 'The second file, by gallery name, when the action takes one.' },
+            extras: {
+              type: 'object',
+              description: 'The action\'s other fields: seconds, size, aspectRatio, megapixels, swapResolution, speed, quality, lyrics, voice, pitch, count, candidates, customWorkflowId, customFields, customFiles, frame, song, light, objectMode, placement, upscaleTo, region, lastSource, sources, keepAudio, lipSync, hardCuts.',
+              additionalProperties: true,
+            },
+          },
+          required: ['action'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async run(args, deps) {
+      const action = str(args['action'])
+      if (action === undefined || !(IMAGINE_ACTIONS as readonly string[]).includes(action)) {
+        return refused(`action must be one of ${IMAGINE_ACTIONS.join(', ')}`)
+      }
+      const prompt = str(args['prompt']) ?? ''
+      if (prompt.length > MAX_PROMPT) return refused(`prompt is longer than ${String(MAX_PROMPT)} characters`)
+      const source = str(args['source'])
+      if (source !== undefined) {
+        const item = await galleryKind(deps, source, ['image', 'video', 'audio'])
+        if (typeof item === 'string') return refused(item)
+      }
+      const reference = str(args['reference'])
+      if (reference !== undefined) {
+        const item = await galleryKind(deps, reference, ['image', 'video', 'audio'])
+        if (typeof item === 'string') return refused(item)
+      }
+      const extras = extrasOf(args['extras'])
+      if (typeof extras === 'string') return refused(extras)
+      for (const field of ['lastSource', 'frame', 'song'] as const) {
+        const name = extras[field]
+        if (typeof name !== 'string') continue
+        const item = await galleryKind(deps, name, ['image', 'video', 'audio'])
+        if (typeof item === 'string') return refused(item)
+      }
+      if (Array.isArray(extras['sources'])) {
+        for (const name of extras['sources']) {
+          if (typeof name !== 'string') continue
+          const item = await galleryKind(deps, name, ['image'])
+          if (typeof item === 'string') return refused(item)
+        }
+      }
+      if (typeof extras['customFiles'] === 'object' && extras['customFiles'] !== null) {
+        for (const name of Object.values(extras['customFiles'])) {
+          if (typeof name !== 'string') continue
+          const item = await galleryKind(deps, name, ['image', 'video', 'audio'])
+          if (typeof item === 'string') return refused(item)
+        }
+      }
+      const body: JobBody = {
+        action: action as ImagineAction,
+        prompt,
+        ...source === undefined ? {} : { source },
+        ...reference === undefined ? {} : { reference },
+        ...extras,
+      }
+      const invalid = jobBodyProblem(body)
+      if (invalid !== undefined) return refused(invalid)
+      if (NEEDS_SOURCE.has(action) && source === undefined) {
+        return refused(`action ${action} starts from a file: pass it in source`)
+      }
+      if ((action === 'video' || action === 'loop') && prompt.length === 0) {
+        return refused(`action ${action} needs what happens in it: ask the user, or copy their description`)
+      }
+      if ((action === 'compose' || action === 'swapPerson') && reference === undefined) {
+        return refused(`action ${action} takes a second file: pass it in reference`)
+      }
+      if (action === 'objectSwap' && (body.objectMode ?? 'change') === 'change' && reference === undefined) {
+        return refused('objectSwap in change mode needs the photo of the new object in reference')
+      }
+      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      deps.say({ kind: 'step', step: 'tool', name: 'run_action', detail: `${action}${prompt.length === 0 ? '' : `: ${prompt}`}` })
+      const jobs = await deps.start({
+        ...body,
+        ...deps.projectId === undefined ? {} : { projectId: deps.projectId },
+        ...deps.model === undefined ? {} : { model: deps.model },
+      })
+      for (const job of jobs) deps.say({ kind: 'step', step: 'queued', jobId: job.id, detail: job.action })
+      return {
+        result: { ok: true, queued: jobs.map(job => job.id), state: 'queued', action },
+        jobs,
+        files: [],
+      }
+    },
+  },
+  {
+    schema: {
+      type: 'function',
+      function: {
         name: 'cancel_job',
         description: 'Propose stopping a run. This NEVER stops anything by itself: the proposal always goes to the user, and only their yes cancels the run. Use it when the user asks to stop a run, or when a run is clearly not what they wanted.',
         parameters: {
@@ -1137,6 +1239,57 @@ export function confirmationFor(
       ...card === undefined ? {} : { card: card.title },
     }
   }
+  if (name === 'run_action') {
+    const action = str(args['action'])
+    const extras = typeof args['extras'] === 'object' && args['extras'] !== null && !Array.isArray(args['extras'])
+      ? args['extras'] as Record<string, unknown>
+      : {}
+    const length = extras['seconds'] === undefined ? named.seconds : Math.round(Number(extras['seconds']))
+    const known = length !== undefined && Number.isFinite(length) ? length : undefined
+    const source = str(args['source'])
+    if (action === 'story') {
+      return {
+        kind: 'run', tool: name, action,
+        summary: known === undefined
+          ? message('agent.confirmStoryNoLength')
+          : message('agent.confirmStory', { seconds: String(known) }),
+        ...known === undefined ? {} : { seconds: known },
+        ...source === undefined ? {} : { source },
+      }
+    }
+    if (action === 'music') {
+      return {
+        kind: 'run', tool: name, action,
+        summary: known === undefined ? message('agent.confirmMusicNoLength') : message('agent.confirmMusic', { seconds: String(known) }),
+        ...known === undefined ? {} : { seconds: known },
+      }
+    }
+    if (action === 'custom') {
+      const id = typeof extras['customWorkflowId'] === 'string' ? extras['customWorkflowId'] : undefined
+      const card = (deps.inventory?.cards ?? []).find(entry => entry.id === id)
+      if (card === undefined) return undefined
+      return { kind: 'run', tool: name, action, summary: message('agent.confirmCard', { card: card.title }), card: card.title }
+    }
+    if (action === 'video' || action === 'extend' || action === 'loop') {
+      const seconds = known ?? 5
+      if (!Number.isFinite(seconds) || seconds < 2 || seconds > 60 || seconds <= confirmSeconds) return undefined
+      if (action === 'video' && typeof extras['lastSource'] === 'string') return undefined
+      return {
+        kind: 'run', tool: name, action,
+        summary: message('agent.confirmClip', { seconds: String(seconds) }),
+        seconds,
+        ...source === undefined ? {} : { source },
+      }
+    }
+    if (action === 'upscale' && Number(extras['upscaleTo']) === 2160) {
+      return {
+        kind: 'run', tool: name, action,
+        summary: message('agent.confirmUpscale4k'),
+        ...source === undefined ? {} : { source },
+      }
+    }
+    return undefined
+  }
   if (name === 'cancel_job') {
     const id = str(args['job'])
     if (id === undefined) return undefined
@@ -1204,6 +1357,55 @@ export function numbersInLine(asked: string): { seconds?: number; count?: number
     ...seconds === undefined ? {} : { seconds },
     ...count === undefined ? {} : { count },
   }
+}
+
+/** The actions that cannot run without a starting file. */
+const NEEDS_SOURCE = new Set([
+  'remix', 'video', 'loop', 'extend', 'upscale', 'bg', 'voice', 'redo', 'resume', 'scanFrame',
+  'recreate', 'regenerate', 'relight', 'compose', 'objectSwap', 'swapPerson',
+])
+
+/**
+ * The type each `extras` field of `run_action` must have, and the closed list
+ * of fields it may carry: a body field the studio does not know, or one with
+ * the wrong type, is refused rather than dropped.
+ */
+const EXTRA_TYPES: Readonly<Record<string, 'string' | 'number' | 'boolean' | 'strings' | 'object'>> = {
+  size: 'string', aspectRatio: 'string', swapResolution: 'string', speed: 'string', quality: 'string',
+  lyrics: 'string', voice: 'string', song: 'string', light: 'string', objectMode: 'string',
+  frame: 'string', lastSource: 'string', mask: 'string', customWorkflowId: 'string',
+  seconds: 'number', megapixels: 'number', pitch: 'number', count: 'number', candidates: 'number',
+  upscaleTo: 'number', clipSeconds: 'number',
+  keepAudio: 'boolean', lipSync: 'boolean', hardCuts: 'boolean', canvasAsked: 'boolean',
+  sources: 'strings', placement: 'object', region: 'object', customFields: 'object', customFiles: 'object',
+}
+
+/**
+ * The `extras` of a `run_action`, checked field by field.
+ * @param value - the argument the model sent.
+ * @returns the fields, or the sentence saying why one is not usable.
+ */
+function extrasOf(value: unknown): Readonly<Record<string, unknown>> | string {
+  if (value === undefined) return {}
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return 'extras must be an object'
+  const kept: Record<string, unknown> = {}
+  for (const [key, raw] of Object.entries(value)) {
+    const kind = EXTRA_TYPES[key]
+    if (kind === undefined) return `extras.${key} is not a field of a studio request`
+    if (kind === 'strings') {
+      if (!Array.isArray(raw) || !raw.every(name => typeof name === 'string')) return `extras.${key} must be a list of gallery names`
+      kept[key] = raw
+      continue
+    }
+    if (kind === 'object') {
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return `extras.${key} must be an object`
+      kept[key] = raw
+      continue
+    }
+    if (typeof raw !== kind) return `extras.${key} must be a ${kind}`
+    kept[key] = raw
+  }
+  return kept
 }
 
 /** The gallery file of one of the kinds the tool accepts, or a refusal. */

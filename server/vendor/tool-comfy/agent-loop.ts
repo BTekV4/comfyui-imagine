@@ -351,6 +351,7 @@ async function runAgentTurn(deps: AgentTurnDeps, route: ModelRoute): Promise<Age
     maxSteps: limits.maxSteps,
     maxJobs: limits.maxJobs,
     ...deps.inventory?.cards === undefined ? {} : { cards: deps.inventory.cards },
+    ...deps.request.voices === undefined ? {} : { voices: deps.request.voices },
   })
   deps.say({ kind: 'step', step: 'route', detail: `${route.provider}/${route.model}` })
   const state: TurnState = {

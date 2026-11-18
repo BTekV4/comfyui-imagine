@@ -19,6 +19,7 @@ import type { MediaFileRef } from '../../../shared/imagine-types.ts'
 import { sightInMemory } from './imagine-sight.ts'
 import { recallNotes, type ImagineFileNote } from './imagine-notes.ts'
 import type { WorkflowCard } from './imagine-chat.ts'
+import { RELIGHT_LOOKS } from '../../../shared/relight-looks.ts'
 
 /** What the instruction needs to know about the turn. */
 export interface AgentPromptInput {
@@ -37,6 +38,8 @@ export interface AgentPromptInput {
   readonly maxJobs: number
   /** The personal cards this studio holds, when it has any. */
   readonly cards?: readonly WorkflowCard[]
+  /** The voices this deployment installed, when it has any. */
+  readonly voices?: readonly string[]
 }
 
 /** How many files the digest shows: the newest, which is what a line points at. */
@@ -97,7 +100,11 @@ export async function agentInstruction(input: AgentPromptInput): Promise<string>
     `- This turn may call the model at most ${String(input.maxSteps)} times and queue at most ${String(input.maxJobs)} runs. A run still going when the turn ends stays queued: the result appears in the chat by itself, so say it is running instead of waiting forever.`,
     '',
     'THE OTHER STUDIO ACTIONS',
-    'Object swap, character swap, recreate, relight, compose, background removal and the rest are not tools yet: if the line asks for one, say so plainly and offer the closest tool above. Do not invent an action name.',
+    '`run_action` runs any other studio action with the studio\'s own fields: objectSwap (objectMode change, remove, background or add; a photo in `reference` replaces the object), swapPerson (a video and the photo of the new person), recreate (a video shot again, `keepAudio` when the original soundtrack stays), relight (a photo and a look id), compose (a person and a reference photo), bg, redo, resume, scanFrame, regenerate and custom. Use a dedicated tool whenever one exists; never invent an action name.',
+    `Relight looks, to copy exactly as ids: ${RELIGHT_LOOKS.map(look => look.id).join(', ')}.`,
+    input.voices === undefined || input.voices.length === 0
+      ? ''
+      : `Voices installed here, to copy exactly: ${input.voices.join(', ')}.`,
     '',
     eraser,
     '',
