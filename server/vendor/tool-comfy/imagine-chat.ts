@@ -1590,17 +1590,20 @@ export async function readImagineChat(
        * campionatore?" into an image of that sentence. It says so instead,
        * keeping whatever the first pass did queue.
        */
-      return kept ?? {
-        reply: message('chat.workflowUnreadable', { label: entry.card?.title ?? entry.label }),
-        intents: [],
-        read: true,
-      }
+      const unreadable = message('chat.workflowUnreadable', { label: entry.card?.title ?? entry.label })
+      if (kept === undefined) return { reply: unreadable, intents: [], read: true }
+      return { ...kept, reply: [kept.reply, unreadable].filter(line => line.trim().length > 0).join(' ') }
     }
-    return {
+    /*
+     * The same two fixes the plain answer gets: a run whose prompt came back
+     * empty takes the sentence, and the retry rules still apply. Only the
+     * shape of the answer is different — it also carries the proposal.
+     */
+    return withAskedLine(retryEditAnswer({
       ...graph,
       intents: kept?.intents ?? [],
       reply: [kept?.reply ?? '', graph.reply].filter(line => line.trim().length > 0).join(' '),
-    }
+    }, noted), request.text)
   }
   const answer = first === undefined ? undefined : availableIntents(first, inventory)
   if (answer !== undefined) return withAskedLine(retryEditAnswer(answer, noted), request.text)
