@@ -24,6 +24,7 @@ import { IMAGINE_ASPECTS } from '../../../shared/imagine-media.ts'
 import type { FrameCard } from './FrameExtractor.tsx'
 import type { GalleryItem, ImagineAction } from '../../../shared/imagine-types.ts'
 import type { WorkflowProposal } from '../../../shared/imagine-chat.ts'
+import type { AgentPending } from '../../../shared/agent-chat.ts'
 import type { HostAccessView } from '../../../shared/host-access.ts'
 import { getJson, send } from './http.ts'
 import { readDismissedScans, rememberDismissedScan } from './dismissed-scans.ts'
@@ -237,6 +238,12 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
    * would be applied against a graph the user has not seen since.
    */
   const [proposal, setProposal] = useState<WorkflowProposal | undefined>(undefined)
+  /**
+   * The work the agent stopped before doing, waiting for a yes. Never
+   * persisted: a reload loses it, because a pending action that outlived the
+   * page would be a run nobody is looking at any more.
+   */
+  const [pending, setPending] = useState<AgentPending | undefined>(undefined)
 
   /*
    * Effective chat-column width; the chat floats over the board's left, so this
@@ -392,6 +399,7 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
   const runner = useRunner({
     actions, view, projectId, projects, current, composer, busy, setBusy, reading, setReading, readingRef,
     trace, editJobs, patch, naming, visible, ownLive, jobs, allByName, pickedGroups, setPicked, proposal, setProposal,
+    pending, setPending,
     openClip: () => { setClipOpen(true) },
     reloadGallery: reload,
   })
@@ -723,6 +731,8 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
   })
   const onApplyProposal = useEvent(() => { void runner.applyProposal() })
   const onCancelProposal = useEvent(() => { setProposal(undefined) })
+  /** Answer the agent's offer: the turn resumes on the server. */
+  const onConfirmAgent = useEvent((accept: boolean) => { void runner.confirmAgent(accept) })
   /** Give up on a reading that is not coming back. */
   const onStopReading = useEvent(() => { readingRef.current?.abort() })
   /*
@@ -1126,6 +1136,8 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
                 busy={busy !== undefined}
                 trace={trace}
                 proposal={proposal}
+                pending={pending}
+                onConfirm={onConfirmAgent}
                 choose={scanChoice}
                 composer={composerNode}
                 onOpenFile={onOpenMessageFile}

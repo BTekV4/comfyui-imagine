@@ -79,6 +79,8 @@ export interface HostSettingsValues {
   readonly agentMaxJobs: number
   readonly agentWaitSeconds: number
   readonly agentTurnSeconds: number
+  /** A clip longer than this is confirmed before it is queued. */
+  readonly agentConfirmSeconds: number
 }
 
 /** What the page is shown: the key is never sent back, only whether it is set. */

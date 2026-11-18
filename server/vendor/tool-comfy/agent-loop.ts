@@ -14,11 +14,12 @@
  * @module tool-comfy/agent-loop
  */
 
+import { randomUUID } from 'node:crypto'
 import { message } from '../../src/messages.ts'
 import type { ImagineHost } from '../../src/host.ts'
 import type {
   AgentCapabilities, AgentChatAsk, AgentChatAnswer, AgentChatMessage, AgentChatMode, AgentLimits,
-  AgentModelCapable, AgentModelEvent, AgentToolCall,
+  AgentModelCapable, AgentModelEvent, AgentPending, AgentToolCall,
 } from '../../../shared/agent-chat.ts'
 import type { ImagineChatEvent } from '../../../shared/imagine-chat.ts'
 import type { ImagineJobView, MediaFileRef, ModelRoute } from '../../../shared/imagine-types.ts'
@@ -27,7 +28,9 @@ import { textRoutes } from './imagine-models.ts'
 import { whenJobsSettle, type ImagineJob } from './job-queue.ts'
 import type { JobBody } from './job-start.ts'
 import { agentInstruction, finalReplyAsk } from './agent-prompt.ts'
-import { agentToolSchemas, runAgentTool, type AgentToolDeps } from './agent-tools.ts'
+import {
+  agentToolSchemas, confirmationFor, runAgentTool, type AgentPendingOffer, type AgentToolDeps,
+} from './agent-tools.ts'
 
 /** What the host hands the loop: the switch, the limits and the declarations. */
 export interface AgentSurface {
@@ -65,6 +68,8 @@ export interface AgentTurnDeps {
   readonly getJob: (id: string) => ImagineJob | undefined
   /** Puts a host-made file into the project. */
   readonly adoptFiles: (names: readonly string[]) => Promise<void>
+  /** Stops a run, after the user confirmed the agent's offer to cancel it. */
+  readonly cancelJob: (id: string) => Promise<boolean>
   /** The page's abort: the stop button, or a closed tab. */
   readonly signal?: AbortSignal
   /** Told about every step, as it happens. */
@@ -97,6 +102,8 @@ const WAIT_TICK_MS = 800
  * @returns the answer, in whichever lane read it.
  */
 export async function readAgentChat(deps: AgentTurnDeps): Promise<AgentChatAnswer> {
+  // An answer to a confirmation resumes the turn it belongs to, not a new one.
+  if (deps.request.confirmation !== undefined) return await resumeAgentChat(deps)
   const mode = deps.surface.mode()
   const routes = textRoutes(deps.request.model)
   const chosen = await chooseRoute(mode, routes, deps)
@@ -250,6 +257,82 @@ async function collect(
   }
 }
 
+/** What one agent turn carries between steps, and across a confirmation. */
+interface TurnState {
+  readonly route: ModelRoute
+  readonly messages: AgentChatMessage[]
+  readonly jobs: ImagineJob[]
+  readonly files: MediaFileRef[]
+  step: number
+  /** When the turn itself stops, in epoch milliseconds. */
+  deadline: number
+  readonly known: readonly MediaFileRef[]
+  readonly asked: string
+  readonly model?: ModelRoute
+  readonly projectId?: string
+  readonly language?: string
+  reply: string
+  gaveUpWaiting: boolean
+  contained: boolean
+  /** Calls of an assistant message already written, to run after a resume. */
+  cursor?: { readonly calls: readonly AgentToolCall[]; readonly index: number }
+}
+
+/** One turn stopped before a confirmed action, kept in memory until answered. */
+interface PendingSession {
+  readonly token: string
+  readonly offer: AgentPendingOffer
+  readonly call: AgentToolCall
+  readonly args: Readonly<Record<string, unknown>>
+  readonly calls: readonly AgentToolCall[]
+  readonly index: number
+  readonly state: TurnState
+  /** How much of the turn was left when the offer was made. */
+  readonly remainingMs: number
+  readonly createdAt: number
+}
+
+/**
+ * The confirmations waiting for an answer, by token.
+ *
+ * In memory on purpose: the design says a reload asks again, because a
+ * pending action is not worth persisting across a restart, and a token that
+ * outlived the process would resume a turn whose runs are gone.
+ */
+const pendingSessions = new Map<string, PendingSession>()
+
+/** How long an unanswered confirmation stays valid. */
+const PENDING_TTL_MS = 10 * 60_000
+
+/** How many confirmations one process keeps at once. */
+const PENDING_MAX = 100
+
+/** The tool deps of one turn, rebuilt from the state a confirmation resumed. */
+function toolDepsOf(deps: AgentTurnDeps, state: TurnState): AgentToolDeps {
+  return {
+    ctx: deps.ctx,
+    outputDir: deps.outputDir,
+    ...state.projectId === undefined ? {} : { projectId: state.projectId },
+    ...state.model === undefined ? {} : { model: state.model },
+    ...state.language === undefined ? {} : { language: state.language },
+    asked: state.asked,
+    ...deps.signal === undefined ? {} : { signal: deps.signal },
+    eraseTool: deps.eraseTool,
+    ...deps.surface.selfURL === undefined ? {} : { selfURL: deps.surface.selfURL },
+    ...deps.inventory === undefined ? {} : { inventory: deps.inventory },
+    ...deps.request.voices === undefined ? {} : { voices: deps.request.voices },
+    start: deps.start,
+    jobView: deps.jobView,
+    listJobs: deps.listJobs,
+    getJob: deps.getJob,
+    adoptFiles: deps.adoptFiles,
+    cancelJob: deps.cancelJob,
+    known: state.known,
+    canQueue: () => Math.max(0, deps.surface.limits().maxJobs - state.jobs.length),
+    say: deps.say,
+  }
+}
+
 /**
  * The agent's own turn.
  * @param deps - the turn.
@@ -258,7 +341,6 @@ async function collect(
  */
 async function runAgentTurn(deps: AgentTurnDeps, route: ModelRoute): Promise<AgentChatAnswer> {
   const limits = deps.surface.limits()
-  const turnDeadline = Date.now() + limits.turnSeconds * 1_000
   const known = [...deps.request.staged ?? [], ...deps.request.recent ?? []]
   const instruction = await agentInstruction({
     request: deps.request,
@@ -268,79 +350,216 @@ async function runAgentTurn(deps: AgentTurnDeps, route: ModelRoute): Promise<Age
     ...deps.language === undefined ? {} : { language: deps.language },
     maxSteps: limits.maxSteps,
     maxJobs: limits.maxJobs,
+    ...deps.inventory?.cards === undefined ? {} : { cards: deps.inventory.cards },
   })
-  const messages: AgentChatMessage[] = [
-    { role: 'system', content: instruction },
-    ...(deps.request.history ?? []).map(entry => ({ role: entry.role, content: entry.text })),
-    { role: 'user', content: deps.request.text },
-  ]
-  const schemas = agentToolSchemas().filter(tool => tool.function.name !== 'erase' || deps.eraseTool)
-  const jobs: ImagineJob[] = []
-  const files: MediaFileRef[] = []
-  const toolDeps: AgentToolDeps = {
-    ctx: deps.ctx,
-    outputDir: deps.outputDir,
-    ...deps.projectId === undefined ? {} : { projectId: deps.projectId },
-    ...deps.request.model === undefined ? {} : { model: deps.request.model },
-    ...deps.language === undefined ? {} : { language: deps.language },
-    asked: deps.request.text,
-    ...deps.signal === undefined ? {} : { signal: deps.signal },
-    eraseTool: deps.eraseTool,
-    ...deps.surface.selfURL === undefined ? {} : { selfURL: deps.surface.selfURL },
-    start: deps.start,
-    jobView: deps.jobView,
-    listJobs: deps.listJobs,
-    getJob: deps.getJob,
-    adoptFiles: deps.adoptFiles,
-    known,
-    canQueue: () => Math.max(0, limits.maxJobs - jobs.length),
-    say: deps.say,
-  }
   deps.say({ kind: 'step', step: 'route', detail: `${route.provider}/${route.model}` })
-  let reply = ''
-  let contained = false
-  /** Set when a run outlived the wait: the turn closes instead of polling on. */
-  let gaveUpWaiting = false
-  for (let step = 1; step <= limits.maxSteps; step++) {
+  const state: TurnState = {
+    route,
+    messages: [
+      { role: 'system', content: instruction },
+      ...(deps.request.history ?? []).map(entry => ({ role: entry.role, content: entry.text })),
+      { role: 'user', content: deps.request.text },
+    ],
+    jobs: [],
+    files: [],
+    step: 1,
+    deadline: Date.now() + limits.turnSeconds * 1_000,
+    known,
+    asked: deps.request.text,
+    ...deps.request.model === undefined ? {} : { model: deps.request.model },
+    ...deps.projectId === undefined ? {} : { projectId: deps.projectId },
+    ...deps.language === undefined ? {} : { language: deps.language },
+    reply: '',
+    gaveUpWaiting: false,
+    contained: false,
+  }
+  return await driveTurn(deps, state)
+}
+
+/**
+ * Resume a turn that stopped for a confirmation: run the offered call when the
+ * user said yes, refuse it when they said no, and let the model write its
+ * reply with the rest of the step.
+ * @param deps - the turn whose `request.confirmation` carries the answer.
+ * @returns the rest of the turn.
+ */
+async function resumeAgentChat(deps: AgentTurnDeps): Promise<AgentChatAnswer> {
+  const answer = deps.request.confirmation
+  if (answer === undefined) return expiredAnswer()
+  const session = pendingSessions.get(answer.token)
+  pendingSessions.delete(answer.token)
+  if (session === undefined || Date.now() > session.createdAt + PENDING_TTL_MS) return expiredAnswer()
+  const limits = deps.surface.limits()
+  const state: TurnState = {
+    ...session.state,
+    messages: [...session.state.messages],
+    jobs: [...session.state.jobs],
+    files: [...session.state.files],
+    deadline: Date.now() + session.remainingMs,
+    reply: '',
+    gaveUpWaiting: false,
+    contained: false,
+  }
+  const toolDeps = toolDepsOf(deps, state)
+  if (answer.accept) {
+    const outcome = await runAgentTool(session.call.name, session.args, toolDeps)
+    const queued = outcome.jobs.filter(job => !state.jobs.some(seen => seen.id === job.id))
+    state.jobs.push(...queued)
+    state.files.push(...outcome.files.filter(file => !state.files.some(seen => seen.name === file.name)))
+    const waited = queued.length === 0
+      ? { all: true, anyRunning: false }
+      : await waitForJobs(queued, deps, state.deadline, limits.waitSeconds)
+    const lived = queued.map(job => deps.getJob(job.id) ?? job)
+    const result = waited.all && queued.length > 0
+      ? { ...outcome.result, state: finalState(lived), files: lived.flatMap(job => job.files?.map(file => file.name) ?? []) }
+      : waited.anyRunning && queued.length > 0
+      ? { ...outcome.result, state: 'running', waiting: 'the run is still going; the result appears in the chat when it is done' }
+      : outcome.result
+    state.messages.push({ role: 'tool', toolCallId: session.call.id, content: JSON.stringify(result) })
+    if (waited.anyRunning) {
+      state.gaveUpWaiting = true
+      closeRemainingCalls(state, session.calls, session.index + 1, 'not run: an earlier run is still going')
+    } else {
+      state.cursor = { calls: session.calls, index: session.index + 1 }
+    }
+  } else {
+    /*
+     * A declined cancel is answered with the run's own state: the model must
+     * not say "it is still queued" when the GPU has already finished it.
+     */
+    const live = session.offer.jobId === undefined ? undefined : deps.getJob(session.offer.jobId)
+    state.messages.push({
+      role: 'tool',
+      toolCallId: session.call.id,
+      content: JSON.stringify({
+        ok: false,
+        error: 'the user declined this action. Do not run it again in this turn; ask what to change if it is still what they want.',
+        ...live === undefined ? {} : { job: { id: live.id, action: live.action, state: live.status } },
+      }),
+    })
+    state.cursor = { calls: session.calls, index: session.index + 1 }
+  }
+  if (state.gaveUpWaiting) return await finishTurn(deps, state)
+  return await driveTurn(deps, state)
+}
+
+/** The answer a token that is gone or too old gets. */
+function expiredAnswer(): AgentChatAnswer {
+  return {
+    mode: 'agent',
+    reply: message('agent.confirmExpired'),
+    jobIds: [],
+    files: [],
+    intents: [],
+    read: true,
+  }
+}
+
+/**
+ * The loop itself, from the state it is in: one model call, its tool calls,
+ * the waits, and the reply. Called for a new turn and again after a
+ * confirmation, so both paths share every ceiling and every rule.
+ * @param deps - the turn.
+ * @param state - what the turn has done so far.
+ * @returns the answer.
+ */
+async function driveTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentChatAnswer> {
+  const limits = deps.surface.limits()
+  const schemas = agentToolSchemas().filter(tool => tool.function.name !== 'erase' || deps.eraseTool)
+  for (let step = state.step; step <= limits.maxSteps; step++) {
+    state.step = step
     if (deps.signal?.aborted === true) break
-    if (Date.now() >= turnDeadline) break
-    let collected: Collected
-    try {
-      collected = await collect(deps.modelClient.chat({
-        provider: route.provider,
-        model: route.model,
-        messages,
-        tools: schemas,
-        toolChoice: 'auto',
-        parallelToolCalls: false,
-        ...deps.signal === undefined ? {} : { signal: deps.signal },
-      }), deps.say)
-    } catch (error: unknown) {
-      if (jobs.length === 0) throw error
-      console.warn(`[imagine] agent: ${error instanceof Error ? error.message : String(error)}`)
-      contained = true
-      break
+    if (Date.now() >= state.deadline) break
+    let calls: readonly AgentToolCall[]
+    let startIndex: number
+    if (state.cursor !== undefined) {
+      calls = state.cursor.calls
+      startIndex = state.cursor.index
+      state.cursor = undefined
+    } else {
+      let collected: Collected
+      try {
+        collected = await collect(deps.modelClient.chat({
+          provider: state.route.provider,
+          model: state.route.model,
+          messages: state.messages,
+          tools: schemas,
+          toolChoice: 'auto',
+          parallelToolCalls: false,
+          ...deps.signal === undefined ? {} : { signal: deps.signal },
+        }), deps.say)
+      } catch (error: unknown) {
+        if (state.jobs.length === 0) throw error
+        console.warn(`[imagine] agent: ${error instanceof Error ? error.message : String(error)}`)
+        state.contained = true
+        break
+      }
+      if (collected.calls.length === 0) {
+        // The model stopped calling tools: its text is the reply.
+        state.reply = collected.text
+        break
+      }
+      state.messages.push({ role: 'assistant', content: collected.text, toolCalls: collected.calls })
+      calls = collected.calls
+      startIndex = 0
     }
-    if (collected.calls.length === 0) {
-      // The model stopped calling tools: its text is the reply.
-      reply = collected.text
-      break
-    }
-    messages.push({ role: 'assistant', content: collected.text, toolCalls: collected.calls })
     let ranOut = false
-    for (const call of collected.calls) {
-      if (Date.now() >= turnDeadline) { ranOut = true; break }
+    let nextIndex = startIndex
+    for (let index = startIndex; index < calls.length; index++) {
+      nextIndex = index
+      if (Date.now() >= state.deadline) { ranOut = true; break }
+      const call = calls[index] as AgentToolCall
       const parsed = parseArguments(call.arguments)
-      const outcome = typeof parsed === 'string'
-        ? { result: { ok: false, error: parsed }, jobs: [] as readonly ImagineJob[], files: [] as readonly MediaFileRef[] }
-        : await runAgentTool(call.name, parsed, toolDeps)
+      if (typeof parsed === 'string') {
+        state.messages.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify({ ok: false, error: parsed }) })
+        nextIndex = index + 1
+        continue
+      }
+      /*
+       * A run that costs a chain, or a clip past the owner's limit, stops here:
+       * the turn ends with an offer, and the page's yes resumes it. Nothing is
+       * queued and nothing is cancelled before that answer.
+       */
+      const offer = confirmationFor(call.name, parsed, state.asked, limits.confirmSeconds, toolDepsOf(deps, state))
+      if (offer !== undefined) {
+        const token = randomUUID().replace(/-/g, '')
+        const now = Date.now()
+        prunePending(now)
+        pendingSessions.set(token, {
+          token, offer, call, args: parsed, calls, index,
+          state: {
+            ...state,
+            messages: [...state.messages],
+            jobs: [...state.jobs],
+            files: [...state.files],
+          },
+          remainingMs: Math.max(0, state.deadline - now),
+          createdAt: now,
+        })
+        const pending: AgentPending = {
+          token,
+          ...offer,
+          expiresAt: now + PENDING_TTL_MS,
+        }
+        deps.say({ kind: 'step', step: 'confirm', detail: offer.summary })
+        return {
+          mode: 'agent',
+          reply: '',
+          jobIds: state.jobs.map(job => job.id),
+          files: state.files,
+          intents: [],
+          read: true,
+          pending,
+        }
+      }
+      const outcome = await runAgentTool(call.name, parsed, toolDepsOf(deps, state))
       // The runs this call queued join the turn's, then the loop waits for them.
-      const queued = outcome.jobs.filter(job => !jobs.some(seen => seen.id === job.id))
-      jobs.push(...queued)
-      files.push(...outcome.files.filter(file => !files.some(seen => seen.name === file.name)))
+      const queued = outcome.jobs.filter(job => !state.jobs.some(seen => seen.id === job.id))
+      state.jobs.push(...queued)
+      state.files.push(...outcome.files.filter(file => !state.files.some(seen => seen.name === file.name)))
       const waited = queued.length === 0
         ? { all: true, anyRunning: false }
-        : await waitForJobs(queued, deps, turnDeadline, limits.waitSeconds)
+        : await waitForJobs(queued, deps, state.deadline, limits.waitSeconds)
       // The queue's live copies: the start returned the jobs as they were
       // queued, and only the map knows what each of them made.
       const lived = queued.map(job => deps.getJob(job.id) ?? job)
@@ -349,48 +568,89 @@ async function runAgentTurn(deps: AgentTurnDeps, route: ModelRoute): Promise<Age
         : waited.anyRunning && queued.length > 0
         ? { ...outcome.result, state: 'running', waiting: 'the run is still going; the result appears in the chat when it is done' }
         : outcome.result
-      messages.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify(result) })
+      state.messages.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify(result) })
       // The wait is the turn's whole patience with a run: past it the reply
       // says "still running" and the result appears in the chat by itself.
       // Polling the model further would only keep the spinner alive.
-      if (waited.anyRunning) { gaveUpWaiting = true; break }
+      nextIndex = index + 1
+      if (waited.anyRunning) {
+        state.gaveUpWaiting = true
+        closeRemainingCalls(state, calls, index + 1, 'not run: an earlier run is still going')
+        nextIndex = calls.length
+        break
+      }
     }
-    if (ranOut || gaveUpWaiting) break
+    if (ranOut) {
+      closeRemainingCalls(state, calls, nextIndex, 'not run: the turn reached its ceiling')
+      break
+    }
+    if (state.gaveUpWaiting) break
   }
+  return await finishTurn(deps, state)
+}
+
+/**
+ * The end of a turn: one last call without tools when the model wrote no
+ * reply, and the sentence that says what happened when even that fails.
+ * @param deps - the turn.
+ * @param state - what it queued.
+ * @returns the answer.
+ */
+async function finishTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentChatAnswer> {
   /*
    * The model did not write a reply — it used every step on tools, or the turn
    * hit its ceiling. One last call with no tools asks for it, so the chat never
    * ends with nothing to read.
    */
-  if (reply.length === 0) {
+  if (state.reply.length === 0) {
     try {
       const last = await collect(deps.modelClient.chat({
-        provider: route.provider,
-        model: route.model,
-        messages: [...messages, { role: 'user', content: finalReplyAsk(deps.language) }],
+        provider: state.route.provider,
+        model: state.route.model,
+        messages: [...state.messages, { role: 'user', content: finalReplyAsk(state.language) }],
         ...deps.signal === undefined ? {} : { signal: deps.signal },
       }), () => undefined)
-      reply = last.text
+      state.reply = last.text
     } catch {
       // The reply below still says something true about the runs.
     }
   }
   // The queue's live copy, not the snapshot the start returned: it was queued
   // when the array was built and only the map knows it finished.
-  const running = jobs.some(job => !settled(deps.getJob(job.id) ?? job))
-  if (reply.length === 0) {
-    reply = running
+  const running = state.jobs.some(job => !settled(deps.getJob(job.id) ?? job))
+  if (state.reply.length === 0) {
+    state.reply = running
       ? message('chat.agentStillRunning')
-      : contained ? message('chat.agentFailed') : message('chat.agentEmpty')
+      : state.contained ? message('chat.agentFailed') : message('chat.agentEmpty')
   }
   return {
     mode: 'agent',
-    reply,
-    jobIds: jobs.map(job => job.id),
-    files,
+    reply: state.reply,
+    jobIds: state.jobs.map(job => job.id),
+    files: state.files,
     intents: [],
     read: true,
     ...running ? { running: true } : {},
+  }
+}
+
+/** Answer the calls of a message the turn will not run, so the wire stays valid. */
+function closeRemainingCalls(state: TurnState, calls: readonly AgentToolCall[], from: number, why: string): void {
+  for (let index = from; index < calls.length; index++) {
+    const call = calls[index] as AgentToolCall
+    state.messages.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify({ ok: false, error: why }) })
+  }
+}
+
+/** Drop confirmations nobody answered, and keep the map bounded. */
+function prunePending(now: number): void {
+  for (const [token, session] of pendingSessions) {
+    if (now > session.createdAt + PENDING_TTL_MS) pendingSessions.delete(token)
+  }
+  while (pendingSessions.size >= PENDING_MAX) {
+    const oldest = pendingSessions.keys().next().value
+    if (oldest === undefined) break
+    pendingSessions.delete(oldest)
   }
 }
 

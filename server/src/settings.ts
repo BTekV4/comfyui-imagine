@@ -66,6 +66,7 @@ export async function createHostSettings(options: {
       agentMaxJobs: positiveInt(values.agentMaxJobs, AGENT_LIMITS_DEFAULT.maxJobs, 1, 40),
       agentWaitSeconds: positiveInt(values.agentWaitSeconds, AGENT_LIMITS_DEFAULT.waitSeconds, 1, 3_600),
       agentTurnSeconds: positiveInt(values.agentTurnSeconds, AGENT_LIMITS_DEFAULT.turnSeconds, 1, 3_600),
+      agentConfirmSeconds: positiveInt(values.agentConfirmSeconds, AGENT_LIMITS_DEFAULT.confirmSeconds, 1, 3_600),
     }
   }
   const bootResumeSweep = merged().resumeSweep
@@ -116,6 +117,7 @@ export async function createHostSettings(options: {
       take('agentMaxJobs', value => typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 40)
       take('agentWaitSeconds', value => typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 3_600)
       take('agentTurnSeconds', value => typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 3_600)
+      take('agentConfirmSeconds', value => typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 3_600)
       // An empty token from the page means "keep the one saved"; a single space clears it.
       if (typeof patch.hfToken === 'string' && patch.hfToken !== '') next['hfToken'] = patch.hfToken.trim()
       if (typeof patch.password === 'string' && patch.password.length > 0) {

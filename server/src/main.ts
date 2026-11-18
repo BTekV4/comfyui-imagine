@@ -189,6 +189,7 @@ const settings = await createHostSettings({
     agentMaxJobs: AGENT_LIMITS_DEFAULT.maxJobs,
     agentWaitSeconds: AGENT_LIMITS_DEFAULT.waitSeconds,
     agentTurnSeconds: AGENT_LIMITS_DEFAULT.turnSeconds,
+    agentConfirmSeconds: AGENT_LIMITS_DEFAULT.confirmSeconds,
   },
 })
 
@@ -299,6 +300,7 @@ const { outputDir } = toolComfy.apply(ctx, toolComfy.Config(config.toolComfy), {
       maxJobs: now().agentMaxJobs,
       waitSeconds: now().agentWaitSeconds,
       turnSeconds: now().agentTurnSeconds,
+      confirmSeconds: now().agentConfirmSeconds,
     }),
     capabilities: route => modelCapabilities(route),
     selfURL: ownAddress(listenOn.host, listenOn.port),

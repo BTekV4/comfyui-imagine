@@ -11,6 +11,7 @@
 
 import type { Dispatch, SetStateAction } from 'react'
 import type { ImagineChatIntent, WorkflowProposal } from '../../../shared/imagine-chat.ts'
+import type { AgentPending } from '../../../shared/agent-chat.ts'
 import { aspectFor, upscaleBlocked, type ImagineAspect, type ImagineResolution } from '../../../shared/imagine-media.ts'
 import type { ImagineProject } from '../../../shared/imagine-projects.ts'
 import {
@@ -18,7 +19,7 @@ import {
   type ImaginePlacement, type ImagineQuality, type ImagineRegion, type ImagineSpeed,
 } from '../../../shared/imagine-types.ts'
 import type { ComposerStore } from './composer-store.ts'
-import { applyWorkflowChanges, fetchImagineJobs, readAgentChat, runTemplate, startImagineJob } from './gallery-api.ts'
+import { applyWorkflowChanges, confirmAgentChat, fetchImagineJobs, readAgentChat, runTemplate, startImagineJob } from './gallery-api.ts'
 import { SEED_MESSAGE_PREFIX, appendMessage, createProject, isSeedMessage, rememberJob, titleFromPrompt } from './imagine-projects.ts'
 import { HISTORY_PROJECT_ID } from '../../../shared/imagine-projects.ts'
 import {
@@ -171,6 +172,9 @@ export interface RunnerContext {
   readonly setPicked: Dispatch<SetStateAction<readonly string[]>>
   readonly proposal: WorkflowProposal | undefined
   readonly setProposal: Dispatch<SetStateAction<WorkflowProposal | undefined>>
+  /** The work the agent stopped before doing, waiting for a yes. */
+  readonly pending: AgentPending | undefined
+  readonly setPending: Dispatch<SetStateAction<AgentPending | undefined>>
   /** Open the music-video form. */
   readonly openClip: () => void
   /**
@@ -186,7 +190,7 @@ export function useRunner(ctx: RunnerContext) {
   const {
     actions, view, projectId, projects, current, composer, busy, setBusy, reading, setReading, readingRef,
     trace, editJobs, patch, naming, visible, ownLive, jobs, allByName, pickedGroups, setPicked, proposal, setProposal,
-    reloadGallery,
+    pending, setPending, reloadGallery,
   } = ctx
   const setNote = (note: string | undefined): void => { composer.set({ note }) }
 
@@ -1042,6 +1046,7 @@ export function useRunner(ctx: RunnerContext) {
       }
       if (projectId !== project.id) actions.openProject(project.id)
       setProposal(answer.proposal)
+      setPending(answer.pending)
       if (answer.mode !== 'agent') for (const intent of answer.intents) {
         const before = project.jobIds
         const next = await runIntent(intent, project)
@@ -1071,7 +1076,7 @@ export function useRunner(ctx: RunnerContext) {
        * only answered" (2026-10-17). A status line, not the reply: the
        * reader's own words are not evidence of what it did.
        */
-      if (answer.intents.length === 0 && answer.jobIds.length === 0 && answer.files.length === 0) {
+      if (answer.pending === undefined && answer.intents.length === 0 && answer.jobIds.length === 0 && answer.files.length === 0) {
         project = appendMessage(project, {
           id: `s-${String(Date.now())}`,
           role: 'status',
@@ -1242,6 +1247,91 @@ export function useRunner(ctx: RunnerContext) {
   }
 
   /**
+   * Answer the agent's offer: yes runs the work it stopped before, no tells
+   * the model and nothing is queued. The turn resumes on the server, so the
+   * reply, the job ids and any further offer come back through the same
+   * stream the line did.
+   * @param accept - the user's answer.
+   */
+  const confirmAgent = async (accept: boolean): Promise<void> => {
+    const offer = pending
+    if (offer === undefined || reading) return
+    setPending(undefined)
+    setNote(undefined)
+    const controller = new AbortController()
+    readingRef.current = controller
+    setReading(true)
+    trace.set([])
+    let thinking = ''
+    const note = (event: Parameters<typeof thoughtOf>[0]): void => {
+      if (event.kind === 'reasoning') thinking += event.text
+      trace.set((thoughts) => {
+        if (event.kind === 'reasoning') {
+          const last = thoughts[thoughts.length - 1]
+          return last?.kind === 'reasoning'
+            ? [...thoughts.slice(0, -1), { id: last.id, kind: 'reasoning', text: last.text + event.text }]
+            : [...thoughts, { id: nextThoughtId(), kind: 'reasoning', text: event.text }]
+        }
+        const thought = thoughtOf(event)
+        return thought === undefined ? thoughts : [...thoughts, thought]
+      })
+    }
+    try {
+      const open = current
+      if (open === undefined) return
+      let project: ImagineProject = open
+      const answer = await confirmAgentChat({ token: offer.token, accept }, project.id, controller.signal, note)
+      trace.set(thoughts => [...thoughts, answer.read
+        ? { id: nextThoughtId(), kind: 'step', text: translate('imagine.thoughtDone', { count: String(answer.mode === 'agent' ? answer.jobIds.length : answer.intents.length) }) }
+        : { id: nextThoughtId(), kind: 'step', text: translate('imagine.thoughtDoneUnread'), keep: true }])
+      if (answer.pending !== undefined) {
+        setPending(answer.pending)
+        return
+      }
+      const answeredId = `a-${String(Date.now())}`
+      let spoken = false
+      if (answer.reply.length > 0 || thinking.trim().length > 0) {
+        project = appendMessage(project, {
+          id: answeredId,
+          role: 'assistant',
+          text: answer.reply,
+          createdAt: Date.now(),
+          ...thinking.trim().length === 0 ? {} : { thinking: thinking.trim() },
+        })
+        patch(project)
+        spoken = true
+      }
+      if (answer.mode === 'agent') {
+        for (const jobId of answer.jobIds) project = rememberJob(project, jobId)
+        if (answer.jobIds.length > 0 && spoken) {
+          const board: ImagineProject = project
+          project = {
+            ...board,
+            messages: board.messages.map(message => message.id === answeredId
+              ? { ...message, jobIds: [...new Set([...(message.jobIds ?? []), ...answer.jobIds])] }
+              : message),
+          }
+        }
+        const made = answer.files.map(file => file.name).filter(name => !project.itemNames.includes(name))
+        if (made.length > 0) {
+          await reloadGallery()
+          actions.regrid(made)
+          const board: ImagineProject = project
+          project = { ...board, itemNames: [...board.itemNames, ...made] }
+        }
+        patch(project)
+      }
+      setProposal(answer.proposal)
+      setPending(answer.pending)
+    } catch (error: unknown) {
+      if (!controller.signal.aborted) setNote(noteFromError(error))
+    } finally {
+      if (readingRef.current === controller) readingRef.current = undefined
+      setReading(false)
+    }
+  }
+
+  /**
    * Write the workflow change the user just accepted. The outcome is a status
    * line in the column, backup path included: these graphs are not in the
    * repository, and where the previous one went is the only way back.
@@ -1263,7 +1353,7 @@ export function useRunner(ctx: RunnerContext) {
   }
 
   return {
-    run, runCustomBatch, runBatchUpscale, sendLine, submit, runPanel, chooseFrame, applyProposal,
+    run, runCustomBatch, runBatchUpscale, sendLine, submit, runPanel, chooseFrame, applyProposal, confirmAgent,
     openOrCreate, seedProject, runTemplateForm,
   }
 }
