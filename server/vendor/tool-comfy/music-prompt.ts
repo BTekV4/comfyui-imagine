@@ -68,9 +68,15 @@ export interface MusicScore {
   readonly seconds?: number
 }
 
-/** The shortest and longest song the writer may decide on, in seconds. */
-const MUSIC_MIN_SECONDS = 30
-const MUSIC_MAX_SECONDS = 300
+/**
+ * The shortest and longest song the writer may decide on, in seconds.
+ *
+ * Exported because the written lane quotes them: a song's line in the chat
+ * said "30-180" while the studio rendered up to five minutes, so a reader
+ * asking for a four-minute piece was told the wrong shape of the request.
+ */
+export const MUSIC_MIN_SECONDS = 30
+export const MUSIC_MAX_SECONDS = 300
 
 /**
  * The instruction that turns one line into a caption and a tagged lyric sheet.

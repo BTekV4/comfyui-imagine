@@ -9,7 +9,10 @@
  * @module shared/imagine-sizing
  */
 
-import { VIDEO_ASPECT_LABELS, aspectFor, type ImagineAspect, type ImagineResolution } from './imagine-media.ts'
+import {
+  MAX_STORY_SECONDS, MIN_SHOT_SECONDS, VIDEO_ASPECT_LABELS, aspectFor,
+  type ImagineAspect, type ImagineResolution,
+} from './imagine-media.ts'
 
 /** Video ladder — MiniMax I2V in this deployment tops out at 720p. */
 export const VIDEO_RESOLUTIONS = ['480p', '720p'] as const
@@ -233,10 +236,46 @@ export function canvasMegapixelsFor(resolution: ImagineResolution): number {
 }
 
 /**
+ * The shortest length a chain renders: one shot, not one duration rung.
+ *
+ * The clamp's floor is the shot's, not the duration button's: the chain is
+ * also how a video is made from nothing, so it runs at lengths under 20 s.
+ */
+const CHAIN_FLOOR_SECONDS = MIN_SHOT_SECONDS
+
+/**
+ * Shortest duration the chain is named by in the composer and the chat.
+ *
+ * Kept here rather than in the page so the reading's prompt and the page's
+ * clamp quote the same number.
+ */
+export const STORY_MIN_SECONDS = 20
+
+/**
+ * Keep a chained video's duration inside what the chain can render.
+ *
+ * The ladder clamp cannot do this job: a story asked for in words is any
+ * number of seconds, and a value off the four rungs the button offered would
+ * come back as the ten-second clip the user did not ask for.
+ * @param seconds - the duration asked for.
+ * @returns a duration between the shortest and longest chain.
+ */
+export function clampStorySeconds(seconds: number): number {
+  if (!Number.isFinite(seconds)) return STORY_MIN_SECONDS
+  return Math.max(CHAIN_FLOOR_SECONDS, Math.min(MAX_STORY_SECONDS, Math.round(seconds)))
+}
+
+/**
  * Keep a duration this mode and ladder step can send.
  *
- * A 15s clip picked at 480p survives a trip through 720p as the 10s the step
- * does offer, rather than being sent as a length the sampler cannot fit.
+ * An off-ladder value used to fall back to ten seconds, which is a different
+ * request: "a twelve-second video" came out ten, and a clip picked at 15 s
+ * came back ten when the step changed. The rule now:
+ * - a length past the longest single clip is a chain, and the chain's own
+ *   clamp decides (12 s is twelve seconds of chained scenes, past the ceiling
+ *   it is the ceiling);
+ * - a length between two single-clip rungs takes the next rung up;
+ * - a loop stays on its own longer ladder, which already reaches the minute.
  * @param mode - the composer mode the run will use.
  * @param resolution - the selected resolution.
  * @param seconds - the selected duration.
@@ -246,9 +285,24 @@ export function clampSeconds(mode: string, resolution: ImagineResolution, second
   // A song has no ladder: its length is decided from the words by the writer
   // that structures them, unless the sentence said one (2026-09-09).
   if (mode === 'music') return seconds
+  if (!Number.isFinite(seconds)) return 10
+  const whole = Math.round(seconds)
   const ladder: readonly number[] = mode === 'loop' ? LOOP_SECONDS : videoSecondsFor(resolution)
-  if (ladder.includes(seconds)) return seconds
-  return 10
+  if (ladder.includes(whole)) return whole
+  const clips = clipSecondsFor(resolution)
+  const longestClip = clips[clips.length - 1] ?? 10
+  /*
+   * Past the longest single clip the run is a chain of scenes: the length
+   * that reaches the GPU is the clamp's, not a rung that was never on the
+   * button. A loop joins its own segments and stops at its ladder's top.
+   */
+  if (whole > longestClip) {
+    return mode === 'loop'
+      ? Math.min(whole, Math.max(...LOOP_SECONDS))
+      : clampStorySeconds(whole)
+  }
+  // Between rungs: the next one up, never back to ten.
+  return ladder.find(rung => rung >= whole) ?? longestClip
 }
 
 /**
