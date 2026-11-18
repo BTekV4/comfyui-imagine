@@ -150,7 +150,9 @@ test('an explicit request about a graph runs the second pass and keeps the inten
     JSON.stringify({
       reply: 'I will change it.',
       workflow: 'generate',
-      intents: [{ action: 'generate', prompt: 'a lighthouse at night' }],
+      // The prompt is left to the sentence on purpose: the runs of the first
+      // pass keep the same fixes they get without a proposal.
+      intents: [{ action: 'generate', prompt: '' }],
     }),
     JSON.stringify({ reply: 'Done.', changes: [{ node: '53', field: 'steps', value: 20 }] }),
   )
@@ -158,8 +160,10 @@ test('an explicit request about a graph runs the second pass and keeps the inten
   assert.equal(host.prompts.length, 2)
   assert.equal(answer.proposal?.key, 'generate')
   assert.deepEqual(answer.proposal?.diff.map(row => [row.node, row.field, row.to]), [['53', 'steps', 20]])
-  // The run the same sentence asked for is not thrown away for the graph.
+  // The run the same sentence asked for is not thrown away for the graph, and
+  // an empty prompt takes the line the user wrote.
   assert.deepEqual(answer.intents.map(intent => intent.action), ['generate'])
+  assert.match(answer.intents[0]?.prompt ?? '', /cambia a 20 gli step/)
   const second = host.prompts[1] ?? ''
   assert.ok(second.includes('range 1..100'), 'the second pass was not told the number’s bounds')
   assert.ok(second.includes('a.safetensors'), 'the second pass was not told the combo’s values')
