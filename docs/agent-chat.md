@@ -1,7 +1,9 @@
 # The agent chat
 
-Status: design for review (F0, 2026-11-18). Nothing in this document is built
-yet, and nothing below changes the classic lane until the switch exists.
+Status: F1 built on branch `agent-chat-core-20261118` (2026-11-18), not
+published. F0 was approved and its three open questions are decided below.
+The classic lane is still there, and it is what reads a line when the model
+cannot call tools or the switch is off.
 
 The chat inside a project reads one written line with one JSON call and answers
 with a fixed shape: an action, a prompt, a handful of fields. That shape was
@@ -126,7 +128,7 @@ normal user never has to touch:
 | `agentChat` | `auto` | `auto` = agent when the model declares tool calling, `off` = classic lane always, `on` = agent even if the model's declaration is missing (a probe decides). |
 | `agentMaxSteps` | 8 | Model calls in one turn (a turn with 3 tools is typically 4-5 calls). |
 | `agentMaxJobs` | 6 | Runs one turn may queue. |
-| `agentConfirmSeconds` | 10 | A requested clip longer than this is confirmed first. Story, music, montage, custom cards and upscale-to-4K are always confirmed: their GPU cost is a chain, not a clip. |
+| `agentConfirmSeconds` | 15 | A requested clip longer than this is confirmed first. Story, music, montage, custom cards and upscale-to-4K are always confirmed: their GPU cost is a chain, not a clip. (F1 has no clip tools; F2 enforces this.) |
 | `agentWaitSeconds` | 300 | How long one turn waits for a run before answering "it is still running". |
 | `agentTurnSeconds` | 900 | Hard ceiling of a turn; past it the loop stops and answers with what it queued. |
 
@@ -225,26 +227,60 @@ The gateway already publishes what a model can do: `GET /v1/models` carries
 that answer (for `effort_tiers`) and caches it for a minute. That is the switch:
 `agentChat: auto` means agent when `defaultModel` declares `tool_calling: true`.
 
-Measured on this deployment (2026-11-18, through the gateway, same tools,
-Italian request, streamed):
+Measured on this deployment (2026-11-18, real probes, same tools, Italian
+request, streamed). **The route in production is `strata/qwen3.8-flash-next`
+through OmniRoute** (the deployment's `host-settings.json`); the earlier F0 table named
+an `opencode-go` model that this deployment does not chat with, and it was
+wrong for this studio.
 
-| Model | tools | vision | first tool call | second turn (tool result → text) | price /M in-out |
-|---|---|---|---|---|---|
-| `opencode-go/deepseek-v4.1-flash` (default) | yes | yes | 4.1 s | yes, sensible | 0.30 / 1.20 |
-| `opencode-go/qwen3.8-flash` | yes | yes | 2.6 s | yes | 0.15 / 0.47 |
-| `opencode-go/deepseek-v4-pro` | yes | no | 2.3 s | yes | 1.32 / 3.96 |
-| `opencode-go/glm-5.3` | yes | no | not probed | — | 1.40 / 4.40 |
-| `opencode-go/kimi-k3` | yes | yes | not probed | — | 3 / 15 |
+| Route | tools | vision | first tool call | loop end (tool results → text) |
+|---|---|---|---|---|
+| `strata/qwen3.8-flash-next`, OmniRoute (default) | yes, declared | yes | 2.8–8.9 s, 3/3 runs | text after 4 calls, 3/3 runs |
+| `qwen3.8-flash-next`, direct `:8080` (no capabilities) | yes, by probe | yes | 4.7 s | text after 4 calls |
+| `opencode-go/deepseek-v4.1-flash` (F0's probe only) | yes | yes | 4.1 s | yes |
 
-**Choice.** The default model stays the one the user picked: today
-`opencode-go/deepseek-v4.1-flash`, which has tools, vision, a 1M context and a
-price that makes a ten-step turn cheap. No new provider and no second model
-setting: the composer's chip still names one model and every pass uses it. When
-the chosen model declares no tools — or a local endpoint that does not publish
-capabilities — the server makes one cached probe (a trivial tool, one short
-call, remembered per provider/model for the life of the process). If the probe
-does not produce a tool call, the chat uses the classic lane and the settings
-page says why, instead of pretending to be an agent.
+What the probes actually showed on Strata:
+
+- The streamed shape is OpenAI's: `delta.tool_calls` fragments with `index`,
+  `id` on the first piece, `function.name` once and `function.arguments` in
+  pieces; `finish_reason: "tool_calls"`; the accumulated arguments parse as
+  JSON. The second turn reads the assistant `tool_calls` and the `tool`
+  result and keeps going.
+- Three coherent runs (generate → job status → look → reply) ended with text
+  in 4 calls each, 2.7–17.2 s per call. A loop with *incoherent* fake results
+  (a blue square when the request was a red cup) keeps retrying: the model is
+  judging the result, not just filling a schema, which is the point. The step
+  ceiling and the forced final reply (one call without tools) bound it.
+- One follow-up call in three streamed an `</parameter>` artefact into the
+  arguments; the loop refuses malformed JSON as a tool result and the model
+  corrects, so it is a wasted step, not a failed turn.
+- Prompt fidelity: the model dropped the leading "Fai una foto di" and kept
+  the description ("una tazza rossa su un tavolo di legno, con la luce del
+  mattino dalla finestra"), with no house phrases added. The server passes
+  what the tool receives through untouched; a fake-model test asserts that,
+  and the step line shows the prompt actually sent so a rewrite is visible.
+- Vision: asked about a neutral blue frame with a yellow square, both the
+  OmniRoute route and direct Strata answered "The background is blue and the
+  shape in the centre is a yellow square." (12.3 s through the gateway, 3.6 s
+  direct).
+
+**Capabilities.** OmniRoute publishes `capabilities.tool_calling: true` for
+`strata/qwen3.8-flash-next`, so `auto` turns the agent on without a probe.
+Strata's own `/v1/models` publishes no capabilities at all (only the
+architecture and `n_ctx`): a studio pointed straight at `:8080` gets the
+cached probe, which sends one trivial tool with `tool_choice: "required"`,
+bounded at 40 s, and remembers the answer for the life of the process. That is
+the path the test instance ran on.
+
+**Choice.** The default model stays the one the user picked: on this
+deployment `strata/qwen3.8-flash-next` through OmniRoute, which has tools,
+vision and a 256k context and costs nothing on the local GPU. No second model
+setting: the composer's chip still names one model and every pass uses it.
+`auto` = agent when the route declares tool calling, or when the probe finds
+it; `off` = classic always; `on` = agent whatever the route declares. A route
+with neither a declaration nor a successful probe sends the line to the
+classic lane, and the answer says so (`skipped: "no-tools"`), instead of
+pretending to be an agent.
 
 Vision does not depend on the chat model: `look` uses the configured vision
 route, as every sight pass does today. A chat model without image input still
@@ -301,13 +337,86 @@ Each phase is its own branch and PR, not merged by the worker.
 If F1 grows past what one review can hold, it splits into "loop and tools" and
 "switch and wiring"; the loop is what the rest depends on.
 
+## Decisions (owner, 2026-11-18)
+
+1. **Confirmation** only for a clip longer than 15 s, and always for a story,
+   music, montage, a personal card and an upscale to 4K. A 10–15 s clip runs
+   without asking.
+2. **The agent never cancels a job by itself.** It proposes the cancel and
+   waits for the user's yes; the same rule as a confirmation, and the reason
+   `cancel_job` is a proposal in F2 rather than a tool.
+3. **A long wait closes the turn** with "it is still running", and the result
+   appears in the chat by itself when the run settles — the reply line carries
+   the job ids, and the page folds each finished run's files under it (and
+   posts its result line) without the user asking again.
+
+## F1 — what is built
+
+- `server/src/llm.ts`: `chat` (tool calls, reasoning, text, finish reason on
+  one streamed call), and `modelCapabilities` from `/v1/models`. The classic
+  `stream` is untouched.
+- `agent-loop.ts`: the lane choice, the cached probe, the loop, the wait, the
+  step ceiling and the forced final reply.
+- `agent-tools.ts`: `generate_image`, `edit_image`, `erase`, `look`,
+  `project_files`, `job_status`, with the studio's own checks.
+- `agent-prompt.ts`: the instruction and the project digest.
+- `POST /comfy-imagine/agent`: one route for both lanes. The answer says
+  `mode: "agent"` with `jobIds`, or `mode: "classic"` with the intents the page
+  has always run, so the page does not need to know which switch is on.
+- The settings switch (`agentChat`: auto/off/on) and the budgets, saved in
+  `host-settings.json` and applied from the next turn.
+- The page: the chat submits to the agent route, shows the tool steps and the
+  prompt actually sent, attaches the queued ids to the reply line, and puts a
+  file the eraser made on the board.
+- Tests with a fake model (`test/agent-chat.test.ts`,
+  `test/llm-agent.test.ts`): the prompt passes through unchanged, a refusal
+  goes back to the model, the step ceiling ends with a reply, the probe is
+  cached, the switch picks the lane, and the tool-turn wire shapes.
+
+Not in F1, by the phase plan: clips, story, music, audio, voice, upscale,
+cards, the confirmation gate, cancel and the long-memory summary. A line that
+asks for one is told "this version cannot yet", never answered with an
+invented action.
+
+### Proved on a trial instance (2026-11-18)
+
+The branch, on port 3091 with its own data folder, a real ComfyUI on the
+user's PC and a real IOPaint, Qwen3.8 through Strata's own `/v1` (which
+publishes no capabilities, so every turn went through the cached probe), the
+Italian pack, neutral images only. No user data.
+
+- **A still**: "Fai una foto di un faro bianco su una scogliera al tramonto"
+  queued one `generate` job, streamed the wait with its percentages, looked at
+  the file and answered with what it saw (lighthouse, rocks, orange-to-blue
+  sky, lamp lit), 45 s. The job's prompt was the user's description; the tool
+  step showed it in the column.
+- **An edit**: "Rendi il cielo più viola, tieni il resto com'è" grounded "il
+  cielo", sent a remix with that zone, waited, looked, and reported a darker
+  band at the top it offered to redo, 71 s.
+- **The eraser**: a yellow square on blue, "Togli il quadrato giallo" →
+  grounding, mask, IOPaint, a new file; the model looked at both and said the
+  fill was a shade darker than the rest, 36 s.
+- **The read tools**: "Che fine ha fatto la foto del gatto? E quali file ci
+  sono in questo progetto?" read `project_files` and `job_status` and listed
+  the four files with how each was made, correctly saying the cat was not in
+  that project, 12 s.
+- **The switch**: `off` answered `mode: "classic"`, `skipped: "off"` with the
+  classic intents; `auto` turned the agent back on without a restart.
+- **A long wait**: with `agentWaitSeconds: 5`, the reply said the generation
+  was still running and the result would appear by itself; when the job
+  finished the column posted its result line and drew the file under the
+  reply, with no further request from the user.
+- **A named choice the model drops**: asked "quadrata, a 480p", Strata called
+  the tool with `1:1` and no resolution. The tool recovers a ratio or a
+  resolution the user named from their line (`choicesInLine`, unit-tested),
+  so the run and the file were 480×480, and the reply said so. The prompt
+  itself is never rewritten.
+
+Not proved: a turn that waits out a naturally slow clip (F1 has no clip
+tools; the wait was forced with the 5-second setting), and anything on
+Windows.
+
 ## Open questions for the owner
 
-1. Confirmation threshold: is "any clip over 10 s, and every story, music,
-   montage, custom card and 4K upscale" the right line, or should a 10-15 s
-   clip run without asking?
-2. May the agent cancel a running job by itself (to redo it), or only propose
-   the cancel and wait for the user? The proposal is the safer default.
-3. When a clip is still rendering past the wait ceiling, should the chat answer
-   "it is running, ask me again" (cheap, honest) or keep the turn open up to
-   the turn ceiling (fewer messages, a longer spinner)?
+None left from the design. The next ones belong to F2 and F3: the wording of
+the confirmation card, and how a dropped long conversation is summarised.
