@@ -22,9 +22,13 @@ import { applyWorkflowChanges, fetchImagineJobs, readImagineChat, runTemplate, s
 import { SEED_MESSAGE_PREFIX, appendMessage, createProject, isSeedMessage, rememberJob, titleFromPrompt } from './imagine-projects.ts'
 import { HISTORY_PROJECT_ID } from '../../../shared/imagine-projects.ts'
 import {
-  STORY_MIN_SECONDS, clampResolution, clampStorySeconds, isStoryLength, megapixelsFor, sizeFor,
+  STORY_MIN_SECONDS, clampResolution, clampStorySeconds, editSizeFor, isStoryLength, megapixelsFor, sizeFor,
   canvasMegapixelsFor, swapResolutionOf, videoAspectLabel, clampSeconds,
 } from './imagine-settings.ts'
+import { isChatHostAction } from '../../../shared/imagine-chat.ts'
+import { IOPAINT_PLUGIN, pluginEnabled } from './plugin-presence.ts'
+import { postJson } from './http.ts'
+import { removalMask } from './erase-mask.ts'
 import { STORY_MINUTES_PER_CLIP, nextThoughtId, noteFromError, thoughtOf } from './imagine-messages.ts'
 import { slotsOf } from './job-cards.ts'
 import { relightLookOf } from '../../../shared/relight-looks.ts'
@@ -169,12 +173,20 @@ export interface RunnerContext {
   readonly setProposal: Dispatch<SetStateAction<WorkflowProposal | undefined>>
   /** Open the music-video form. */
   readonly openClip: () => void
+  /**
+   * Read the gallery again from the host.
+   *
+   * A host edit (the eraser, a track laid over a clip) writes a file outside
+   * the job queue, so nothing else tells the board it exists.
+   */
+  readonly reloadGallery: () => Promise<void>
 }
 
 export function useRunner(ctx: RunnerContext) {
   const {
     actions, view, projectId, projects, current, composer, busy, setBusy, reading, setReading, readingRef,
     trace, editJobs, patch, naming, visible, ownLive, jobs, allByName, pickedGroups, setPicked, proposal, setProposal,
+    reloadGallery,
   } = ctx
   const setNote = (note: string | undefined): void => { composer.set({ note }) }
 
@@ -425,9 +437,22 @@ export function useRunner(ctx: RunnerContext) {
             ...over?.frame === undefined ? {} : { frame: over.frame.name },
             ...over?.megapixels === undefined ? {} : { megapixels: over.megapixels },
           }
-        default:
+        default: {
           if (action === 'compose') return reference === undefined ? {} : { reference: reference.name }
-          return { size: sizeFor(liveAspect, liveResolution), ...action === 'remix' && reference !== undefined ? { reference: reference.name } : {} }
+          /*
+           * An edit keeps the photo's own shape unless the line named a
+           * ratio: the graph measures the photo it is given, and a canvas
+           * sent anyway is what made a 4:5 photo come back cropped. A run
+           * from a control (a tile, the panel) still sends the composer's
+           * canvas, which is the choice the user made there.
+           */
+          const namedCanvas = over?.lane !== true || over?.aspect !== undefined
+          const size = editSizeFor(namedCanvas, liveAspect, liveResolution)
+          return {
+            ...size === undefined ? {} : { size },
+            ...action === 'remix' && reference !== undefined ? { reference: reference.name } : {},
+          }
+        }
       }
     })()
     /*
@@ -475,6 +500,8 @@ export function useRunner(ctx: RunnerContext) {
            * is set by `extras` or `recipe`, so nothing above is overwritten.
            */
           count: over?.count,
+          // Only a ratio the sentence named overrides an edit's own shape.
+          ...over?.lane === true && over?.aspect !== undefined ? { canvasAsked: true } : {},
           upscaleTo: over?.upscaleTo,
           region: over?.region,
           lastSource: over?.lastSource,
@@ -696,6 +723,75 @@ export function useRunner(ctx: RunnerContext) {
   }
 
   /**
+   * Put a file the host made outside the job queue on the board.
+   *
+   * The eraser and the audio lay-over answer with a gallery file, not with a
+   * job: nothing else would tell the board about it, so the gallery is read
+   * again and the tile placed where a run's own file would go.
+   * @param item - the file the host made.
+   * @param into - the project as the lane has it.
+   * @returns the project with the file on its board.
+   */
+  const placeHostFile = async (item: GalleryItem, into: ImagineProject): Promise<ImagineProject> => {
+    await reloadGallery()
+    actions.regrid([item.name])
+    return patch(into.itemNames.includes(item.name) ? into : { ...into, itemNames: [...into.itemNames, item.name] })
+  }
+
+  /**
+   * Run one host edit the reading asked for.
+   *
+   * `erase` is «Remove object» (IOPaint's LaMa), with the mask drawn from the
+   * box the reading grounded: grown and softened, so the fill meets the
+   * surroundings instead of leaving a halo. `addAudio` lays a track already in
+   * the gallery over a clip that is already there. Neither queues a job.
+   * @param intent - the host edit out of the reading.
+   * @param into - the project as the lane has it.
+   * @returns the project with the new file on its board.
+   */
+  const runHostEdit = async (intent: ImagineChatIntent, into: ImagineProject): Promise<ImagineProject> => {
+    const named = (name: string | undefined): GalleryItem | undefined => name === undefined ? undefined : allByName.get(name)
+    const source = named(intent.source)
+    try {
+      if (intent.action === 'erase') {
+        if (source === undefined || source.kind !== 'image') {
+          setNote(translate('imagine.needImage'))
+          return into
+        }
+        if (pluginEnabled(IOPAINT_PLUGIN) === false) {
+          setNote(translate('imagine.erasePluginOff'))
+          return into
+        }
+        if (intent.region === undefined) {
+          setNote(translate('imagine.eraseNoZone'))
+          return into
+        }
+        setBusy('erase')
+        const mask = await removalMask(source, intent.region)
+        if (mask === undefined) {
+          setNote(translate('imagine.needImage'))
+          return into
+        }
+        const item = await postJson<GalleryItem>('/plugin/iopaint/erase', { name: source.name, mask }, 'erase')
+        return await placeHostFile(item, into)
+      }
+      const track = named(intent.song)
+      if (source === undefined || source.kind !== 'video' || track === undefined || track.kind !== 'audio') {
+        setNote(translate('imagine.needVideo'))
+        return into
+      }
+      setBusy('addAudio')
+      const item = await postJson<GalleryItem>('/api/add-audio', { name: source.name, track: track.name }, 'add audio')
+      return await placeHostFile(item, into)
+    } catch (error: unknown) {
+      setNote(noteFromError(error))
+      return into
+    } finally {
+      setBusy(undefined)
+    }
+  }
+
+  /**
    * Start one run the reading asked for.
    *
    * The reading names files and ladder steps as strings; they become the same
@@ -707,6 +803,11 @@ export function useRunner(ctx: RunnerContext) {
    * @returns the project as the run left it.
    */
   const runIntent = async (intent: ImagineChatIntent, into: ImagineProject): Promise<ImagineProject | undefined> => {
+    /*
+     * The two host edits run on the host's own routes: no graph is queued and
+     * no job is created, so they do not go through `run`.
+     */
+    if (isChatHostAction(intent.action)) return await runHostEdit(intent, into)
     const named = (name: string | undefined): GalleryItem | undefined => name === undefined ? undefined : allByName.get(name)
     const source = named(intent.source)
     const song = named(intent.song)
@@ -856,6 +957,13 @@ export function useRunner(ctx: RunnerContext) {
         // fail?": the failure never passed through the chat at all.
         events: project.messages.filter(message => message.role === 'status' && !isSeedMessage(message)).slice(-6).map(message => message.text),
         ...state.chatModel === undefined ? {} : { model: state.chatModel },
+        /*
+         * «Remove object» is a plugin, and the page is the only side that
+         * knows whether it is mounted: without it a line that asks for a
+         * watermark to come out is told so, instead of the client POSTing to
+         * a route that does not exist.
+         */
+        eraseTool: pluginEnabled(IOPAINT_PLUGIN) !== false,
         /*
          * The runs of this project still going: "Is it running?" is asked in
          * this column, and the reading had no state to answer from

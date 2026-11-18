@@ -50,7 +50,7 @@ export interface FileDetailsBody {
  * («Ritaglio 512×512», «Taglio 1.0–3.0 s», «Copia», …), which is a
  * description of the result, not a request anyone typed.
  */
-const WORDLESS_ACTIONS = new Set(['bg', 'upscale', 'voice', 'crop', 'duplicate', 'erase', 'trim', 'merge', 'frame'])
+const WORDLESS_ACTIONS = new Set(['bg', 'upscale', 'voice', 'crop', 'duplicate', 'erase', 'trim', 'merge', 'frame', 'addAudio'])
 
 /**
  * Stand-in prompts a record can carry instead of words anyone typed.

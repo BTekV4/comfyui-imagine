@@ -371,6 +371,8 @@ export async function startImagineJob(
   source?: string,
   extras?: {
     size?: string
+    /** The size is a ratio the written line named, not the composer's rest value. */
+    canvasAsked?: boolean
     aspectRatio?: string
     seconds?: number
     megapixels?: number

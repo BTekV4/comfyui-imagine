@@ -50,6 +50,8 @@ export const MESSAGES = {
   'comfy.unreachable': { it: 'ComfyUI non raggiungibile', en: 'ComfyUI is unreachable' },
   'clip.trimFailed': { it: 'taglio non riuscito', en: 'the trim did not work' },
   'clip.mergeFailed': { it: 'unione non riuscita', en: 'the merge did not work' },
+  'clip.addAudioFailed': { it: 'non sono riuscito a unire la traccia al video', en: 'the track could not be laid over the clip' },
+  'clip.trackRequired': { it: 'serve una traccia audio della galleria', en: 'a gallery audio track is needed' },
   'clip.firstSizeUnreadable': { it: 'non riesco a leggere la misura del primo video', en: 'cannot read the size of the first video' },
   'clip.videoNameRequired': { it: 'serve il nome di un video della galleria', en: 'the name of a gallery video is needed' },
   'clip.videoRequired': { it: 'serve un video della galleria', en: 'a gallery video is needed' },
@@ -224,6 +226,34 @@ export const MESSAGES = {
     it: 'Durata reale: {seconds} s (la scala dello studio).',
     en: 'Real length: {seconds} s (the studio’s ladder).',
   },
+  'chat.eraseNotConfigured': {
+    it: '«Rimuovi oggetto» (IOPaint) non è attivo in questa installazione: per togliere una scritta, un logo o un watermark serve quel plugin. Non ho messo niente in coda.',
+    en: '“Remove object” (IOPaint) is not switched on in this installation: taking writing, a logo or a watermark out needs that plugin. Nothing was queued.',
+  },
+  'chat.erasePhotoRequired': {
+    it: 'Per togliere una scritta serve la foto: mettila nella chat o indica il suo nome.',
+    en: 'Removing writing needs the photo: put it in the chat or name it.',
+  },
+  'chat.eraseTargetRequired': {
+    it: 'Dimmi cosa togliere dalla foto (la scritta, il logo, il watermark).',
+    en: 'Say what has to come out of the photo (the writing, the logo, the watermark).',
+  },
+  'chat.eraseNotFound': {
+    it: 'Non ho trovato quello che chiedevi di togliere: apri la foto e usa «Rimuovi oggetto» (IOPaint), dipingendo la parte da cancellare. La foto non è stata toccata.',
+    en: 'I could not find what you asked to remove: open the photo and use “Remove object” (IOPaint), painting the part to erase. The photo was not touched.',
+  },
+  'chat.targetNotFound': {
+    it: 'Non sono riuscito a trovare «{target}» nella foto: ho ripiegato sulla modifica dell’intera foto, che rifà tutto e può spostare il resto. Se preferisci, indica la zona o usa «Modifica precisa».',
+    en: 'I could not find “{target}” in the photo: I fell back to editing the whole photo, which redraws everything and may move the rest. If you prefer, name the zone or use “Precise edit”.',
+  },
+  'chat.audioClipRequired': {
+    it: 'Per unire l’audio al video serve la clip: mettila nella chat o indica il suo nome.',
+    en: 'Laying a track over a clip needs the clip: put it in the chat or name it.',
+  },
+  'chat.audioTrackRequired': {
+    it: 'Per unire l’audio al video serve anche la traccia audio: mettila nella chat o indica il suo nome.',
+    en: 'Laying a track over a clip also needs the audio track: put it in the chat or name it.',
+  },
   'chat.notConfigured': {
     it: '«{action}» non è configurato in questa installazione: niente da mettere in coda.',
     en: '“{action}” is not configured in this installation: there is nothing to queue.',
@@ -382,6 +412,7 @@ export const MESSAGES = {
   'origin.crop': { it: 'Ritaglio {width}×{height}', en: 'Crop {width}×{height}' },
   'origin.copy': { it: 'Copia', en: 'Copy' },
   'origin.erase': { it: 'Oggetto rimosso (IOPaint)', en: 'Object removed (IOPaint)' },
+  'origin.addAudio': { it: 'Traccia unita al video', en: 'Track laid over the clip' },
   'origin.frame': { it: 'Fotogramma a {time} s', en: 'Frame at {time} s' },
   /*
    * The login page (`auth.ts`): served before any page of the studio, so it

@@ -572,6 +572,15 @@ export interface RunOpts {
   /** The slow clip recipe: the `pathHigh` graph, else `highInputs` and `steps.high` on the same graph. */
   speed?: ImagineSpeed | undefined
   size?: string | undefined
+  /**
+   * True when the size came from a ratio the user named.
+   *
+   * A graph that measures the photo it is given (the Krea 2 edit) keeps that
+   * photo's shape; writing the size on it anyway is what cropped a 4:5 photo
+   * to a studio ratio. A size nobody asked for therefore leaves the
+   * measurement alone, and only a named ratio overrides it.
+   */
+  canvasAsked?: boolean | undefined
   aspectRatio?: string | undefined
   seconds?: number | undefined
   megapixels?: number | undefined
@@ -814,7 +823,15 @@ function parameterize(
     const size = parseSize(opts.size)
     if (size === undefined) throw new ComfyError(`invalid size "${opts.size}"; expected WxH`, 'COMFY_GRAPH_REJECTED')
     const node = sizeId === undefined ? undefined : graph[sizeId]
-    if (node !== undefined) {
+    /*
+     * A latent whose sides are links is measured from the picture the graph is
+     * given (`GetImageSize`): writing a number there replaces the measurement
+     * with a canvas nobody asked for. An entry that pins the node itself
+     * (`sizeNodeId`) still gets the size it asked for, and so does a run whose
+     * ratio the user named.
+     */
+    const measured = node !== undefined && (Array.isArray(node.inputs.width) || Array.isArray(node.inputs.height))
+    if (node !== undefined && (!measured || workflow.sizeNodeId !== undefined || opts.canvasAsked === true)) {
       ;(node.inputs).width = size.width
       ;(node.inputs).height = size.height
     }

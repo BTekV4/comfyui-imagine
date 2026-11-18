@@ -318,7 +318,7 @@ export function rangeOf(header: string | undefined, size: number): ByteRange | '
  * @param kind - the kind the route works on.
  * @returns the basename, or undefined.
  */
-export function galleryName(value: unknown, kind: 'image' | 'video'): string | undefined {
+export function galleryName(value: unknown, kind: 'image' | 'video' | 'audio'): string | undefined {
   const name = typeof value === 'string' ? safeBasename(value) : undefined
   return name !== undefined && kindOf(name) === kind ? name : undefined
 }

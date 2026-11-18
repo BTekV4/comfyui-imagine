@@ -84,6 +84,13 @@ export interface ImagineJob extends ImagineJobFields {
   readonly planResolution?: string
   /** The short side an upscale was asked to arrive at. */
   readonly upscaleTo?: number
+  /**
+   * True when the run's canvas came from a ratio the user named.
+   *
+   * The edit graphs measure the photo they are given; a size the user did not
+   * ask for must not replace that measurement, and a named ratio must.
+   */
+  readonly canvasAsked?: boolean
   /** `custom` only: the card's file slots, keyed by node id (gallery basenames). */
   readonly customFiles?: Readonly<Record<string, string>>
   /**

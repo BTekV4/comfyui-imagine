@@ -394,3 +394,37 @@ export async function runProbe(
     return undefined
   }
 }
+
+/** The side both stills are reduced to before they are compared. */
+const SAME_PICTURE_SIDE = 256
+
+/**
+ * Whether two stills are the same picture, near enough.
+ *
+ * An edit that changes nothing comes back as the photo that went in: a model
+ * that ignored the instruction, a mask over nothing, a zone the sampler left
+ * alone. Delivering that beside the original with no word is the answer the
+ * user cannot tell from a broken run, so the host compares the two. Both are
+ * reduced to {@link SAME_PICTURE_SIDE} pixels and measured with ffmpeg's PSNR:
+ * the same photo re-encoded answers `inf` or far above 60 dB, while a real
+ * edit — faces, texture, light — lands well below.
+ * @param a - absolute path of the first still.
+ * @param b - absolute path of the second still.
+ * @returns true when they are the same picture; false when they differ or
+ *   when the comparison itself failed (a failed comparison never blocks a run).
+ */
+export async function samePicture(a: string, b: string): Promise<boolean> {
+  const side = String(SAME_PICTURE_SIDE)
+  try {
+    const { stderr } = await ffmpegRead([
+      '-hide_banner', '-i', a, '-i', b,
+      '-filter_complex', `[0:v]scale=${side}:${side},format=gray[a];[1:v]scale=${side}:${side},format=gray[b];[a][b]psnr`,
+      '-f', 'null', '-',
+    ], 60_000)
+    const average = /average:(inf|[0-9.]+)/.exec(stderr)?.[1]
+    if (average === undefined) return false
+    return average === 'inf' || Number(average) >= 50
+  } catch {
+    return false
+  }
+}

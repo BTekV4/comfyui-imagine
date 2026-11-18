@@ -1338,6 +1338,7 @@ function rendererFor(setup: RenderSetup): Render {
         ...job.speed === undefined ? {} : { speed: job.speed },
         ...resolutionMax === undefined ? {} : { resolutionMax },
         ...job.size === undefined ? {} : { size: job.size },
+        ...job.canvasAsked === true ? { canvasAsked: true } : {},
         ...inputs.extendSource?.size === undefined ? {} : { size: inputs.extendSource.size },
         ...aspect === undefined ? {} : { aspectRatio: aspect },
         // The card's controls: values for this run only, written on the clone.

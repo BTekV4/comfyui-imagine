@@ -6,9 +6,44 @@
  * Until 2026-10-25 the page re-declared each of these beside the server's own.
  */
 
-import type {
-  ImagineAction, ImagineObjectMode, ImagineQuality, ImagineRegion, ImagineSpeed, MediaFileRef, ModelRoute,
+import {
+  IMAGINE_ACTIONS,
+  type ImagineAction, type ImagineObjectMode, type ImagineQuality, type ImagineRegion, type ImagineSpeed,
+  type MediaFileRef, type ModelRoute,
 } from './imagine-types.ts'
+
+/**
+ * The host edits the written lane may also ask for, without a graph.
+ *
+ * `erase` is the masked removal (IOPaint's LaMa): a line that asks for
+ * writing, a logo or a watermark to come out of a photo is not a redraw, and
+ * the eraser is the only tool that takes it out and leaves the rest of the
+ * picture untouched. `addAudio` lays a track that is already in the gallery
+ * over a clip that is already there, without re-rendering it.
+ *
+ * They are not studio actions: no job runs a graph for them, and the page
+ * performs them on the host's own routes. The intent still travels the same
+ * way, so the column and the queue read like any other answer.
+ */
+export const CHAT_HOST_ACTIONS = ['erase', 'addAudio'] as const
+
+/** One host edit the written lane may ask for. */
+export type ChatHostAction = typeof CHAT_HOST_ACTIONS[number]
+
+/** Everything one written line may queue or ask the host to do. */
+export type ImagineChatAction = ImagineAction | ChatHostAction
+
+/**
+ * Whether one of the chat's actions is a host edit rather than a graph.
+ * @param action - the action an intent names.
+ * @returns true for the edits the page performs on the host's own routes.
+ */
+export function isChatHostAction(action: string): action is ChatHostAction {
+  return (CHAT_HOST_ACTIONS as readonly string[]).includes(action)
+}
+
+/** The actions the written lane is offered: the studio's own plus the host edits. */
+export const CHAT_ACTIONS: readonly ImagineChatAction[] = [...IMAGINE_ACTIONS, ...CHAT_HOST_ACTIONS]
 
 /** A value a workflow change reads or writes: everything else is structure. */
 export type WorkflowScalar = string | number | boolean
@@ -89,7 +124,14 @@ export interface WorkflowProposal extends WorkflowPlan {
 
 /** One run the sentence asked for, in the fields the composer used to hold. */
 export interface ImagineChatIntent {
-  readonly action: ImagineAction
+  /**
+   * What to do: one studio action, or one of the host edits above.
+   *
+   * A host edit carries no prompt of its own (`erase` uses `target`,
+   * `addAudio` names the track in `song`), but it travels with the same
+   * fields so the page can run it like any other answer.
+   */
+  readonly action: ImagineChatAction
   /** What to generate; already in the language the workflow wants. */
   readonly prompt: string
   readonly aspect?: string
@@ -159,9 +201,20 @@ export interface ImagineChatIntent {
    * Remix only: the zone a precise edit may change, as fractions of the photo.
    *
    * The rest of the picture stays the source's own pixels. Absent is a full
-   * redraw, which is what "remix" means when nobody marks a zone.
+   * redraw, which is what "remix" means when nobody marks a zone. The written
+   * lane may leave it out and name the thing in {@link target} instead: the
+   * host grounds that name on the photo and fills the zone in.
    */
   readonly region?: ImagineRegion
+  /**
+   * Remix and erase only: the thing to change or take out, in the words of
+   * the photo's own description ("the red handbag", not "the bag").
+   *
+   * The host grounds it on the source: a box around it becomes the zone of a
+   * precise edit, or the mask of the masked removal. Absent, a remix redraws
+   * the whole photo and an erase cannot run.
+   */
+  readonly target?: string
   /**
    * Custom only: which uploaded card to run, by id.
    *
@@ -237,6 +290,14 @@ export interface ImagineChatAsk {
     readonly mode?: string
     readonly style?: string
   }
+  /**
+   * Whether this studio has «Remove object» (the IOPaint plugin) switched on.
+   *
+   * The page knows it and the server does not: without it a line asking for
+   * writing to be erased is told the tool is off before anything is queued,
+   * instead of the client failing on a route that is not mounted.
+   */
+  readonly eraseTool?: boolean
 }
 
 /** The reading: what to say back, and what to queue. */
@@ -290,7 +351,7 @@ export type ImagineChatEvent =
   /** A step of the reading, in the order it happened. */
   | {
     readonly kind: 'step'
-    readonly step: 'sight' | 'route' | 'writing' | 'workflow' | 'retry' | 'fallback'
+    readonly step: 'sight' | 'route' | 'writing' | 'workflow' | 'retry' | 'fallback' | 'grounding'
     /** What the step is about: a model, a workflow label, a file name. */
     readonly detail?: string
     /** How many things the step covered, when it covered things. */

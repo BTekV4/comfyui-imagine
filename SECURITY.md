@@ -104,3 +104,8 @@ permissions the filesystem gives them.
 - **Secrets in `config.yaml`.** Provider keys can be named there or in the
   environment; keep that file out of version control (the repository's
   `.gitignore` does) and out of backups you share.
+- **Dev/build-only audit advisories.** The `npm audit` advisories that concern
+  only the development and build tree (`vite`, `picomatch`, `tinyglobby`) are
+  known and accepted: none of them is in the packages a release ships (the
+  server, the MCP server and the plugins are self-contained bundles), and
+  Dependabot updates them every month.

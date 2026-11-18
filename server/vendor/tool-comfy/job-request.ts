@@ -135,6 +135,8 @@ export interface ImagineJobRequest {
   source?: string
   size?: string
   aspectRatio?: string
+  /** The size is a ratio the user named, not the composer's resting value. */
+  canvasAsked?: boolean
   /** `custom` only: which uploaded workflow to run. */
   customWorkflowId?: string
   /** `custom` only: the card's own controls, keyed `<node>.<field>`. */

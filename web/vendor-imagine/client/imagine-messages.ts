@@ -28,6 +28,7 @@ const SLOW_TOOLS: Readonly<Record<GalleryTool, boolean>> = {
   generate_image: false,
   generate_lookbook: false,
   edit_image: false,
+  add_audio: false,
   remove_background: false,
   relight: false,
   upscale_image: false,
@@ -139,6 +140,7 @@ const NOTICE_KEYS: Readonly<Record<string, ComfyLocaleKey>> = {
   'lipsync-retry': 'imagine.noticeLipsyncRetry',
   'caption-plain': 'imagine.noticeCaptionPlain',
   'video-ratio': 'imagine.noticeVideoRatio',
+  'edit-unchanged': 'imagine.noticeEditUnchanged',
   'voice-mux-failed': 'imagine.noticeVoiceMuxFailed',
   'recreate-audio-failed': 'imagine.noticeRecreateAudioFailed',
   'setup-needed': 'imagine.noticeSetupNeeded',
@@ -208,6 +210,7 @@ export function thoughtOf(event: ImagineChatEvent): ImagineThought | undefined {
   const step = (text: string, keep = false): ImagineThought => ({ id: nextThoughtId(), kind: 'step', text, keep })
   switch (event.step) {
     case 'sight': return step(translate('imagine.thoughtSight', { count: String(event.count ?? 1) }))
+    case 'grounding': return step(translate('imagine.thoughtGrounding', { target: event.detail ?? '' }))
     case 'route': return step(translate('imagine.thoughtRoute', { model: event.detail ?? '' }))
     case 'retry': return step(translate('imagine.thoughtRetry', { model: event.detail ?? '' }), true)
     case 'writing': return step(translate('imagine.thoughtWriting'))

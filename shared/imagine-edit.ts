@@ -42,10 +42,10 @@ export const LOCAL_EDIT_CHARS = 300
  * an anime frame" is not a local edit and must keep the whole picture free.
  */
 const LOCAL_VERB =
-  /\b(?:rimuov\w*|rimoss\w*|togli\w*|tolt\w*|elimina\w*|cancella\w*|aggiung\w*|inserisc\w*|metti|mettere|sposta\w*|sostituisc\w*|remove\w*|take\s+out|erase\w*|delete\w*|add(?:s|ed|ing)?|insert\w*|put|move\w*|replace\w*|swap\w*)\b/i
+  /\b(?:rimuov\w*|rimoss\w*|togli\w*|tolt\w*|elimina\w*|cancella\w*|leva\w*|aggiung\w*|inserisc\w*|metti|mettere|sposta\w*|sostituisc\w*|remove\w*|take\s+out|erase\w*|delete\w*|add(?:s|ed|ing)?|insert\w*|put|move\w*|replace\w*|swap\w*)\b/i
 
 /** The verbs that take something out: the masked removal's own case. */
-const REMOVAL_VERB = /\b(?:rimuov\w*|rimoss\w*|togli\w*|tolt\w*|elimina\w*|cancella\w*|remove\w*|take\s+out|erase\w*|delete\w*)\b/i
+const REMOVAL_VERB = /\b(?:rimuov\w*|rimoss\w*|togli\w*|tolt\w*|elimina\w*|cancella\w*|leva\w*|remove\w*|take\s+out|erase\w*|delete\w*)\b/i
 
 /** A change limited by "solo"/"only", the other way a local edit is asked for. */
 const ONLY_CHANGE = /\b(?:cambia|cambiare|change|modify)\b[^.]{0,40}\b(?:solo|soltanto|only)\b/i

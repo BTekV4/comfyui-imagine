@@ -51,7 +51,7 @@ export type GalleryTool =
   | 'generate_image' | 'edit_image' | 'create_video' | 'upscale_image' | 'upscale_video'
   | 'remove_background' | 'generate_music' | 'generate_lookbook'
   | 'animated_background' | 'extend_video' | 'change_voice' | 'speak_text' | 'videoclip'
-  | 'recreate_video' | 'regenerate_detail' | 'object_swap' | 'swap_person' | 'relight'
+  | 'recreate_video' | 'regenerate_detail' | 'object_swap' | 'swap_person' | 'relight' | 'add_audio'
 
 /** One produced media file the Imagine page can render (GET /comfy-media). */
 export interface GalleryItem {
@@ -163,7 +163,7 @@ export const DEFAULT_OBJECT_PLACEMENT: ImaginePlacement = { x: 0.35, y: 0.45, wi
  * The edits the host makes itself, without ComfyUI (`server/src`): filed as a
  * file's origin beside the studio actions, never queued as a job.
  */
-export type HostEdit = 'trim' | 'merge' | 'crop' | 'duplicate' | 'erase' | 'frame'
+export type HostEdit = 'trim' | 'merge' | 'crop' | 'duplicate' | 'erase' | 'frame' | 'addAudio'
 
 /** A rectangle on a photo, in fractions of its width and height (0–1). */
 export interface ImagineRegion {

@@ -138,6 +138,28 @@ export function sizeFor(aspect: ImagineAspect, resolution: ImagineResolution): s
 }
 
 /**
+ * The canvas one still edit sends to its graph.
+ *
+ * The Krea 2 edit graphs measure the photo they are given (`ImageScaleToTotalPixels`
+ * into `GetImageSize`, into the latent), so a canvas the page sends anyway is
+ * read as a request to change the photo's shape: a 4:5 photo edited from the
+ * written lane came back on a studio ratio, and the composition was cropped.
+ * An edit therefore sends a canvas only when the line really named a ratio
+ * ("falla quadrata", "in 16:9"); otherwise the source's own shape holds.
+ * @param named - whether the sentence named a ratio.
+ * @param aspect - the ratio the run would use, when one was named.
+ * @param resolution - the ladder step of the run.
+ * @returns the size for the graph, or undefined to keep the source's shape.
+ */
+export function editSizeFor(
+  named: boolean,
+  aspect: ImagineAspect,
+  resolution: ImagineResolution,
+): string | undefined {
+  return named ? sizeFor(aspect, resolution) : undefined
+}
+
+/**
  * The pixel grid the H3 graphs take an explicit frame on.
  *
  * `MiniMaxH3ChainPlanModern` (the chain's Production Plan) and the other H3
