@@ -158,7 +158,20 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Build
         run: npm run build
+      # About 42 MB from one host that, on 2026-11-18, stopped answering from
+      # the runners: the job sat on that connection until its 60-minute
+      # timeout. On a cache hit the packaging step never opens it; the script
+      # still checks the pinned SHA-256, so an entry from another pin cannot be
+      # packaged. The key carries the version and the first bytes of the
+      # digest: bumping ffmpeg in scripts/package-portable.sh bumps this too.
+      - name: The pinned ffmpeg archive (cache)
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/imagine-runtime-cache
+          key: imagine-runtime-ffmpeg-7.0.2-abda8d77ce830914
       - name: Package the AppImage
+        env:
+          CACHE_DIR: ${{ runner.temp }}/imagine-runtime-cache
         run: OUT_DIR="$RUNNER_TEMP/pkg" bash scripts/package-electron.sh
       - name: Start it without a screen and look at the window
         run: bash scripts/check-appimage.sh "$RUNNER_TEMP"/pkg/Imagine-*-linux-x64.AppImage "$RUNNER_TEMP/check"
@@ -187,7 +200,14 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Build
         run: npm run build
+      - name: The pinned ffmpeg archive (cache)
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/imagine-runtime-cache
+          key: imagine-runtime-ffmpeg-7.0.2-abda8d77ce830914
       - name: Package
+        env:
+          CACHE_DIR: ${{ runner.temp }}/imagine-runtime-cache
         run: OUT_DIR="$RUNNER_TEMP/pkg" bash scripts/package-portable.sh linux-x64
       - name: Boot it
         run: |
@@ -273,8 +293,11 @@ jobs:
       - name: Build the portable package with ffmpeg's mirror broken
         run: |
           set -euo pipefail
-          # example.invalid answers nothing, so every attempt fails and the
-          # fallback is what builds the package.
+          # Both tar sources are dead here: `example.invalid` answers nothing
+          # and the stable copy is skipped by emptying its URL. The ffbinaries
+          # fallback is what builds the package, which is the path this step
+          # exists to prove.
+          FFMPEG_LINUX_STABLE_URL= \
           FFMPEG_LINUX_URL=https://example.invalid/ffmpeg.tar.xz \
             OUT_DIR="$PWD/release" bash scripts/package-portable.sh linux-x64
       - name: The package is the small one
