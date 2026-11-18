@@ -230,6 +230,14 @@ export const MESSAGES = {
     it: 'Sta ancora girando: il risultato comparirà qui appena è pronto.',
     en: 'It is still running: the result will appear here as soon as it is ready.',
   },
+  'agent.waitingSetup': {
+    it: 'Il lavoro è fermo: prima ComfyUI deve installare {what}. Apri la scheda del lavoro e premi «Installa»: poi riparte da solo.',
+    en: 'The run is waiting: ComfyUI has to install {what} first. Open the run’s card and press “Install”: it will start by itself.',
+  },
+  'agent.runFailed': {
+    it: 'Il lavoro non è riuscito: {error}',
+    en: 'The run did not succeed: {error}',
+  },
   'agent.confirmClip': {
     it: 'Un video di {seconds} secondi: vuoi che parta?',
     en: 'A {seconds}-second clip: shall I start it?',

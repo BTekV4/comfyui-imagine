@@ -287,20 +287,37 @@ export function isSettled(id: string): boolean {
  *
  * Woken by the writes themselves: the music-video chain used to poll the map
  * on a timer for as long as its photos and its song took.
+ *
+ * `stalled`, when given, is the other way a wait ends: a job can stop moving
+ * without settling, because it is waiting for the user (ComfyUI has to install
+ * something first, `notice: 'setup-needed'`), and a caller that only waits for
+ * a terminal state would report "still running" for a run that is not running
+ * at all.
  * @param ids - the jobs to wait for.
  * @param timeoutMs - the longest wait.
- * @returns once they have all settled or the wait has run out.
+ * @param stalled - ends the wait as soon as one job matches, when given.
+ * @returns once they have all settled, one has stalled, or the wait ran out.
  */
-export async function whenJobsSettle(ids: readonly string[], timeoutMs: number): Promise<void> {
+export async function whenJobsSettle(
+  ids: readonly string[],
+  timeoutMs: number,
+  stalled?: (job: ImagineJob) => boolean,
+): Promise<void> {
   const done = (): boolean => ids.every(isSettled)
-  if (done()) return
+  const stopped = stalled === undefined
+    ? done
+    : (): boolean => done() || ids.some((id) => {
+      const job = jobsMap.get(id)
+      return job !== undefined && stalled(job)
+    })
+  if (stopped()) return
   await new Promise<void>((resolve) => {
     const finish = (): void => {
       jobWatchers.delete(check)
       clearTimeout(timer)
       resolve()
     }
-    const check = (): void => { if (done()) finish() }
+    const check = (): void => { if (stopped()) finish() }
     const timer = setTimeout(finish, timeoutMs)
     timer.unref()
     jobWatchers.add(check)

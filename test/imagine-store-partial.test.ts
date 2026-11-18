@@ -71,6 +71,22 @@ test('a deleted project takes its removals and adoptions with it', async () => {
   assert.deepEqual(Object.keys(store.adopted), ['keep'])
 })
 
+test('an assistant line with no text is not kept', async () => {
+  await saveImagineStore({
+    projects: [{
+      ...project('m', 'Messages'),
+      messages: [
+        { id: 'u1', role: 'user', text: 'ciao', createdAt: 1 },
+        { id: 'a0', role: 'assistant', text: '', createdAt: 2, thinking: 'reasoning only' },
+        { id: 'a1', role: 'assistant', text: 'Ecco.', createdAt: 3 },
+      ],
+    }],
+  })
+  const store = await loadImagineStore()
+  const saved = store.projects.find(entry => entry.id === 'm')
+  assert.deepEqual(saved?.messages.map(message => message.id), ['u1', 'a1'])
+})
+
 test('a store that does not parse is moved aside, not overwritten by the next save', async () => {
   const { readdir, writeFile, readFile } = await import('node:fs/promises')
   const file = join(dataDir, 'comfy', 'imagine.json')

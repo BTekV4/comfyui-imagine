@@ -1003,12 +1003,13 @@ export function useRunner(ctx: RunnerContext) {
       trace.set(thoughts => [...thoughts, answer.read
         ? { id: nextThoughtId(), kind: 'step', text: translate('imagine.thoughtDone', { count: String(answer.mode === 'agent' ? answer.jobIds.length : answer.intents.length) }) }
         : { id: nextThoughtId(), kind: 'step', text: translate('imagine.thoughtDoneUnread'), keep: true }])
-      // The answer, and the thinking that led to it, folded under it. A
-      // reading that only queued runs keeps its thinking too, on a line with
-      // nothing else on it.
+      // The answer, and the thinking that led to it, folded under it. A line
+      // with no text of its own is not written: a turn that stopped for a
+      // confirmation has no reply yet, and writing the thinking alone left an
+      // empty assistant bubble in the project (seen in F2, on story and music).
       const answeredId = `a-${String(Date.now())}`
       let spoken = false
-      if (answer.reply.length > 0 || thinking.trim().length > 0) {
+      if (answer.reply.trim().length > 0) {
         project = appendMessage(project, {
           id: answeredId,
           role: 'assistant',
@@ -1288,9 +1289,11 @@ export function useRunner(ctx: RunnerContext) {
         setPending(answer.pending)
         return
       }
+      // Same rule as the first pass: no text, no assistant line (the thinking
+      // alone is not an answer).
       const answeredId = `a-${String(Date.now())}`
       let spoken = false
-      if (answer.reply.length > 0 || thinking.trim().length > 0) {
+      if (answer.reply.trim().length > 0) {
         project = appendMessage(project, {
           id: answeredId,
           role: 'assistant',
