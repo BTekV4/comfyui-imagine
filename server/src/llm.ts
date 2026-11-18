@@ -13,6 +13,9 @@ import { extname, join } from 'node:path'
 import { mediaTypeOfExt, sniffMedia } from '../../shared/media-types.ts'
 import { frameAt } from '../vendor/tool-comfy/media-tools.ts'
 import { isThinkingLevel, THINKING_DEFAULT, type ThinkingLevel } from '../../shared/host-settings.ts'
+import type {
+  AgentCapabilities, AgentChatMessage, AgentModelEvent, AgentModelRequest,
+} from '../../shared/agent-chat.ts'
 import type { ModelRoute } from '../../shared/imagine-types.ts'
 import { message } from './messages.ts'
 
@@ -264,7 +267,11 @@ export function createLlm(
   /** One `/models` entry: the id and what the gateway declares about the model. */
   interface ModelEntryRaw {
     readonly id?: unknown
-    readonly capabilities?: { readonly effort_tiers?: unknown }
+    readonly capabilities?: {
+      readonly effort_tiers?: unknown
+      readonly tool_calling?: unknown
+      readonly vision?: unknown
+    }
   }
 
   /** The models a provider lists, with their capabilities, at most {@link LEVELS_TTL_MS} old. */
@@ -389,7 +396,181 @@ export function createLlm(
   }
 
   /**
-   * Look at one file on disk and answer the prompt about it.
+   * One message as the OpenAI wire reads it: a tool turn is an assistant
+   * message carrying its calls, and a `tool` message carrying the result of
+   * one. The classic `stream` rewrites every role, which is why the tool
+   * surface has its own call below instead of a flag on that one.
+   * @param message - the message to send.
+   * @returns the wire shape.
+   */
+  function toWireMessage(message: AgentChatMessage): Record<string, unknown> {
+    return {
+      role: message.role,
+      content: message.content,
+      ...message.toolCalls === undefined ? {} : {
+        tool_calls: message.toolCalls.map(call => ({
+          id: call.id,
+          type: 'function',
+          function: { name: call.name, arguments: call.arguments },
+        })),
+      },
+      ...message.toolCallId === undefined ? {} : { tool_call_id: message.toolCallId },
+    }
+  }
+
+  /**
+   * One tool-aware chat call, streamed: the deltas the classic passes read,
+   * plus the tool calls and the finish reason a loop needs.
+   *
+   * The silence clock is the classic lane's; `deadlineMs` adds a hard bound
+   * for one caller only (the capability probe), which must not hold a chat
+   * behind a model that is thinking for minutes about one trivial tool.
+   * @param options - route, messages, tools and the caller's own abort.
+   * @returns the events, in the order the gateway sends them.
+   */
+  async function* chat(options: AgentModelRequest): AsyncIterable<AgentModelEvent> {
+    const provider = providerOf(options.provider)
+    const outer = new AbortController()
+    const forward = (): void => { outer.abort() }
+    if (options.signal?.aborted === true) forward()
+    else options.signal?.addEventListener('abort', forward, { once: true })
+    const timer = options.deadlineMs === undefined
+      ? undefined
+      : setTimeout(() => { outer.abort() }, options.deadlineMs)
+    timer?.unref()
+    const silence = silenceFor(provider, outer.signal)
+    let finish: string | undefined
+    try {
+      const response = await post(provider, {
+        model: options.model,
+        stream: true,
+        ...thinkingBody(thinkingLevel()),
+        messages: options.messages.map(toWireMessage),
+        ...options.tools === undefined || options.tools.length === 0 ? {} : {
+          tools: options.tools,
+          tool_choice: options.toolChoice ?? 'auto',
+          parallel_tool_calls: options.parallelToolCalls ?? false,
+        },
+      }, silence)
+      silence.touch()
+      if (!response.ok || response.body === null) {
+        const detail = await response.text().catch(() => '')
+        throw new Error(`LLM ${options.provider}/${options.model}: HTTP ${String(response.status)} ${detail.slice(0, 300)}`)
+      }
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let done = false
+      for await (const piece of response.body as unknown as AsyncIterable<Uint8Array>) {
+        silence.touch()
+        buffer += decoder.decode(piece, { stream: true })
+        let start = 0
+        let newline = buffer.indexOf('\n', start)
+        while (newline >= 0) {
+          const raw = buffer.slice(start, newline).trim()
+          start = newline + 1
+          newline = buffer.indexOf('\n', start)
+          if (!raw.startsWith('data:')) continue
+          const data = raw.slice(5).trim()
+          if (data === '[DONE]') { done = true; break }
+          let parsed: {
+            choices?: {
+              delta?: {
+                content?: unknown
+                reasoning_content?: unknown
+                reasoning?: unknown
+                tool_calls?: readonly {
+                  index?: unknown
+                  id?: unknown
+                  function?: { name?: unknown; arguments?: unknown }
+                }[]
+              }
+              finish_reason?: unknown
+            }[]
+          }
+          try {
+            parsed = JSON.parse(data) as typeof parsed
+          } catch {
+            continue
+          }
+          const choice = parsed.choices?.[0]
+          const delta = choice?.delta
+          if (delta === undefined) continue
+          const reasoning = delta.reasoning_content ?? delta.reasoning
+          if (typeof reasoning === 'string' && reasoning.length > 0) {
+            yield { type: 'reasoning-delta', text: reasoning }
+          }
+          if (typeof delta.content === 'string' && delta.content.length > 0) {
+            yield { type: 'text-delta', text: delta.content }
+          }
+          if (Array.isArray(delta.tool_calls)) {
+            for (const call of delta.tool_calls) {
+              const fragment: { type: 'tool-call'; index: number; id?: string; name?: string; arguments?: string } = {
+                type: 'tool-call',
+                index: typeof call.index === 'number' ? call.index : 0,
+              }
+              if (typeof call.id === 'string' && call.id.length > 0) fragment.id = call.id
+              if (typeof call.function?.name === 'string' && call.function.name.length > 0) fragment.name = call.function.name
+              if (typeof call.function?.arguments === 'string') fragment.arguments = call.function.arguments
+              yield fragment
+            }
+          }
+          const reason = choice?.finish_reason
+          if (typeof reason === 'string' && reason.length > 0) finish = reason
+        }
+        if (done) break
+        buffer = buffer.slice(start)
+      }
+      /*
+       * A stream that ends without `[DONE]` may leave its last line without a
+       * newline; read it before the finish frame, as the classic stream does.
+       */
+      buffer += decoder.decode()
+      if (!done) {
+        for (const raw of buffer.split('\n')) {
+          const line = raw.trim()
+          if (!line.startsWith('data:')) continue
+          const data = line.slice(5).trim()
+          if (data === '[DONE]') { done = true; break }
+          let parsed: { choices?: { finish_reason?: unknown }[] }
+          try {
+            parsed = JSON.parse(data) as typeof parsed
+          } catch {
+            continue
+          }
+          const reason = parsed.choices?.[0]?.finish_reason
+          if (typeof reason === 'string' && reason.length > 0) finish = reason
+        }
+      }
+      yield { type: 'finish', ...finish === undefined ? {} : { reason: finish } }
+    } finally {
+      if (timer !== undefined) clearTimeout(timer)
+      options.signal?.removeEventListener('abort', forward)
+      silence.stop()
+    }
+  }
+
+  /**
+   * What the gateway declares about one model, from the same `/models` answer
+   * `thinkingLevels` reads (kept a minute). A gateway that does not answer,
+   * or a model it does not list, answers nothing: the caller probes.
+   * @param route - the model in force.
+   * @returns the declared capabilities, empty when nothing is declared.
+   */
+  async function modelCapabilities(route: ModelRoute): Promise<AgentCapabilities> {
+    try {
+      const entries = await modelEntries(route.provider)
+      const entry = entries.find(item => item.id === route.model)
+      const declared = entry?.capabilities
+      return {
+        ...typeof declared?.tool_calling !== 'boolean' ? {} : { toolCalling: declared.tool_calling },
+        ...typeof declared?.vision !== 'boolean' ? {} : { vision: declared.vision },
+      }
+    } catch {
+      return {}
+    }
+  }
+
+  /**
    *
    * A large still is shrunk to {@link VISION_MAX_SIDE} as a JPEG first; a clip
    * goes as it is. The request honours `options.signal`, so a caller that
@@ -501,5 +682,5 @@ export function createLlm(
       : []
   }
 
-  return { llm: { stream }, auxiliary: { analyzeImage }, listModels, thinkingLevels }
+  return { llm: { stream, chat }, auxiliary: { analyzeImage }, listModels, thinkingLevels, modelCapabilities }
 }

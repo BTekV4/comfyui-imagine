@@ -18,7 +18,7 @@ import {
   type ImaginePlacement, type ImagineQuality, type ImagineRegion, type ImagineSpeed,
 } from '../../../shared/imagine-types.ts'
 import type { ComposerStore } from './composer-store.ts'
-import { applyWorkflowChanges, fetchImagineJobs, readImagineChat, runTemplate, startImagineJob } from './gallery-api.ts'
+import { applyWorkflowChanges, fetchImagineJobs, readAgentChat, runTemplate, startImagineJob } from './gallery-api.ts'
 import { SEED_MESSAGE_PREFIX, appendMessage, createProject, isSeedMessage, rememberJob, titleFromPrompt } from './imagine-projects.ts'
 import { HISTORY_PROJECT_ID } from '../../../shared/imagine-projects.ts'
 import {
@@ -935,8 +935,11 @@ export function useRunner(ctx: RunnerContext) {
       })
     }
     try {
-      const answer = await readImagineChat({
+      const answer = await readAgentChat({
         text,
+        // The agent queues the runs itself: the project it files them in has to
+        // be named here, the way the MCP names it.
+        projectId: project.id,
         history: project.messages
           .filter(message => message.role === 'user' || message.role === 'assistant')
           .slice(-8)
@@ -994,7 +997,7 @@ export function useRunner(ctx: RunnerContext) {
        * the answer.
        */
       trace.set(thoughts => [...thoughts, answer.read
-        ? { id: nextThoughtId(), kind: 'step', text: translate('imagine.thoughtDone', { count: String(answer.intents.length) }) }
+        ? { id: nextThoughtId(), kind: 'step', text: translate('imagine.thoughtDone', { count: String(answer.mode === 'agent' ? answer.jobIds.length : answer.intents.length) }) }
         : { id: nextThoughtId(), kind: 'step', text: translate('imagine.thoughtDoneUnread'), keep: true }])
       // The answer, and the thinking that led to it, folded under it. A
       // reading that only queued runs keeps its thinking too, on a line with
@@ -1012,9 +1015,34 @@ export function useRunner(ctx: RunnerContext) {
         patch(project)
         spoken = true
       }
+      if (answer.mode === 'agent') {
+        /*
+         * The runs are already queued by the server: their ids go on the reply
+         * line, so the column draws what each produced under it when it lands.
+         * The page's own poll folds the finished runs in, so the result shows
+         * up by itself, without the user asking again.
+         */
+        for (const jobId of answer.jobIds) project = rememberJob(project, jobId)
+        if (answer.jobIds.length > 0 && spoken) {
+          project = {
+            ...project,
+            messages: project.messages.map(message => message.id === answeredId
+              ? { ...message, jobIds: [...new Set([...(message.jobIds ?? []), ...answer.jobIds])] }
+              : message),
+          }
+        }
+        // A file a host edit made (the eraser) has no job: it joins the board.
+        const made = answer.files.map(file => file.name).filter(name => !project.itemNames.includes(name))
+        if (made.length > 0) {
+          await reloadGallery()
+          actions.regrid(made)
+          project = { ...project, itemNames: [...project.itemNames, ...made] }
+        }
+        patch(project)
+      }
       if (projectId !== project.id) actions.openProject(project.id)
       setProposal(answer.proposal)
-      for (const intent of answer.intents) {
+      if (answer.mode !== 'agent') for (const intent of answer.intents) {
         const before = project.jobIds
         const next = await runIntent(intent, project)
         if (next === undefined) continue
@@ -1043,7 +1071,7 @@ export function useRunner(ctx: RunnerContext) {
        * only answered" (2026-10-17). A status line, not the reply: the
        * reader's own words are not evidence of what it did.
        */
-      if (answer.intents.length === 0) {
+      if (answer.intents.length === 0 && answer.jobIds.length === 0 && answer.files.length === 0) {
         project = appendMessage(project, {
           id: `s-${String(Date.now())}`,
           role: 'status',

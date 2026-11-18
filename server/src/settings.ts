@@ -14,6 +14,7 @@ import { readJsonFile, writeFileAtomic } from '../vendor/atomic-write/index.ts'
 import { savePassword } from './password.ts'
 import type { ModelEntry, ModelRoute } from '../../shared/imagine-types.ts'
 import { isThinkingLevel, THINKING_DEFAULT } from '../../shared/host-settings.ts'
+import { AGENT_LIMITS_DEFAULT, isAgentChatMode } from '../../shared/agent-chat.ts'
 import type { HostSettingsPatch, HostSettingsValues, HostSettingsView } from '../../shared/host-settings.ts'
 
 export interface HostSettings {
@@ -26,6 +27,11 @@ const isRoute = (value: unknown): value is ModelRoute =>
   typeof value === 'object' && value !== null
   && typeof (value as ModelRoute).provider === 'string' && (value as ModelRoute).provider !== ''
   && typeof (value as ModelRoute).model === 'string' && (value as ModelRoute).model !== ''
+
+/** A whole number inside a range, or the default when the file says otherwise. */
+function positiveInt(value: unknown, fallback: number, min: number, max: number): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max ? value : fallback
+}
 
 const isModel = (value: unknown): value is ModelEntry =>
   typeof value === 'object' && value !== null
@@ -52,7 +58,15 @@ export async function createHostSettings(options: {
    */
   const merged = (): HostSettingsValues => {
     const values = { ...options.base, ...stored }
-    return { ...values, thinking: isThinkingLevel(values.thinking) ? values.thinking : THINKING_DEFAULT }
+    return {
+      ...values,
+      thinking: isThinkingLevel(values.thinking) ? values.thinking : THINKING_DEFAULT,
+      agentChat: isAgentChatMode(values.agentChat) ? values.agentChat : 'auto',
+      agentMaxSteps: positiveInt(values.agentMaxSteps, AGENT_LIMITS_DEFAULT.maxSteps, 1, 40),
+      agentMaxJobs: positiveInt(values.agentMaxJobs, AGENT_LIMITS_DEFAULT.maxJobs, 1, 40),
+      agentWaitSeconds: positiveInt(values.agentWaitSeconds, AGENT_LIMITS_DEFAULT.waitSeconds, 1, 3_600),
+      agentTurnSeconds: positiveInt(values.agentTurnSeconds, AGENT_LIMITS_DEFAULT.turnSeconds, 1, 3_600),
+    }
   }
   const bootResumeSweep = merged().resumeSweep
   /*
@@ -97,6 +111,11 @@ export async function createHostSettings(options: {
       take('resumeSweep', value => typeof value === 'boolean')
       take('requireLogin', value => typeof value === 'boolean')
       take('autoSetup', value => typeof value === 'boolean')
+      take('agentChat', isAgentChatMode)
+      take('agentMaxSteps', value => typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 40)
+      take('agentMaxJobs', value => typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 40)
+      take('agentWaitSeconds', value => typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 3_600)
+      take('agentTurnSeconds', value => typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 3_600)
       // An empty token from the page means "keep the one saved"; a single space clears it.
       if (typeof patch.hfToken === 'string' && patch.hfToken !== '') next['hfToken'] = patch.hfToken.trim()
       if (typeof patch.password === 'string' && patch.password.length > 0) {

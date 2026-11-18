@@ -351,11 +351,24 @@ export type ImagineChatEvent =
   /** A step of the reading, in the order it happened. */
   | {
     readonly kind: 'step'
+    /**
+     * The step. The first seven belong to the classic one-call lane; the last
+     * four are the agent's (a tool called, a run queued, a wait, a look).
+     */
     readonly step: 'sight' | 'route' | 'writing' | 'workflow' | 'retry' | 'fallback' | 'grounding'
-    /** What the step is about: a model, a workflow label, a file name. */
+      | 'tool' | 'queued' | 'waiting' | 'looked'
+    /** What the step is about: a model, a workflow label, a file name, a prompt. */
     readonly detail?: string
     /** How many things the step covered, when it covered things. */
     readonly count?: number
+    /** The tool of a `tool` step. */
+    readonly name?: string
+    /** The run of a `queued` or `waiting` step. */
+    readonly jobId?: string
+    /** How far the run is, on a `waiting` step. */
+    readonly percent?: number
+    /** The ComfyUI node executing now, on a `waiting` step. */
+    readonly stage?: string
   }
   /** The model's own thinking, when the route emits any. */
   | { readonly kind: 'reasoning'; readonly text: string }

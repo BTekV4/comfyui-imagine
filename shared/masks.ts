@@ -3,17 +3,18 @@
  * Remove object take one PNG at the photo's own size, white where to act.
  *
  * The page builds it on a canvas (`joinedMask` in segments-api.ts); the MCP
- * server has no canvas, so the few PNG operations it needs are here, on
- * `node:zlib` alone: read a segment's mask, join several (the lighter pixel
- * wins, as the page's `lighten`), and draw a rectangle.
+ * server and the agent's eraser have no canvas, so the few PNG operations
+ * they need are here, on `node:zlib` alone: read a segment's mask, join
+ * several (the lighter pixel wins, as the page's `lighten`), draw a
+ * rectangle, and soften its edge.
  *
  * Only what the studio writes is read: 8-bit, non-interlaced PNGs (the
  * Segments node saves greyscale masks). Anything else is refused with a reason
  * rather than misread.
- * @module mcp/masks
+ * @module shared/masks
  */
 import { crc32, deflateSync, inflateSync } from 'node:zlib'
-import { MIN_REGION_SIDE } from '../shared/imagine-types.ts'
+import { MIN_REGION_SIDE } from './imagine-types.ts'
 
 /** A mask: one byte per pixel, 0 = keep, 255 = act. */
 export interface Mask {
@@ -260,4 +261,49 @@ export function rectangleMask(width: number, height: number, zone: Fractions): M
  */
 export function maskDataUrl(mask: Mask): string {
   return `data:image/png;base64,${writeMask(mask).toString('base64')}`
+}
+
+/**
+ * Soften the edge of a mask: the white stays white, and the pixels just
+ * outside it fade to black over `radius` pixels.
+ *
+ * The page blurs its canvas mask (`removalMask`); the server has no canvas,
+ * and a hard edge is the halo LaMa leaves around what it fills. The fade is
+ * measured from the box the white pixels occupy, which is what the removal's
+ * rectangle is: inside full, outside a linear falloff. A diagonal corner fades
+ * a little rounder than a blur would, which is the harmless direction.
+ * @param mask - the mask to soften.
+ * @param radius - how far the fade reaches, in pixels; 0 leaves it as it is.
+ * @returns the softened mask.
+ */
+export function featherMask(mask: Mask, radius: number): Mask {
+  const r = Math.max(0, Math.round(radius))
+  if (r === 0) return mask
+  const { width, height, data } = mask
+  let left = width
+  let top = height
+  let right = -1
+  let bottom = -1
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if ((data[y * width + x] ?? 0) === 0) continue
+      if (x < left) left = x
+      if (x > right) right = x
+      if (y < top) top = y
+      if (y > bottom) bottom = y
+    }
+  }
+  if (right < left || bottom < top) return mask
+  const out = new Uint8Array(width * height)
+  for (let y = 0; y < height; y++) {
+    const dy = y < top ? top - y : y > bottom ? y - bottom : 0
+    if (dy >= r) continue
+    for (let x = 0; x < width; x++) {
+      const dx = x < left ? left - x : x > right ? x - right : 0
+      const distance = Math.hypot(dx, dy)
+      if (distance >= r) continue
+      out[y * width + x] = Math.round(255 * (1 - distance / r))
+    }
+  }
+  return { width, height, data: out }
 }

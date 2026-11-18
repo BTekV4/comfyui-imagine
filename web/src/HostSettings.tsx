@@ -16,6 +16,7 @@ import { restartImagine } from '../vendor-imagine/client/imagine-restart.ts'
 import css from '../vendor-imagine/client/ImagineSettings.module.css'
 import own from './HostSettings.module.css'
 import { isThinkingLevel, THINKING_DEFAULT, THINKING_FALLBACK } from '../../shared/host-settings.ts'
+import { isAgentChatMode, type AgentChatMode } from '../../shared/agent-chat.ts'
 import type { HostSettingsPatch as Patch, HostSettingsView as View, ThinkingLevel } from '../../shared/host-settings.ts'
 import type { HostAccessView } from '../../shared/host-access.ts'
 import type { ModelEntry, ModelRoute as Route } from '../../shared/imagine-types.ts'
@@ -91,6 +92,11 @@ export function HostSettings({ sections = 'all', onPending }: {
   const thinking = (): ThinkingLevel => {
     const chosen = value('thinking')
     return isThinkingLevel(chosen) ? chosen : THINKING_DEFAULT
+  }
+  /** The agent switch in force (draft, then saved, then `auto`). */
+  const agentMode = (): AgentChatMode => {
+    const chosen = value('agentChat')
+    return isAgentChatMode(chosen) ? chosen : 'auto'
   }
   /*
    * The levels the gateway declares for the model in force
@@ -319,6 +325,19 @@ export function HostSettings({ sections = 'all', onPending }: {
             {thinkingOptions.map(level => <option key={level} value={level}>{level}</option>)}
           </select>
           <span className={css.hint}>{translate('imagine.thinkingLevelHint')}</span>
+        </label>
+        <label className={own.row}>
+          <span className={own.label}>{translate('imagine.agentChat')}</span>
+          <select
+            className={css.select}
+            value={agentMode()}
+            onChange={(event) => { set({ agentChat: event.target.value as AgentChatMode }) }}
+          >
+            <option value="auto">{translate('imagine.agentChatAuto')}</option>
+            <option value="on">{translate('imagine.agentChatOn')}</option>
+            <option value="off">{translate('imagine.agentChatOff')}</option>
+          </select>
+          <span className={css.hint}>{translate('imagine.agentChatHint')}</span>
         </label>
         <div className={own.row}>
           <span className={own.label}>{translate('imagine.host.selectorModels', { count: models.length })}</span>

@@ -11,7 +11,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { checkedZone, growMask, joinMasks, maskDataUrl, readMask, rectangleMask, writeMask } from '../mcp/masks.ts'
+import { checkedZone, growMask, joinMasks, maskDataUrl, readMask, rectangleMask, writeMask } from '../shared/masks.ts'
 
 const dir = await mkdtemp(join(tmpdir(), 'imagine-mcp-masks-'))
 after(async () => { await rm(dir, { recursive: true, force: true }) })
