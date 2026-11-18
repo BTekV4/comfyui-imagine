@@ -4,6 +4,53 @@ Notable changes, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project's
 versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **The written lane carries the composer's controls.** A sentence can ask for
+  the «Quality» pill (`quality: "high"` for a photo, `speed: "slow"` for a
+  clip), an upscale target (`upscaleTo`, on the ladder of the file's kind), and
+  a precise edit's zone (`region`, fractions of the photo, the rest left
+  untouched). Until now those choices only existed as buttons.
+- **Personal cards are runnable from the chat.** The workflow inventory carries
+  every uploaded card with its id, title, description and exposed inputs; a
+  sentence runs one with `action: "custom"`, `customWorkflowId` and
+  `customFields` keyed `<node>.<field>`, exactly as the MCP's `custom` action
+  does. A configured entry that points at a card is shown by its title and
+  description instead of the UUID.
+- **Every workflow entry accepts a `description`** — when to use it, in one
+  line — shown in Settings → Workflows and given to the written lane, which
+  had been choosing a graph from its title alone. `config.example.yaml`
+  describes all of them.
+- **The graph second pass is given the node facts**: a combo's closed list (the
+  LoRAs, checkpoints and models this installation really has), a number's
+  bounds and step, and the pins that no longer resolve.
+
+### Changed
+
+- **The workflow gateway opens only on an explicit request.** A model that
+  names a graph behind an ordinary request ("fammi una foto") no longer turns
+  the sentence into a graph question, and a sentence that asks for a run *and*
+  about a graph keeps its intents beside the proposal instead of losing them.
+- **Durations are real.** A length off the duration ladder takes the next rung
+  up, and one past the longest single clip runs as a chain at the length asked
+  for (up to the chain's ceiling) instead of falling back to ten seconds. The
+  reply says the length the studio will really render.
+- **The chat's prompt draws its limits from the constants** — video and story to
+  300 s, music 30-300 — and has a line for every action it may queue, `compose`
+  and `custom` included, so the reading is no longer told about an action with
+  no description.
+
+### Fixed
+
+- **A graph this deployment does not configure is said in the chat**, before a
+  job exists, instead of failing after the queue. A card whose graph does not
+  load is reported the same way.
+- **A change the node would refuse is refused by the plan**: a combo value off
+  its closed list and a number outside its bounds are reported with the values
+  that would work, and a measure is snapped to the node's own multiple.
+
 ## 0.3.1 — 2026-11-18
 
 ### Added
