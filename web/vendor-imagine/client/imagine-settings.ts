@@ -10,7 +10,7 @@ import {
   upscaleBlocked, type ImagineAspect, type ImagineResolution,
 } from '../../../shared/imagine-media.ts'
 import type { MediaKind } from '../../../shared/imagine-types.ts'
-import { VIDEO_MEGAPIXELS, clipSecondsFor } from '../../../shared/imagine-sizing.ts'
+import { VIDEO_MEGAPIXELS, clipSecondsFor, frameForRatio } from '../../../shared/imagine-sizing.ts'
 
 /*
  * The size and length math the MCP server shares lives in
@@ -72,29 +72,21 @@ function aspectSides(aspect: ImagineAspect): readonly [number, number] {
 }
 
 /**
- * The `multiple` the video workflow's ResolutionSelector rounds to.
- *
- * Mirrors `comfyui_video_i2v_minimax_h3_API.json`; DSH overrides that node's
- * `aspect_ratio` and `megapixels` and leaves this one as the graph has it.
- */
-const VIDEO_SIZE_MULTIPLE = 32
-
-/**
  * The pixel size ResolutionSelector produces for one aspect and budget.
  *
- * Reproduces the node: the budget is read as MEBIpixels (1024 x 1024, not a
- * million) and each side is rounded to the nearest multiple, which is why a
- * 0.8 budget at 9:16 comes out 672x1216 rather than the 720x1280 its name
- * suggests.
+ * One arithmetic, in `shared/imagine-sizing.ts` (`frameForRatio`): the budget is
+ * read as MEBIpixels (1024 x 1024, not a million) and each side is rounded to
+ * the nearest multiple of the graph's 32, which is why a 0.8 budget at 9:16
+ * comes out 672x1216 rather than the 720x1280 its name suggests. The host runs
+ * the same function for its chained graphs, whose Production Plan takes the
+ * frame as plain numbers (2026-11-18).
  * @param aspect - composer aspect.
  * @param megapixels - the budget written on the node.
  * @returns width and height in pixels.
  */
 function videoPixelSize(aspect: ImagineAspect, megapixels: number): { width: number; height: number } {
   const [w, h] = aspectSides(aspect)
-  const scale = Math.sqrt(megapixels * 1024 * 1024 / (w * h))
-  const round = (side: number): number => Math.round(side / VIDEO_SIZE_MULTIPLE) * VIDEO_SIZE_MULTIPLE
-  return { width: round(w * scale), height: round(h * scale) }
+  return frameForRatio(w, h, megapixels)
 }
 
 /**

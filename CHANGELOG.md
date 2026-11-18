@@ -96,6 +96,16 @@ versions follow [semantic versioning](https://semver.org/).
 
 ### Fixed
 
+- **A long video asked at 480p renders at 480p.** The chained graphs plan
+  their own scenes and take the frame as two plain numbers on the Production
+  Plan, not as a `ResolutionSelector` label and budget, so the ladder step
+  never reached them: a twelve-second video asked at 480p came out at the
+  file's 720p frame (720x1280, then 736x1312 once the graph was put on the 32px
+  grid) while the still it grew from was 480x848. The host now writes the
+  frame the selector itself gives for the run's budget and aspect — measured on
+  the node, each side rounded on its own, so 0.4 MP at 9:16 is 480x864 — on
+  the plan node, before a size the job carries, which is how a continuation
+  keeps rendering on its source clip's canvas.
 - **The agent recovers a count and a length the model drops.** "Tre foto" and
   "un video di 16 secondi" were said in the reply and missing from the call;
   the studio now reads them from the user's line, as it already did for a

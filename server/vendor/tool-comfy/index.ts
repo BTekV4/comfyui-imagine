@@ -32,7 +32,7 @@ import { list, number, object, oneOf, string, type Check } from '../../src/confi
 import { AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, kindOf, pixelsOfVideoBytes } from './gallery.ts'
 import { resumeUnfinishedStories } from './imagine-jobs.ts'
 import type { ImagineQuality, ImagineSpeed, MediaKind } from '../../../shared/imagine-types.ts'
-import { h3Frame } from '../../../shared/imagine-sizing.ts'
+import { h3Frame, selectorFrame } from '../../../shared/imagine-sizing.ts'
 import { GUIDE_FRAMES } from './extend-video.ts'
 import { FPS } from './media-tools.ts'
 import { loadImagineOverrides, mergeWorkflowMaps, type WorkflowMap } from './imagine-settings.ts'
@@ -812,6 +812,33 @@ function parameterize(
 
   if (opts.prompt !== undefined) writeWorkflowPrompt(graph, workflow, opts.prompt)
   writeWorkflowSeed(graph, workflow, opts.seed)
+
+  /*
+   * A chained graph plans its own scenes and takes the frame as two plain
+   * numbers on its Production Plan (`plan_json`'s node), not as a
+   * ResolutionSelector's label and budget: the composer's ladder step never
+   * reached it, so a long video asked at 480p came out at the file's own
+   * 736x1312 — the 720p frame — while the still it grew from was 480x848.
+   *
+   * The frame is written here from the budget and the aspect, with the
+   * selector's own arithmetic, before the size block below: a continuation
+   * carries the canvas of the clip it continues (`extendSource.size`) and that
+   * one has to keep winning, or the seam becomes a rescale.
+   */
+  if (opts.megapixels !== undefined && opts.aspectRatio !== undefined && workflow.planJson !== undefined) {
+    const frame = selectorFrame(opts.aspectRatio, opts.megapixels)
+    const plan = graph[workflow.planJson.nodeId]
+    /*
+     * Only a plain number is overwritten: a graph that links the frame to a
+     * node of its own (the object swap's plan) is measured elsewhere and must
+     * keep its link.
+     */
+    if (frame !== undefined && plan !== undefined
+      && typeof plan.inputs.width === 'number' && typeof plan.inputs.height === 'number') {
+      plan.inputs.width = frame.width
+      plan.inputs.height = frame.height
+    }
+  }
 
   const sizeId = workflow.sizeNodeId ?? sizeNode(graph)?.id
   if (opts.size !== undefined && (sizeId !== undefined || workflow.upscaleNodeId !== undefined)) {

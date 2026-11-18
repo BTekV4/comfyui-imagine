@@ -174,9 +174,9 @@ export const H3_FRAME_MULTIPLE = 32
  * chosen shape kept.
  *
  * The short side moves to the nearest step and the long side follows the
- * shape, which is the frame ResolutionSelector's own arithmetic lands on for
- * the same budget (0.9 MP at 9:16 is 736x1312). A side already on the grid is
- * left alone, so a size a graph or a caller already got right does not move.
+ * shape: the composer's 720p frame at 9:16 (720x1280) becomes 736x1312, on the
+ * grid the node accepts. A side already on the grid is left alone, so a size a
+ * graph or a caller already got right does not move.
  * @param width - the frame's width in pixels.
  * @param height - the frame's height in pixels.
  * @returns the frame on the grid, or undefined when it is not a positive frame.
@@ -192,6 +192,49 @@ export function h3Frame(width: number, height: number): { width: number; height:
   return portrait
     ? { width: snappedShort, height: snappedLong }
     : { width: snappedLong, height: snappedShort }
+}
+
+/**
+ * The frame a `ResolutionSelector` gives for one ratio and one budget.
+ *
+ * Measured on the node (2026-11-18): the budget is read as MEBIpixels (1024 ×
+ * 1024) and EACH side is rounded to the nearest multiple on its own, so 0.9 MP
+ * at 9:16 is 736x1280 — not the 736x1312 {@link h3Frame} gives by letting the
+ * long side follow the short one's snap. The multiple is the H3 grid, which is
+ * also the `multiple` the bundled video graphs pin on the node.
+ *
+ * The chained graphs plan their own scenes and take `width`/`height` as plain
+ * numbers instead of a selector's label and budget, so this is the arithmetic
+ * the host has to run itself to give a chain the frame the single clip it
+ * follows renders on.
+ * @param width - the ratio's width (any unit: a ratio or pixels).
+ * @param height - the ratio's height.
+ * @param megapixels - the budget, in units of 1024x1024 pixels.
+ * @returns the frame in pixels.
+ */
+export function frameForRatio(width: number, height: number, megapixels: number): { width: number; height: number } {
+  const scale = Math.sqrt(megapixels * 1024 * 1024 / (width * height))
+  const side = (value: number): number =>
+    Math.max(H3_FRAME_MULTIPLE, Math.round((value * scale) / H3_FRAME_MULTIPLE) * H3_FRAME_MULTIPLE)
+  return { width: side(width), height: side(height) }
+}
+
+/**
+ * The frame a `ResolutionSelector` gives for a label and a budget.
+ *
+ * The label is the node's own value (`"9:16 (Portrait Widescreen)"`), which is
+ * what a video run carries as `aspectRatio`: only its first `a:b` is read.
+ * @param label - an aspect such as `16:9`, or a node label that starts with one.
+ * @param megapixels - the budget, in units of 1024x1024 pixels.
+ * @returns the frame in pixels, or undefined when the label names no ratio.
+ */
+export function selectorFrame(label: string, megapixels: number): { width: number; height: number } | undefined {
+  const match = /^\s*(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)\b/.exec(label)
+  if (match === null) return undefined
+  const width = Number(match[1])
+  const height = Number(match[2])
+  if (!(width > 0) || !(height > 0) || !Number.isFinite(megapixels) || megapixels <= 0) return undefined
+  return frameForRatio(width, height, megapixels)
 }
 
 /**
