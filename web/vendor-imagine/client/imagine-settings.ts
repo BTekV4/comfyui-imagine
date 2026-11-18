@@ -6,7 +6,7 @@
  */
 
 import {
-  IMAGINE_ASPECTS, MAX_STORY_SECONDS, MIN_SHOT_SECONDS, UPSCALE_IMAGE_SHORT,
+  IMAGINE_ASPECTS, UPSCALE_IMAGE_SHORT,
   upscaleBlocked, type ImagineAspect, type ImagineResolution,
 } from '../../../shared/imagine-media.ts'
 import type { MediaKind } from '../../../shared/imagine-types.ts'
@@ -15,10 +15,14 @@ import { VIDEO_MEGAPIXELS, clipSecondsFor } from '../../../shared/imagine-sizing
 /*
  * The size and length math the MCP server shares lives in
  * `shared/imagine-sizing.ts`; re-exported here so the page imports one module.
+ * The chain's clamp and its named rung moved there on 2026-11-18: the server's
+ * written lane has to clamp and quote the same numbers, and a second copy in
+ * the page would drift the way the story ceiling already had.
  */
 export {
-  LOOP_SECONDS, VIDEO_RESOLUTIONS, clampResolution, clampSeconds, clipSecondsFor, megapixelsFor, sizeFor,
-  canvasMegapixelsFor, videoAspectLabel, videoSecondsFor, SWAP_RESOLUTIONS, swapResolutionOf,
+  LOOP_SECONDS, STORY_MIN_SECONDS, VIDEO_RESOLUTIONS, clampResolution, clampSeconds, clampStorySeconds,
+  clipSecondsFor, megapixelsFor, sizeFor, canvasMegapixelsFor, videoAspectLabel, videoSecondsFor,
+  SWAP_RESOLUTIONS, swapResolutionOf,
 } from '../../../shared/imagine-sizing.ts'
 
 /**
@@ -35,24 +39,6 @@ export type ImagineMode = 'image' | 'video' | 'loop' | 'music' | 'look' | 'style
   // its original audio. Not an upscale: the model redraws the detail.
   | 'regenerate'
 
-/*
- * The chain's length is clamped with the director's own `MAX_STORY_SECONDS`
- * and `MIN_SHOT_SECONDS`, from `shared/imagine-media.ts`. This file kept its
- * own copies until 2026-10-22 — 180 against the director's 300, under a comment
- * claiming the two matched — so a length asked for in words ("a five-minute
- * video") was cut to three minutes before it ever reached the host.
- */
-
-/** Longest single clip; past this a duration is rendered as a chain. */
-export const STORY_MIN_SECONDS = 20
-
-/**
- * Shortest shot the chain will render — `MIN_SHOT_SECONDS` from shared. The
- * clamp's floor is the shot's, not the duration button's: the chain is also how
- * a video is made from nothing, so it runs at lengths under that rung.
- */
-const STORY_FLOOR_SECONDS = MIN_SHOT_SECONDS
-
 /**
  * Budgets the 720p step used before its current one. Clips generated at them
  * are still 720p clips and keep the HD badge.
@@ -68,20 +54,6 @@ const PREVIOUS_720P_MEGAPIXELS = [0.8, 1.0] as const
 export function isStoryLength(resolution: ImagineResolution, seconds: number): boolean {
   const clips = clipSecondsFor(resolution)
   return seconds > (clips[clips.length - 1] ?? 10)
-}
-
-/**
- * Keep a chained video's duration inside what the chain can render.
- *
- * The ladder clamp cannot do this job: a story asked for in words is any
- * number of seconds, and a value off the four rungs the button offered would
- * come back as the ten-second clip the user did not ask for.
- * @param seconds - the duration asked for.
- * @returns a duration between the shortest and longest chain.
- */
-export function clampStorySeconds(seconds: number): number {
-  if (!Number.isFinite(seconds)) return STORY_MIN_SECONDS
-  return Math.max(STORY_FLOOR_SECONDS, Math.min(MAX_STORY_SECONDS, Math.round(seconds)))
 }
 
 /**
