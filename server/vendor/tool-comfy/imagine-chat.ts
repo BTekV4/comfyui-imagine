@@ -1305,7 +1305,7 @@ function notConfigured(action: string): string {
 function missingGraph(intent: ImagineChatIntent, inventory: WorkflowInventory): string | undefined {
   if (intent.action === 'custom') {
     const id = intent.customWorkflowId
-    if (id === undefined) return notConfigured('custom')
+    if (id === undefined) return message('chat.customNoCard')
     return (inventory.cards ?? []).some(card => card.id === id)
       ? undefined
       : message('chat.cardNotConfigured', { id })
@@ -1317,7 +1317,7 @@ function missingGraph(intent: ImagineChatIntent, inventory: WorkflowInventory): 
       // full redraw can run on either.
       return intent.region === undefined
         ? configured('edit') || configured('editRegion') ? undefined : notConfigured(intent.action)
-        : configured('editRegion') ? undefined : notConfigured('edit-region')
+        : configured('editRegion') ? undefined : message('job.preciseEditNotConfigured')
     case 'upscale':
       return configured('upscaleImage') || configured('upscaleVideo') || configured('upscaleVideoLong')
         ? undefined
