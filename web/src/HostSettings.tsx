@@ -16,7 +16,7 @@ import { restartImagine } from '../vendor-imagine/client/imagine-restart.ts'
 import css from '../vendor-imagine/client/ImagineSettings.module.css'
 import own from './HostSettings.module.css'
 import { isThinkingLevel, THINKING_DEFAULT, THINKING_FALLBACK } from '../../shared/host-settings.ts'
-import { isAgentChatMode, type AgentChatMode } from '../../shared/agent-chat.ts'
+import { AGENT_LIMITS_DEFAULT, isAgentChatMode, type AgentChatMode } from '../../shared/agent-chat.ts'
 import type { HostSettingsPatch as Patch, HostSettingsView as View, ThinkingLevel } from '../../shared/host-settings.ts'
 import type { HostAccessView } from '../../shared/host-access.ts'
 import type { ModelEntry, ModelRoute as Route } from '../../shared/imagine-types.ts'
@@ -97,6 +97,31 @@ export function HostSettings({ sections = 'all', onPending }: {
   const agentMode = (): AgentChatMode => {
     const chosen = value('agentChat')
     return isAgentChatMode(chosen) ? chosen : 'auto'
+  }
+  /** The longest clip the agent may queue without asking (draft, then saved, then the default). */
+  const confirmSeconds = (): number => {
+    const chosen = value('agentConfirmSeconds')
+    return typeof chosen === 'number' && Number.isInteger(chosen) && chosen > 0 ? chosen : AGENT_LIMITS_DEFAULT.confirmSeconds
+  }
+  /**
+   * The seconds field as it is being typed.
+   *
+   * A number is already the draft while it is valid, so "Apply" never saves the
+   * value the field showed a moment before; the text stays here until the field
+   * is left, and then what the server would refuse is dropped instead of kept
+   * on screen as if it had been taken.
+   */
+  const [confirmTyped, setConfirmTyped] = useState<string>()
+  const typeConfirm = (typed: string): void => {
+    setConfirmTyped(typed)
+    const seconds = Number(typed)
+    if (Number.isInteger(seconds) && seconds >= 1 && seconds <= 3_600) set({ agentConfirmSeconds: seconds })
+  }
+  const commitConfirm = (typed: string): void => {
+    setConfirmTyped(undefined)
+    const seconds = Number(typed)
+    if (!Number.isInteger(seconds) || seconds < 1 || seconds > 3_600) return
+    set({ agentConfirmSeconds: seconds })
   }
   /*
    * The levels the gateway declares for the model in force
@@ -338,6 +363,27 @@ export function HostSettings({ sections = 'all', onPending }: {
             <option value="off">{translate('imagine.agentChatOff')}</option>
           </select>
           <span className={css.hint}>{translate('imagine.agentChatHint')}</span>
+        </label>
+        {/*
+          * The limit the confirmation reads, beside the switch that turns the
+          * agent on: same subject, and the number is the one thing a power user
+          * tunes when a clip he trusts keeps stopping for a yes.
+          */}
+        <label className={own.row}>
+          <span className={own.label}>{translate('imagine.agentConfirmSeconds')}</span>
+          <input
+            className={own.input}
+            type="number"
+            min="1"
+            max="3600"
+            step="1"
+            aria-label={translate('imagine.agentConfirmSeconds')}
+            value={confirmTyped ?? String(confirmSeconds())}
+            onChange={(event) => { typeConfirm(event.target.value) }}
+            onBlur={(event) => { commitConfirm(event.target.value) }}
+            onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }}
+          />
+          <span className={css.hint}>{translate('imagine.agentConfirmSecondsHint', { seconds: String(confirmSeconds()) })}</span>
         </label>
         <div className={own.row}>
           <span className={own.label}>{translate('imagine.host.selectorModels', { count: models.length })}</span>

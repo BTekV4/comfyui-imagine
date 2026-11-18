@@ -14,6 +14,13 @@ versions follow [semantic versioning](https://semver.org/).
   are checked against the gallery, the closed lists against the studio's own,
   and the same confirmation gate applies. A field the studio does not know is
   refused, not dropped.
+- **The confirmation limit is on the settings page.** Settings → Assistant
+  shows, beside the chat switch, how long a clip may be before the agent
+  stops for a yes (`agentConfirmSeconds`, fifteen seconds by default; whole
+  seconds from 1 to 3600). Stories, music, montages, personal cards and a 4K
+  upscale always ask, whatever the number says. The field is translated into
+  Italian and English, and the value the server stores is what the page shows
+  again after a reload.
 - **The agent chat renders video, sound and cards, and asks before the
   expensive work.** The agent lane of a project's chat now has tools for a
   clip from a picture, a continuation, an animated loop, a story, a piece of
