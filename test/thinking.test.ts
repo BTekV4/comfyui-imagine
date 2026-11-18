@@ -14,6 +14,8 @@ import assert from 'node:assert/strict'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { AGENT_LIMITS_DEFAULT } from '../shared/agent-chat.ts'
+import type { HostSettingsValues } from '../shared/host-settings.ts'
 
 const { createLlm, thinkingBody } = await import('../server/src/llm.ts')
 const { createHostSettings } = await import('../server/src/settings.ts')
@@ -119,9 +121,9 @@ test('vision gets the level too', async () => {
   }
 })
 
-test('the field is saved and read back, and a value that is not a tier means the default', async () => {
-  const file = join(root, 'host-settings.json')
-  const base = {
+/** Every setting at rest, so one test's choices do not leak into the next one's file. */
+function baseSettings(): HostSettingsValues {
+  return {
     gatewayURL: 'http://gateway.example.invalid:20128/v1',
     apiKey: '',
     models: [],
@@ -131,13 +133,18 @@ test('the field is saved and read back, and a value that is not a tier means the
     requireLogin: false,
     hfToken: '',
     autoSetup: false,
-    agentChat: 'auto' as const,
+    agentChat: 'auto',
     agentMaxSteps: 8,
     agentMaxJobs: 6,
     agentWaitSeconds: 300,
     agentConfirmSeconds: 15,
     agentTurnSeconds: 900,
   }
+}
+
+test('the field is saved and read back, and a value that is not a tier means the default', async () => {
+  const file = join(root, 'host-settings.json')
+  const base = baseSettings()
   const settings = await createHostSettings({ file, passwordFile: join(root, 'password'), base, envKey: undefined })
   assert.equal(settings.current().thinking, 'low')
 
@@ -153,4 +160,28 @@ test('the field is saved and read back, and a value that is not a tier means the
   await writeFile(file, JSON.stringify({ thinking: 'Altissimo!' }))
   const again = await createHostSettings({ file, passwordFile: join(root, 'password'), base, envKey: undefined })
   assert.equal(again.current().thinking, 'low')
+})
+
+test('the agent confirmation limit is saved, and only a whole number of seconds is taken', async () => {
+  const file = join(root, 'confirm-settings.json')
+  const base = baseSettings()
+  const settings = await createHostSettings({ file, passwordFile: join(root, 'password'), base, envKey: undefined })
+  // The confirmed default: a clip up to fifteen seconds runs without asking.
+  assert.equal(settings.current().agentConfirmSeconds, AGENT_LIMITS_DEFAULT.confirmSeconds)
+
+  // What the settings page writes: a whole number of seconds.
+  await settings.save({ agentConfirmSeconds: 40 })
+  assert.equal(settings.current().agentConfirmSeconds, 40)
+  assert.equal(JSON.parse(await readFile(file, 'utf8')).agentConfirmSeconds, 40)
+
+  // A value no clip can have (zero, past an hour, a fraction) leaves the last one.
+  for (const refused of [0, 3_601, 12.5]) {
+    await settings.save({ agentConfirmSeconds: refused })
+    assert.equal(settings.current().agentConfirmSeconds, 40, `took ${String(refused)}`)
+  }
+
+  // A hand-written file with an impossible value falls back to the default.
+  await writeFile(file, JSON.stringify({ agentConfirmSeconds: 0 }))
+  const again = await createHostSettings({ file, passwordFile: join(root, 'password'), base, envKey: undefined })
+  assert.equal(again.current().agentConfirmSeconds, AGENT_LIMITS_DEFAULT.confirmSeconds)
 })

@@ -1158,6 +1158,8 @@
   "imagine.agentChatOn": "Sempre agente",
   "imagine.agentChatOff": "Sempre lettura classica",
   "imagine.agentChatHint": "L'agente mette in coda i lavori e guarda da sé i risultati. La lettura classica risponde con i campi del composer: tienila come riserva, o quando il modello non sa chiamare gli strumenti.",
+  "imagine.agentConfirmSeconds": "Conferma le clip oltre (secondi)",
+  "imagine.agentConfirmSecondsHint": "Una clip più lunga di {seconds} s si ferma e aspetta il tuo sì prima di entrare in coda. Storie, musica, montaggi, card personali e upscale 4K chiedono sempre, qualunque valore ci sia qui.",
   "imagine.thoughtConfirm": "In attesa del tuo sì: {detail}",
   "imagine.agentConfirmYes": "Sì, fallo partire",
   "imagine.agentConfirmNo": "No",

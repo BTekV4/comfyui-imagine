@@ -366,6 +366,8 @@ export const en = {
   "imagine.agentChatOn": "Agent always",
   "imagine.agentChatOff": "Classic reading always",
   "imagine.agentChatHint": "The agent queues the runs and looks at the results itself. The classic reading answers with the fields the composer used: keep it as the reserve, or when the model cannot call tools.",
+  "imagine.agentConfirmSeconds": "Confirm clips longer than (seconds)",
+  "imagine.agentConfirmSecondsHint": "A clip longer than {seconds} s stops for your yes before it is queued. Stories, music, montages, personal cards and a 4K upscale always ask, whatever this says.",
   "imagine.thoughtConfirm": "Waiting for your yes: {detail}",
   "imagine.agentConfirmYes": "Yes, start",
   "imagine.agentConfirmNo": "No",
