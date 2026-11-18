@@ -88,11 +88,34 @@ const programDir = programDirFrom()
  * app the example is in the program folder, not beside the config.
  */
 const examplePath = join(dirname(configPath), 'config.example.yaml')
-const firstRun = ensureConfig(configPath, programDir === undefined || existsSync(examplePath) ? examplePath : join(programDir, 'config.example.yaml'))
+const shippedExample = programDir === undefined || existsSync(examplePath) ? examplePath : join(programDir, 'config.example.yaml')
+const firstRun = ensureConfig(configPath, shippedExample)
 if (firstRun.created) {
   console.log(`[imagine] first run: ${firstRun.path} written${firstRun.from === undefined ? '' : ` from ${firstRun.from}`}`)
 }
 const raw = parseYaml(readFileSync(configPath, 'utf8')) as HostConfig
+/*
+ * The example that ships with this installation, read for two things: the
+ * defaults of the included graphs (a `config.yaml` copied before the reference
+ * pins existed keeps editing), and the keys it has that the live file does not
+ * (the log and the settings page say so). A missing or broken example is not a
+ * reason to stop the studio: the live config is still what it says.
+ */
+const exampleWorkflows = ((): Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined => {
+  if (!existsSync(shippedExample)) return undefined
+  try {
+    const example = parseYaml(readFileSync(shippedExample, 'utf8')) as HostConfig
+    if (example.toolComfy === undefined) return undefined
+    const block = anchoredToolComfy(shippedExample, example.toolComfy, programDir)
+    const workflows = block['workflows']
+    return typeof workflows === 'object' && workflows !== null
+      ? workflows as Readonly<Record<string, Readonly<Record<string, unknown>>>>
+      : undefined
+  } catch (error: unknown) {
+    console.warn(`[imagine] config.example.yaml not read: ${String(error)}`)
+    return undefined
+  }
+})()
 
 /*
  * The base language (`language:` in config.yaml, English when absent): what
@@ -241,6 +264,7 @@ const ctx: ImagineHost = {
 const { outputDir } = toolComfy.apply(ctx, toolComfy.Config(config.toolComfy), {
   // Read when the sweep would run, so the settings page's switch counts.
   resumeSweep: () => now().resumeSweep,
+  exampleWorkflows,
 })
 
 /*

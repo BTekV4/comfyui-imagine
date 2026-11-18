@@ -154,6 +154,10 @@ export const MESSAGES = {
   'settings.serverOneField': { it: 'server vuole un campo solo', en: 'server takes one field only' },
   'settings.outputDirNoChildren': { it: 'outputDir non ha sotto-campi', en: 'outputDir has no sub-fields' },
   'settings.workflowNeedsField': { it: 'workflows.<chiave> vuole un campo', en: 'workflows.<key> needs a field' },
+  'settings.missingConfigKeys': {
+    it: 'config.yaml non ha {fields} (presenti in config.example.yaml): aggiorna la voce dall\'esempio',
+    en: 'config.yaml is missing {fields} (present in config.example.yaml): update the entry from the example',
+  },
   'settings.noChildren': { it: '{where} non ha sotto-campi', en: '{where} has no sub-fields' },
   'settings.oneLevel': { it: '{where} ha un solo livello', en: '{where} has one level only' },
   'settings.unknownSection': { it: '{name} non è una sezione configurabile', en: '{name} is not a configurable section' },

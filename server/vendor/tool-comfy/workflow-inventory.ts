@@ -25,6 +25,7 @@ import {
 import type { WorkflowField, WorkflowFieldFact } from '../../../shared/imagine-chat.ts'
 import type { CustomWorkflowMeta } from '../../../shared/custom-workflows.ts'
 import { readGraphFile, workflowFile, type GraphHolder, type LoadedRow } from './workflow-load.ts'
+import { WORKFLOW_ROWS } from './workflow-fields.ts'
 import { writableOverlay, type WorkflowOverlay } from './workflow-overlay.ts'
 
 /** The names the settings page gives the pins it has always reported. */
@@ -188,6 +189,7 @@ export function workflowInventory(
   editor: GraphEditor,
   overlay: WorkflowOverlay = writableOverlay,
   cards: () => readonly CustomWorkflowMeta[] = () => [],
+  configGaps: ReadonlyMap<string, readonly string[]> = new Map(),
 ): {
   readonly inventory: WorkflowInventory
   readonly applyKeyed: (key: string, changes: readonly WorkflowChange[]) => Promise<{ backup: string; applied: number }>
@@ -347,7 +349,13 @@ export function workflowInventory(
     },
     warnings: (key) => {
       const entry = workflowOfKey(key)
-      return entry === undefined ? undefined : stalePins(entry.loaded.graph, entry.pins)
+      if (entry === undefined) return undefined
+      const configKey = WORKFLOW_ROWS.find(row => row.run === entry.run)?.config
+      const missing = configKey === undefined ? [] : configGaps.get(configKey) ?? []
+      return [
+        ...missing.length === 0 ? [] : [message('settings.missingConfigKeys', { fields: missing.join(', ') })],
+        ...stalePins(entry.loaded.graph, entry.pins),
+      ]
     },
     overridden: overriddenOf,
     facts: async (key, signal) => {
