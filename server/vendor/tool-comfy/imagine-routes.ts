@@ -523,7 +523,9 @@ async function workflowRoute(
       sendJson(res, 400, { error: message('workflow.keyAndChanges') })
       return
     }
-    const planned = inventory.plan(asked.key, asked.changes)
+    // The facts go with the preview: a page that shows a value the apply
+    // would refuse is a confirmation that fails one click later.
+    const planned = inventory.plan(asked.key, asked.changes, await inventory.facts(asked.key))
     if (planned === undefined) {
       sendJson(res, 404, { error: message('workflow.notConfigured', { key: asked.key }) })
       return

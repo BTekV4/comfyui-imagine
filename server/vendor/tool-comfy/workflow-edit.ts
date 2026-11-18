@@ -18,7 +18,9 @@ import type { ComfyGraph } from '../comfyui/index.ts'
 import { message } from '../../src/messages.ts'
 import { isPlainObject } from './guards.ts'
 import { danglingLinks } from './lora.ts'
-import type { WorkflowDiff, WorkflowField, WorkflowScalar, WorkflowValueChange } from '../../../shared/imagine-chat.ts'
+import type {
+  WorkflowDiff, WorkflowField, WorkflowFieldFact, WorkflowScalar, WorkflowValueChange,
+} from '../../../shared/imagine-chat.ts'
 
 /**
  * How many previous copies of one workflow are kept beside it. They live in
@@ -154,11 +156,23 @@ export function listWorkflowFields(graph: ComfyGraph): readonly WorkflowField[] 
  * there, a link, and a value of a different type than the one the input
  * carries are all reported back, so the studio can say why instead of writing
  * a graph ComfyUI will reject at the next run.
+ *
+ * The facts of the node's own definition (when the caller could read them)
+ * add the two refusals the graph alone cannot show: a combo value off its
+ * closed list, and a number outside the bounds the node declares. A number
+ * with a step is snapped to the nearest valid multiple first — a measure off
+ * the grid is a value ComfyUI rejects, not a value to argue about — and only
+ * a snapped value that leaves the bounds is refused.
  * @param graph - the loaded workflow.
  * @param changes - the changes asked for.
+ * @param facts - what each input accepts, by `${node}.${field}`, when known.
  * @returns the changes that hold and the reasons the others do not.
  */
-export function planWorkflowPatch(graph: ComfyGraph, changes: readonly WorkflowChange[]): WorkflowPatchPlan {
+export function planWorkflowPatch(
+  graph: ComfyGraph,
+  changes: readonly WorkflowChange[],
+  facts?: ReadonlyMap<string, WorkflowFieldFact>,
+): WorkflowPatchPlan {
   const diff: WorkflowDiff[] = []
   const errors: string[] = []
   for (const change of changes) {
@@ -180,10 +194,70 @@ export function planWorkflowPatch(graph: ComfyGraph, changes: readonly WorkflowC
       errors.push(message('workflow.fieldType', { path: `${change.node}.${change.field}`, wanted: typeof from, given: typeof change.value }))
       continue
     }
-    if (from === change.value) continue
-    diff.push({ node: change.node, classType: node.class_type, field: change.field, from, to: change.value })
+    const fact = facts?.get(`${change.node}.${change.field}`)
+    const checked = factOf(fact, change)
+    if ('error' in checked) {
+      errors.push(checked.error)
+      continue
+    }
+    if (from === checked.value) continue
+    diff.push({ node: change.node, classType: node.class_type, field: change.field, from, to: checked.value })
   }
   return { diff, errors }
+}
+
+/** A value the node's own definition accepts, or the sentence saying why not. */
+function factOf(
+  fact: WorkflowFieldFact | undefined,
+  change: WorkflowChange,
+): { readonly value: WorkflowScalar } | { readonly error: string } {
+  const path = `${change.node}.${change.field}`
+  const value = change.value
+  if (fact === undefined) return { value }
+  /*
+   * A combo is a closed list, in the node's own spelling. Case and spacing are
+   * forgiven because the reader copies a name back; an entry the list does not
+   * hold is refused, not written, or the graph fails validation at the run.
+   */
+  if (fact.kind === 'combo' && typeof value === 'string' && (fact.options?.length ?? 0) > 0) {
+    const wanted = value.trim().toLowerCase()
+    const listed = (fact.options ?? []).find(option => option.trim().toLowerCase() === wanted)
+    if (listed === undefined) {
+      return {
+        error: message('workflow.valueNotListed', {
+          path, value, values: shownOptions(fact.options ?? []),
+        }),
+      }
+    }
+    return { value: listed }
+  }
+  if (fact.kind === 'number' && typeof value === 'number') {
+    // A measure off the grid is rounded onto it, the way the node's own widget
+    // does; then the bounds are checked on what would actually be written.
+    const stepped = fact.step !== undefined && fact.step > 0
+      ? Math.round(value / fact.step) * fact.step
+      : value
+    const min = fact.min
+    const max = fact.max
+    if ((min !== undefined && stepped < min) || (max !== undefined && stepped > max)) {
+      return {
+        error: message('workflow.valueRange', {
+          path,
+          value: stepped,
+          min: min ?? '-∞',
+          max: max ?? '+∞',
+        }),
+      }
+    }
+    return { value: stepped }
+  }
+  return { value }
+}
+
+/** A few of a combo's values, so a refusal names what would have worked. */
+function shownOptions(options: readonly string[]): string {
+  const shown = options.slice(0, 8)
+  return options.length > shown.length ? `${shown.join(', ')}, …` : shown.join(', ')
 }
 
 /**

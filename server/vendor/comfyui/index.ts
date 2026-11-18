@@ -48,6 +48,67 @@ interface ComfyNodeInfo {
   }
 }
 
+/** What one node input accepts, as far as a change has to care. */
+export interface ComfyInputSpec {
+  readonly kind: 'text' | 'number' | 'boolean' | 'combo'
+  /** The values of a combo, in the node's own spelling. */
+  readonly options?: readonly string[]
+  /** Bounds of a number, when the node declares them. */
+  readonly min?: number
+  readonly max?: number
+  /** What a number must be a multiple of, when the node declares it. */
+  readonly step?: number
+}
+
+/** A number out of an input spec, which carries it as a number or as text. */
+function numberOf(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  return undefined
+}
+
+/**
+ * Read one `/object_info` input spec into what a change needs to know.
+ *
+ * ComfyUI describes a combo two ways and both are live in one install — the
+ * older `[values, options]` and the newer `['COMBO', {options: values}]` — and
+ * a number as `['INT'|'FLOAT', {min, max, step}]`. Anything else (an image, a
+ * latent, a model) is not a value a written line may change.
+ * @param spec - the input's entry in the node definition.
+ * @returns the spec, or undefined for a non-scalar input.
+ */
+function inputSpecOf(spec: unknown): ComfyInputSpec | undefined {
+  if (!Array.isArray(spec)) return undefined
+  const [head, tail] = spec as readonly unknown[]
+  const options: readonly string[] | undefined = Array.isArray(head)
+    ? (head as readonly unknown[]).every(value => typeof value === 'string') ? head as readonly string[] : undefined
+    : typeof tail === 'object' && tail !== null && Array.isArray((tail as { options?: unknown }).options)
+      ? ((tail as { options: readonly unknown[] }).options).every(value => typeof value === 'string')
+        ? (tail as { options: readonly string[] }).options
+        : undefined
+      : undefined
+  if (options !== undefined) return { kind: 'combo', options }
+  if (typeof head !== 'string') return undefined
+  if (head === 'INT' || head === 'FLOAT') {
+    const facts = typeof tail === 'object' && tail !== null ? tail as Record<string, unknown> : {}
+    const min = numberOf(facts.min)
+    const max = numberOf(facts.max)
+    const step = numberOf(facts.step)
+    return {
+      kind: 'number',
+      ...min === undefined ? {} : { min },
+      ...max === undefined ? {} : { max },
+      ...step === undefined ? {} : { step },
+    }
+  }
+  if (head === 'STRING' || head === 'TEXT') return { kind: 'text' }
+  if (head === 'BOOLEAN') return { kind: 'boolean' }
+  return undefined
+}
+
 /** How submit rewrites relative model/output paths in the graph. */
 type ComfyPathStyle = 'auto' | 'posix' | 'nt'
 
@@ -1203,6 +1264,27 @@ export class ComfyUi {
     if (!Array.isArray(values)) return undefined
     const strings = (values as readonly unknown[]).filter(value => typeof value === 'string')
     return strings.length === values.length ? strings : undefined
+  }
+
+  /**
+   * What one node input accepts: its kind, a combo's values, a number's bounds.
+   *
+   * {@link nodeOptions} answers "what are the values of this combo" for the
+   * page's menus. The written lane needs one step more: a change it is about
+   * to propose has to know whether a text input is a closed list, whether a
+   * number has a floor and a ceiling, and what a size must be a multiple of.
+   * All of it is in the same `/object_info` spec the menus already read.
+   * @param classType - the node's `class_type`.
+   * @param field - the input key, required or optional.
+   * @param signal - optional caller cancellation.
+   * @returns the spec, or undefined when ComfyUI does not know the class or
+   *   the input takes something other than a scalar.
+   * @throws {ComfyError} `COMFY_FETCH_FAILED` when `/object_info` refuses.
+   */
+  async inputSpec(classType: string, field: string, signal?: AbortSignal): Promise<ComfyInputSpec | undefined> {
+    const input = (await this.nodeInfo(classType, signal))?.input
+    const spec = input?.required?.[field] ?? input?.optional?.[field]
+    return inputSpecOf(spec)
   }
 
   /**

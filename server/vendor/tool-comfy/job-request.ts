@@ -9,7 +9,7 @@ import type { SwapResolution } from '../../../shared/imagine-sizing.ts'
 import { join } from 'node:path'
 import type { LoadedWorkflow } from './index.ts'
 import { kindOf, probePixels, safeBasename } from './gallery.ts'
-import { upscaleBlocked } from '../../../shared/imagine-media.ts'
+import { UPSCALE_IMAGE_STEPS, UPSCALE_VIDEO_STEPS, upscaleBlocked } from '../../../shared/imagine-media.ts'
 import { probeMedia } from './media-tools.ts'
 import { h3AreaCanvas } from './extend-video.ts'
 import { formatSize, H3_NATIVE_MEGAPIXELS } from './snap-size.ts'
@@ -826,7 +826,7 @@ async function checkSource(
     throw new Error(message('job.noAudio'))
   }
   if (action === 'upscale' && request.upscaleTo !== undefined) {
-    const steps = sourceKind === 'video' ? [720, 1080] : [1080, 1440, 2160]
+    const steps: readonly number[] = sourceKind === 'video' ? UPSCALE_VIDEO_STEPS : UPSCALE_IMAGE_STEPS
     if (!steps.includes(request.upscaleTo)) {
       throw new Error(message('job.upscaleTarget', { value: request.upscaleTo, steps: steps.join(', ') }))
     }

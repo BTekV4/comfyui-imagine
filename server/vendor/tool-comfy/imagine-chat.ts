@@ -18,10 +18,17 @@
 import { join } from 'node:path'
 import type { ImagineHost } from '../../src/host.ts'
 import {
-  IMAGINE_ACTIONS, IMAGINE_OBJECT_MODES, type ImagineAction, type ImagineObjectMode,
+  IMAGINE_ACTIONS, IMAGINE_OBJECT_MODES, IMAGINE_QUALITIES, IMAGINE_SPEEDS,
+  type ImagineAction, type ImagineObjectMode, type ImagineQuality, type ImagineRegion, type ImagineSpeed,
 } from '../../../shared/imagine-types.ts'
 import { RELIGHT_LOOKS, relightLookOf } from '../../../shared/relight-looks.ts'
-import { IMAGE_RESOLUTIONS, IMAGINE_ASPECTS, aspectNearest } from '../../../shared/imagine-media.ts'
+import {
+  IMAGE_RESOLUTIONS, IMAGINE_ASPECTS, MAX_STORY_SECONDS, UPSCALE_IMAGE_STEPS, UPSCALE_VIDEO_STEPS,
+  aspectNearest, type ImagineResolution,
+} from '../../../shared/imagine-media.ts'
+import { LOOP_SECONDS, clampSeconds, clampStorySeconds } from '../../../shared/imagine-sizing.ts'
+import { MUSIC_MAX_SECONDS, MUSIC_MIN_SECONDS } from './music-prompt.ts'
+import { ACTION_RUNS } from './job-request.ts'
 import { probePixels, safeBasename } from './gallery.ts'
 import { finite, textField } from './guards.ts'
 import { streamText, textRoutes, type StreamCapable } from './imagine-models.ts'
@@ -34,8 +41,10 @@ import { LIPSYNC_MIN } from './story.ts'
 import { jsonObjectOf } from './model-json.ts'
 import type { WorkflowChange } from './workflow-edit.ts'
 import type { MediaFileRef } from '../../../shared/imagine-types.ts'
+import type { CustomInput } from '../../../shared/custom-workflows.ts'
 import type {
-  ImagineChatAsk, ImagineChatEvent, ImagineChatIntent, ImagineChatReply, WorkflowField, WorkflowPlan,
+  ImagineChatAsk, ImagineChatEvent, ImagineChatIntent, ImagineChatReply, WorkflowField, WorkflowFieldFact,
+  WorkflowPlan,
 } from '../../../shared/imagine-chat.ts'
 
 /** Most runs one written line may queue, so a misread cannot fill the GPU. */
@@ -55,6 +64,16 @@ const MAX_INTENTS_PER_FILE = 24
 
 /** Most inputs one written line may propose changing. */
 const MAX_CHANGES = 8
+
+/**
+ * How many values of a closed list the second pass is shown.
+ *
+ * A checkpoint or LoRA folder can hold hundreds of names, and printing all of
+ * them would put a catalogue behind one sentence. The list is truncated with
+ * its length said out loud, so the reading knows the rest exists and does not
+ * invent a name from the visible ones.
+ */
+const OPTIONS_IN_PROMPT = 40
 
 /**
  * How many files of each kind the reading is shown.
@@ -260,6 +279,41 @@ export interface ImagineChatRequest extends Omit<ImagineChatAsk, 'staged' | 'rec
 }
 
 /**
+ * One workflow the chat may talk about, as the reading is shown it.
+ *
+ * `file` is the graph file for a configured entry and the card's title for a
+ * personal one: an id like `custom:6f…` names nothing a reader can act on, and
+ * a card's title and description are what say when to use it (2026-11-18).
+ */
+export interface WorkflowSummary {
+  /** The key the chat and the settings page address it by. */
+  readonly key: string
+  /** What the settings page calls it. */
+  readonly label: string
+  /** The graph file, or the card's title when this entry is a personal card. */
+  readonly file: string
+  /** The name the job runner knows its graph by, when it has one. */
+  readonly run?: string
+  /**
+   * When to use this workflow: the entry's own `description`, or the personal
+   * card's.
+   */
+  readonly description?: string
+  /** The personal card this entry points at, when it points at one. */
+  readonly card?: { readonly id: string; readonly title: string; readonly description: string }
+}
+
+/** One personal card, as a written line may run it (`action: custom`). */
+export interface WorkflowCard {
+  /** The id the MCP and the card list know it by. */
+  readonly id: string
+  readonly title: string
+  readonly description: string
+  /** The inputs the card exposes, so a sentence can fill them by name. */
+  readonly inputs: readonly CustomInput[]
+}
+
+/**
  * The workflows the studio may talk about, and what it may do with them.
  *
  * The graphs live outside the repository, so the studio is told about them by
@@ -268,7 +322,12 @@ export interface ImagineChatRequest extends Omit<ImagineChatAsk, 'staged' | 'rec
  */
 export interface WorkflowInventory {
   /** What the studio can name: the key it is addressed by and its file. */
-  readonly list: readonly { readonly key: string; readonly label: string; readonly file: string }[]
+  readonly list: readonly WorkflowSummary[]
+  /**
+   * The personal cards the studio holds, whichever of them `config.yaml` also
+   * points at, so a sentence can run one as `action: custom` with its id.
+   */
+  readonly cards?: readonly WorkflowCard[]
   /**
    * One workflow's editable inputs, node by node.
    * @param key - the workflow's key.
@@ -281,6 +340,14 @@ export interface WorkflowInventory {
    * @returns the rows, or undefined when no such workflow is configured.
    */
   fields(key: string): readonly WorkflowField[] | undefined
+  /**
+   * What each input accepts, read from ComfyUI: a combo's closed list, a
+   * number's bounds and step. Absent facts are not a reason to refuse a
+   * change, only to check less.
+   * @param key - the workflow's key.
+   * @returns the facts, or undefined when no such workflow is configured.
+   */
+  facts(key: string, signal?: AbortSignal): Promise<readonly WorkflowFieldFact[] | undefined>
   /**
    * What the configured pins of one workflow no longer address.
    * @param key - the workflow's key.
@@ -306,9 +373,10 @@ export interface WorkflowInventory {
    * Work out what a set of changes would do, writing nothing.
    * @param key - the workflow's key.
    * @param changes - the changes asked for.
+   * @param facts - what each input accepts, when the caller read them.
    * @returns the plan, or undefined when no such workflow is configured.
    */
-  plan(key: string, changes: readonly WorkflowChange[]): WorkflowPlan | undefined
+  plan(key: string, changes: readonly WorkflowChange[], facts?: readonly WorkflowFieldFact[]): WorkflowPlan | undefined
 }
 
 /** Told about each step of a reading as it happens; never throws. */
@@ -360,8 +428,29 @@ function imagineChatInstruction(
   inventory?: WorkflowInventory,
   eyes?: ImagineChatEyes,
 ): string {
+  /*
+   * A card says who it is by its title and what it is for by its description:
+   * a configured entry pointing at one used to be listed with the UUID it is
+   * stored under, which the reading could neither pronounce nor choose.
+   */
   const workflows = (inventory?.list ?? [])
-    .map(entry => `- ${entry.key}: ${entry.label} (${entry.file})`).join('\n')
+    .map(entry => {
+      const name = entry.card?.title ?? entry.label
+      const when = entry.description ?? entry.card?.description
+      const file = entry.card === undefined ? entry.file : `personal card ${entry.card.id}`
+      return `- ${entry.key}: ${name} (${file})${when === undefined ? '' : ` — when to use it: ${when}`}`
+    }).join('\n')
+  /*
+   * The personal cards, with their id and their controls: a sentence may run
+   * one as `action: custom` exactly as the MCP's `custom` action does, and the
+   * id is the only way to name it.
+   */
+  const cards = (inventory?.cards ?? []).map(card => {
+    const inputs = card.inputs.length === 0
+      ? ''
+      : `; inputs: ${card.inputs.map(input => `${input.label} = ${input.node}.${input.field} (${input.kind})`).join(', ')}`
+    return `- ${card.id}: ${card.title}${card.description.trim().length === 0 ? '' : ` — ${card.description}`}${inputs}`
+  }).join('\n')
   /*
    * A staged file carries what was already seen in it — a clip's description
    * is only ever this one, since the look below reads stills — unless the look
@@ -437,10 +526,10 @@ function imagineChatInstruction(
 Actions you can queue:
 - generate: a new image from text. It does NOT take any starting file: to change an image that is already there the action is "remix".
 - remix: edits an image that is already there (it needs a starting image). It REDRAWS THE WHOLE PHOTO, not just the part the prompt names: what the prompt lists, the model redraws.
-- video: animates an image as ONE continuous take, from 5 up to 60 seconds: up to 6 seconds it is one clip, past that the studio renders it scene after scene (6 seconds each) with no cut. Use it for any length when the video starts from one photo and has no song.
-- loop: ANIMATED BACKGROUND from an image (it needs "source"): the clip begins and ends on the SAME frame, so it repeats as a loop with no seam, and that is what you want for a background, a video wall, an animation to put on a cycle. "seconds" goes up to 60: past 10 seconds the studio renders several segments and joins them, and the file comes out at the length asked for. Do NOT use it to animate a scene with a beginning and an end: that is "video".
+- video: animates an image as ONE continuous take, from 5 up to ${String(MAX_STORY_SECONDS)} seconds: up to 6 seconds it is one clip, past that the studio renders it scene after scene (6 seconds each) with no cut. Use it for any length when the video starts from one photo and has no song.
+- loop: ANIMATED BACKGROUND from an image (it needs "source"): the clip begins and ends on the SAME frame, so it repeats as a loop with no seam, and that is what you want for a background, a video wall, an animation to put on a cycle. "seconds" goes up to ${String(Math.max(...LOOP_SECONDS))}: past 10 seconds the studio renders several segments and joins them, and the file comes out at the length asked for. Do NOT use it to animate a scene with a beginning and an end: that is "video".
 - extend: continues a video that is already there (it needs a starting video).
-- story: a video CUT into shots, 20-180 seconds: a video over a song, or one made of several photos (one shot per photo). A long take that develops from ONE photo, without a song, is NOT story: it is video (the studio renders it as one continuous take, scene after scene, up to 60 seconds). It takes "lyrics": the text the clips themselves sing. It is done in two ways:
+- story: a video CUT into shots, 20-${String(MAX_STORY_SECONDS)} seconds: a video over a song, or one made of several photos (one shot per photo). A long take that develops from ONE photo, without a song, is NOT story: it is video (the studio renders it as one continuous take, scene after scene, up to ${String(MAX_STORY_SECONDS)} seconds). It takes "lyrics": the text the clips themselves sing. It is done in two ways:
   - single take over a song: "source" is ONE image and every piece continues the one before, cut to the song. Without a song a single take is video, not story.
   - cutting between shots: "sources" is a LIST of images (from the files below) and every photo becomes a shot, cut one after the other. That is what a MUSIC VIDEO wants: if the user says "use the project's photos" or has several available, list them in "sources" instead of choosing one. "Redo the music video" / "do it again with the project's files" means exactly this, and it is NOT a question: a single story action with ALL the project's images in "sources" (in the order of the list) and, if the project has audio, the most recent one as "song"; "seconds" is decided by the song, do not write it. Do not ask which song or which photos: they have already chosen them, they are the project's own.
 - upscale: raises the resolution of an image or a video that is already there.
@@ -450,7 +539,9 @@ Actions you can queue:
 - objectSwap: EDITS AN OBJECT inside a video: it needs ONE file, "source" = the VIDEO, and "objectMode" says which edit. "change" puts the object of a PHOTO in place of the one in the clip ("reference" = that photo); "remove" takes the tracked object out of the shot; "background" replaces the setting around the tracked subject, who keeps their exact look and performance; "add" puts a new object into the shot. It is the right action for "swap the bottle", "remove the chair from this clip", "change the background of this video", "put this glass on the table in the clip"; read the mode off the verb — take something out = "remove", change the place around the subject = "background", put something new in = "add", put the object of a photo in place of the one there = "change". The tracked object is found by the studio itself from the video: do NOT ask which object unless the sentence names none. "prompt" is what to do and it is REQUIRED: write it from the user's words (for "remove" say what has to disappear, for "background" describe the new setting, for "add" the object and where it goes, for "change" any note about the scene). It does NOT change a PERSON (that is swapPerson) and it is NOT "remix" (that edits a photo).
 - swapPerson: REPLACES THE MAIN PERSON of a video with the person in a PHOTO, keeping the clip's motion, framing, setting and soundtrack. It needs TWO files: "source" = the VIDEO, "reference" = the PHOTO of the new character. The studio describes the photo and writes the shots by itself, so "prompt" is optional (a note at most). It is the right action for "put the man in this photo in place of the woman in the clip", "swap the person in this video with her", "make him play this scene". It is NOT objectSwap (that edits an object, a garment or the setting) and it is NOT recreate.
 - relight: LIGHTS a photo that is already there with one of the seventeen light looks of the studio (a club in magenta, red and blue gels, firelight, a phone screen in a dark room, venetian blinds, a camera flash…). It needs ONE file: "source" is the PHOTO. "light" is the look, copied EXACTLY as an id from the list below (or omitted: the studio uses the first look). It is the right action for "illuminate it like in a club", "put a red and blue light on it", "make it look like firelight", "change the light of this photo", "relight this photo". "prompt" is not needed: the light IS the instruction. It is NOT "remix" (that changes what is in the photo) and NOT "video" (that animates it).${relightList}
-- music: generates a separate audio track; "lyrics" is the sung text, optional. "seconds" ONLY if the user names a length: otherwise do NOT write it, the studio decides from the length of the text.
+- compose: COMPOSES TWO PHOTOS INTO ONE — a person (or object) and a reference that says how they should look or where they should be: "put her in this dress", "make him pose like this", "this person in this setting", "compose these two photos". It needs TWO images: "source" = the person/object that stays, "reference" = the costume, pose or setting to take. "prompt" is optional and says what to take from the reference when it is not obvious. It is NOT "remix" (that edits one photo and needs no second one) and NOT "swapPerson" (that replaces the person in a VIDEO).
+- custom: runs ONE of the personal workflows of this installation (the cards below). It needs "customWorkflowId", copied EXACTLY from that list, and the card's own inputs in "customFields" when the user names values for them. "prompt" is what to draw, as in generate. Use it when the user asks for a card by its title or by what it does and no built-in action fits; if none of the cards does what they ask, queue NOTHING and say so.
+- music: generates a separate audio track; "lyrics" is the sung text, optional. "seconds" ONLY if the user names a length (${String(MUSIC_MIN_SECONDS)}-${String(MUSIC_MAX_SECONDS)}): otherwise do NOT write it, the studio decides from the length of the text.
 - redo: redoes ONE single shot of a music video that is already edited and reassembles the whole video. The shots are in the list of videos with their number in the name: "videoclip-abc123-03of10.mp4" is the 3rd of 10. "Redo clip 3", "I don't like the third one", "regenerate 3/10" = action redo with "source" = that file (copy its name from the list). In "prompt" write ONLY what has to change in that shot if the user says it (e.g. "she turns towards the camera"), otherwise leave it empty: without it, the clip is redone with the same beat. Do NOT use story for this: it would redo the whole video. If the user says the lip sync is off, the shots to redo are the ones in the list marked "weak lipsync": one redo for each, without asking which.
 - resume: RESUMES a music video that stopped halfway (failed clips, a restart, memory ran out) without redoing the shots that are ready: it regenerates only the missing ones, discards the ones the song does not reach and reassembles the video. "Continue from where it stopped", "resume the music video", "finish the video", "don't start over" = action resume with "source" = any numbered clip of that music video taken from the list (e.g. the last one, "videoclip-abc123-10of21.mp4"), "prompt" empty. It can ALWAYS be resumed: never say the whole thing has to be redone and do NOT use story for this.
 - voice: changes the voice of a track that is already there (it needs "source": an audio file or a VIDEO CLIP both work — from a clip the studio extracts the track by itself, so "change the voice of this clip" with a video in the chat is this action and NO audio file is asked for; if the user asks to change the voice, queue it and do NOT refuse: whether the clip has an audio track is said by the studio, you do not know; if the user says "this song" or "the track" without naming it, take the most recent audio from the list instead of asking). The music stays: the graph separates the voice, converts it and puts the backing back. On a CLIP the studio returns the CLIP with the new voice — the same starting video with the converted track over it, not an audio file to edit back in: do not tell the user there is anything to reassemble, and do not promise an audio file when they gave you a clip. "voice" is which voice to use, "pitch" the semitones: WRITE IT every time the user mentions a deeper or higher voice or semitones — "male voice"/"deeper" = "pitch": -12, "female voice"/"higher" = "pitch": 12, "twelve semitones down" = "pitch": -12.${voices.length === 0 ? '' : ` Voices available, to be copied exactly: ${voices}.`}
@@ -460,18 +551,25 @@ Actions you can queue:
 LOCAL CHANGES TO A PHOTO ("remove X", "add X", "move X", "change only X"):
 - "remix" redraws the whole photo. Write "prompt" as ONE short imperative sentence that names only the part to change and what to do with it ("Remove the extra arm", "Put a red scarf around her neck"). Do NOT describe the rest of the photo and do NOT list what must stay — no clothing, no body, no pose, no background, no light: the studio adds the fixed sentence that asks for everything else to stay the same, and a list of that kind is read as a description of the scene and gets the scene redrawn.
 - Never promise that the rest will come back identical: say the model will try to leave it as it is.
+- When the user names WHERE to change and the photo is in the chat or the project, give a "region": the graph then edits that rectangle and leaves the rest of the photo as it is, which is what "solo la giacca", "only the face" or "the top-left corner" are asking for. Without one the whole photo is redrawn.
 - When the user says the result is still wrong ("still there", "non l'hai rimosso", "ce ancora"), "source" is the photo that run STARTED from (its "from ..." in the list), never the failed result: a correction asked of the failed output adds to it instead of undoing it.
 - After TWO failed attempts at removing the same thing, queue nothing: say in "reply" that a full redraw has already had its two tries, and that «Remove object» (IOPaint) paints the part out and fills only that area, leaving the rest identical; «Precise edit» is for changing a zone, not for removing. That is the right tool for a body part or an object lying over the body, not a refusal.
 
 Parameters:
 - aspect: one of ${IMAGINE_ASPECTS.join(', ')}. Vertical = 9:16, horizontal = 16:9, square = 1:1.
 - resolution: one of ${IMAGE_RESOLUTIONS.join(', ')}. A video does not go past 720p.
-- seconds: the length asked for. video 5-60 (one take from one photo); story 20-180; music 30-180 and only if it is said.
+- seconds: the length asked for, in seconds. video: any length from 5 to ${String(MAX_STORY_SECONDS)} (one take from one photo, chained past 6 s); story: 20-${String(MAX_STORY_SECONDS)}; loop: 5-${String(Math.max(...LOOP_SECONDS))}; music: ${String(MUSIC_MIN_SECONDS)}-${String(MUSIC_MAX_SECONDS)} and only if it is said; recreate: ignored, the clip decides.
 - count: how many variants of the same prompt (1-4). Only for generate.
 - source: the name of a file from the list below, when the sentence starts from something that is already there.
 - sources: a list of image names, one per shot, for a music video cut between shots (story only). Copy them from the lists below, in the order they must appear.
 - song: the name of an audio file ALREADY in the gallery, when the video is to be cut to that track (then the action is story).
 - objectMode: only for objectSwap: one of change, remove, background, add (see its line above). Leave it out and the studio does "change".
+- quality: only for a photo or a card: "high" when the user asks for the best quality, the most detail, or "alta qualità". Leave it out for the normal quality; "standard" is not a sentence.
+- speed: only for a video: "slow" when the user asks for the high-quality/slower version, or "lenta". Leave it out for the fast one.
+- upscaleTo: only for upscale: the short side to reach, one of 1080, 1440, 2160 for a photo and 720, 1080 for a clip. Leave it out when the user does not say a size: the studio raises to the next step.
+- region: only for remix, when the user says WHERE to change ("only the jacket", "just the face", "the top left corner") and the photo is in the chat or the project. Give the rectangle as fractions of the photo: {"x": 0-1, "y": 0-1, "w": 0-1, "h": 0-1}, x/y from the top-left corner. Leave it out for a change to the whole photo.
+- customWorkflowId: only for custom, copied EXACTLY from the personal cards below. Never invent one.
+- customFields: only for custom, an object with the card's own inputs, keyed "<node>.<field>" exactly as the card lists them, only the ones the user names a value for.
 - lipSync: only for swapPerson: false when the people in the clip do NOT sing or talk along (music they only dance or move to), so the new person does not mouth the vocals. Leave it out otherwise: lip-sync is on.
 
 Videos already have audio: the video model generates music, ambience and, IF YOU ASK IT, a voice too. But by itself it adds none: if the user does not talk about singing, speech or a text to sing, the video comes out with ambience and music only, with no voices. Never say the model "sings by itself" something the user did not ask for.
@@ -506,9 +604,12 @@ The user now writes:
 ${request.text}
 """
 
-${workflows.length === 0 ? '' : `You can also look at and change the ComfyUI workflows of this installation:
+${workflows.length === 0 && cards.length === 0 ? '' : `${workflows.length === 0 ? '' : `The ComfyUI workflows of this installation, which you may look at or change ONLY when the user explicitly asks to see or change a graph or one of its parameters:
 ${workflows}
-If the user asks to see one or to change a parameter of it, reply with {"workflow": "<key>"} and nothing else: on the next turn I will give you the nodes of that workflow and you will decide there. Do not invent values now.
+`}${cards.length === 0 ? '' : `Personal cards you can run with "action": "custom" (id — title — description — inputs):
+${cards}
+
+`}If — and only if — the user explicitly asks to SEE or CHANGE a workflow or a parameter of it (for example "show me the graph of the image generation", "change the sampler steps to 20", "quanti nodi ha il workflow della musica"), reply with {"workflow": "<key>"} AND, in the same object, the "reply" and any "intents" the sentence itself asks for. On the next turn I will give you the nodes and the facts of that workflow and you will decide there. Never write "workflow" for an ordinary request to generate something: a sentence that asks for a picture, a video or a song is not a request to change a graph.
 
 `}Reply ONLY with a JSON object, with no comments and no code blocks. A single object carries both things: the prose for the user and the runs that prose decided.
 {"reply": "<the answer for the user, in prose>", "intents": [{"action": "...", "prompt": "...", ...}]}
@@ -539,14 +640,22 @@ Rules:
  */
 function workflowChangeInstruction(
   request: ImagineChatRequest,
-  entry: { readonly key: string; readonly label: string; readonly file: string },
+  entry: { readonly key: string; readonly label: string; readonly file: string; readonly description?: string },
   nodes: string,
+  accepted: string,
+  warnings: readonly string[],
 ): string {
-  return `You are looking at the ComfyUI workflow "${entry.label}" (${entry.file}) of this installation.
+  return `You are looking at the ComfyUI workflow "${entry.label}" (${entry.file}) of this installation.${entry.description === undefined ? '' : ` It is used for: ${entry.description}.`}
 
 Nodes and editable values (id, node type, fields):
 ${nodes}
-
+${accepted.length === 0 ? '' : `
+What those inputs accept, read from the node definitions (a value outside this is refused by the studio, so do not write one):
+${accepted}
+`}${warnings.length === 0 ? '' : `
+Pins that no longer resolve, which you must not try to write through:
+${warnings.map(line => `- ${line}`).join('\n')}
+`}
 The user wrote:
 """
 ${request.text}
@@ -558,9 +667,47 @@ Reply ONLY with a JSON object:
 Rules:
 - You may only change the value of a field you see in the list. Do not add nodes, do not add fields, do not touch the links between nodes: they are deliberately not in the list.
 - The new value must be of the same kind as the one there now: a number for a number, text for text.
+- Where a list of accepted values is given, copy one of them EXACTLY: an invented LoRA, checkpoint or model name is a run that fails after the queue.
+- Where a number has bounds and a multiple, stay inside them and write a value on that multiple (a measure off the grid is refused).
 - If the user is only asking how it is built, empty "changes" and explain it in "reply", citing the nodes by id.
 - If what they ask cannot be done with these fields, empty "changes" and say so.
 - At most ${String(MAX_CHANGES)} changes.`
+}
+
+/**
+ * The constraints of a workflow's inputs, as one block of the second pass.
+ *
+ * A graph's JSON says what each value is now, not what it may be: the closed
+ * list of a combo (the LoRAs and checkpoints this installation really has) and
+ * the bounds and multiple of a number live in the node's Python. Written into
+ * the prompt so the reading picks a value that exists, and checked again in
+ * `planWorkflowPatch` so one that does not is refused rather than written.
+ * @param fields - the workflow's editable inputs.
+ * @param facts - what each input accepts, from ComfyUI.
+ * @returns one line per constrained input, or an empty string when none is.
+ */
+function acceptedInputs(fields: readonly WorkflowField[], facts: readonly WorkflowFieldFact[]): string {
+  const byKey = new Map(facts.map(fact => [`${fact.node}.${fact.field}`, fact]))
+  const lines: string[] = []
+  for (const field of fields) {
+    const fact = byKey.get(`${field.node}.${field.field}`)
+    if (fact === undefined) continue
+    const bits: string[] = []
+    if (fact.kind === 'combo' && (fact.options?.length ?? 0) > 0) {
+      const options = fact.options ?? []
+      const shown = options.slice(0, OPTIONS_IN_PROMPT)
+      bits.push(`one of: ${shown.join(' | ')}${options.length > shown.length ? ` (+${String(options.length - shown.length)} more, not listed: do not invent one of them)` : ''}`)
+    }
+    if (fact.kind === 'number') {
+      if (fact.min !== undefined || fact.max !== undefined) {
+        bits.push(`range ${fact.min === undefined ? '-inf' : String(fact.min)}..${fact.max === undefined ? '+inf' : String(fact.max)}`)
+      }
+      if (fact.step !== undefined && fact.step > 0) bits.push(`multiple of ${String(fact.step)}`)
+    }
+    if (bits.length === 0) continue
+    lines.push(`- ${field.node}.${field.field} (${field.classType}): ${bits.join(', ')}`)
+  }
+  return lines.join('\n')
 }
 
 /** The closed lists the workflows accept, and what the line was read with. */
@@ -579,6 +726,8 @@ interface ImagineChatCatalog {
    * width and height decide the clip's frame when the sentence names none.
    */
   readonly files?: Readonly<Record<string, ImagineChatFile>>
+  /** The personal cards a `custom` intent may name, by id. */
+  readonly cards?: readonly WorkflowCard[]
 }
 
 /**
@@ -597,6 +746,86 @@ function listed(value: string | undefined, list: readonly string[] | undefined):
   if (list === undefined || list.length === 0) return value
   const wanted = value.trim().toLowerCase()
   return list.find(entry => entry.trim().toLowerCase() === wanted)
+}
+
+/**
+ * The length a run will really render, from the length the sentence asked for.
+ *
+ * A reading writes a number, and the studio's ladders decide what reaches the
+ * GPU: a 12-second clip is twelve seconds of chained scenes, a 400-second one
+ * is the chain's ceiling, a 4-second one is the first rung. Keeping the
+ * reading's raw number in the intent made the prose promise a length the file
+ * would not have, so the intent carries the real one and the reply says it.
+ * @param action - the action the run asks for.
+ * @param resolution - the ladder step the run is on, when one was chosen.
+ * @param seconds - what the sentence asked for.
+ * @returns the length the studio will render, or undefined when none was asked.
+ */
+function secondsFor(
+  action: ImagineAction,
+  resolution: string | undefined,
+  seconds: number | undefined,
+): number | undefined {
+  if (seconds === undefined) return undefined
+  const whole = Math.round(seconds)
+  const step = (resolution ?? '720p') as ImagineResolution
+  switch (action) {
+    case 'story':
+      return clampStorySeconds(whole)
+    case 'video':
+    case 'extend':
+      return clampSeconds('video', step, whole)
+    case 'loop':
+      return clampSeconds('loop', step, whole)
+    case 'music':
+      return Math.max(MUSIC_MIN_SECONDS, Math.min(MUSIC_MAX_SECONDS, whole))
+    default:
+      // A recreation, a redo and a resume take their length from the clip.
+      return whole
+  }
+}
+
+/**
+ * A precise edit's zone, checked: fractions of the photo, inside the frame.
+ * @param raw - what the reading wrote in `region`.
+ * @returns the rectangle, or undefined when it is not one.
+ */
+function regionOf(raw: unknown): ImagineRegion | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined
+  const source = raw as Record<string, unknown>
+  const x = finite(source['x'])
+  const y = finite(source['y'])
+  const w = finite(source['w'])
+  const h = finite(source['h'])
+  if (x === undefined || y === undefined || w === undefined || h === undefined) return undefined
+  if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > 1.0001 || y + h > 1.0001) return undefined
+  return { x, y, w, h }
+}
+
+/**
+ * A card's own inputs, as the run takes them: only the ones the card exposes,
+ * and only values of the kind it declares.
+ * @param raw - what the reading wrote in `customFields`.
+ * @param card - the card the intent names.
+ * @returns the values by `<node>.<field>`, or undefined when there is none.
+ */
+function customFieldsOf(
+  raw: unknown,
+  card: WorkflowCard | undefined,
+): Readonly<Record<string, string | number | boolean>> | undefined {
+  if (card === undefined || typeof raw !== 'object' || raw === null) return undefined
+  const out: Record<string, string | number | boolean> = {}
+  for (const input of card.inputs) {
+    const value = (raw as Record<string, unknown>)[`${input.node}.${input.field}`]
+    if (typeof value === 'string') {
+      if (input.kind === 'text' || input.kind === 'combo' || input.kind === 'frame') out[`${input.node}.${input.field}`] = value
+    } else if (typeof value === 'number' && Number.isFinite(value)) {
+      if (input.kind === 'number') out[`${input.node}.${input.field}`] = value
+    } else if (typeof value === 'boolean') {
+      if (input.kind === 'boolean') out[`${input.node}.${input.field}`] = value
+    }
+  }
+  return Object.keys(out).length === 0 ? undefined : out
 }
 
 /**
@@ -650,7 +879,7 @@ function intentOf(
   // was given to, in the middle of a queue the user is already waiting on.
   const sources = (Array.isArray(entry.sources) ? entry.sources : [])
     .filter((name): name is string => typeof name === 'string' && known.has(name))
-  const seconds = finite(entry['seconds'])
+  const secondsAsked = finite(entry['seconds'])
   const count = finite(entry['count'])
   const prompt = textField(entry, 'prompt')
   /*
@@ -712,6 +941,45 @@ function intentOf(
     ?? modelAspect
     ?? (vertical ? '9:16' : undefined)
   const chosenResolution = resolution ?? (vertical && chosenAspect === '9:16' ? '720p' : undefined)
+  /*
+   * The two faces of the «Quality» pill: only the values the composer offers,
+   * and only where the switch means something — a photo or a card buys
+   * detail, a clip buys time. A reading that writes them for a redo or a
+   * resume is asking for a control those runs do not have.
+   */
+  const quality = (action === 'generate' || action === 'remix' || action === 'compose' || action === 'custom')
+    && typeof entry['quality'] === 'string' && (IMAGINE_QUALITIES as readonly string[]).includes(entry['quality'])
+    ? entry['quality'] as ImagineQuality
+    : undefined
+  const speed = (action === 'video' || action === 'loop' || action === 'extend' || action === 'story')
+    && typeof entry['speed'] === 'string' && (IMAGINE_SPEEDS as readonly string[]).includes(entry['speed'])
+    ? entry['speed'] as ImagineSpeed
+    : undefined
+  /*
+   * An upscale's target, on the ladder of the file's own kind. The source is
+   * named by the sentence and its kind may be known from the staged files;
+   * when it is not, both ladders are accepted and the host says no.
+   */
+  const upscaleSteps: readonly number[] = sourceFile?.kind === 'video'
+    ? UPSCALE_VIDEO_STEPS
+    : sourceFile?.kind === 'image' ? UPSCALE_IMAGE_STEPS : [...UPSCALE_IMAGE_STEPS, ...UPSCALE_VIDEO_STEPS]
+  const upscaleAsked = finite(entry['upscaleTo'])
+  const upscaleTo = action === 'upscale' && upscaleAsked !== undefined && upscaleSteps.includes(Math.round(upscaleAsked))
+    ? Math.round(upscaleAsked)
+    : undefined
+  // A zone is a remix's business: every other run redraws or renders its own frame.
+  const region = action === 'remix' ? regionOf(entry['region']) : undefined
+  /*
+   * A personal card, by the id the inventory lists. An id the studio does not
+   * hold is kept here so the reading can say "not configured" instead of
+   * queueing a run that would fail after the queue.
+   */
+  const customWorkflowId = action === 'custom' ? textField(entry, 'customWorkflowId') : undefined
+  const card = customWorkflowId === undefined
+    ? undefined
+    : catalog.cards?.find(entry_ => entry_.id === customWorkflowId)
+  const customFields = action === 'custom' ? customFieldsOf(entry['customFields'], card) : undefined
+  const seconds = secondsFor(action as ImagineAction, chosenResolution, secondsAsked)
   return {
     action: action as ImagineAction,
     prompt: prompt ?? '',
@@ -735,6 +1003,12 @@ function intentOf(
     ...lipSync === undefined ? {} : { lipSync },
     ...objectMode === undefined ? {} : { objectMode },
     ...light === undefined ? {} : { light },
+    ...quality === undefined ? {} : { quality },
+    ...speed === undefined ? {} : { speed },
+    ...upscaleTo === undefined ? {} : { upscaleTo },
+    ...region === undefined ? {} : { region },
+    ...customWorkflowId === undefined ? {} : { customWorkflowId },
+    ...customFields === undefined ? {} : { customFields },
   }
 }
 
@@ -752,15 +1026,38 @@ function parseImagineChat(
 ): ImagineChatReply | undefined {
   if (object === undefined) return undefined
   const raw = object.intents
-  const intents = (Array.isArray(raw) ? raw : [])
-    .map(entry => intentOf(entry, known, catalog))
-    .filter((entry): entry is ImagineChatIntent => entry !== undefined)
+  const paired = (Array.isArray(raw) ? raw : [])
+    .map(entry => ({ entry, intent: intentOf(entry, known, catalog) }))
+    .filter((pair): pair is { readonly entry: unknown; readonly intent: ImagineChatIntent } => pair.intent !== undefined)
     .slice(0, catalog.ceiling ?? MAX_INTENTS)
+  const intents = paired.map(pair => pair.intent)
   const reply = textField(object, 'reply')
   // A reply with neither a line nor a run is not an answer, and running the
   // fallback on the sentence is better than showing an empty bubble.
   if (reply === undefined && intents.length === 0) return undefined
-  return { reply: reply ?? '', intents, read: true }
+  return { reply: [reply ?? '', realLengths(paired)].filter(line => line.length > 0).join(' '), intents, read: true }
+}
+
+/**
+ * The sentence that tells the user the length the studio really renders.
+ *
+ * The reading chose a number, and the studio's ladders may have moved it: a
+ * clip asked for 12 s is twelve seconds of chained scenes, a 400-second video
+ * is the chain's ceiling, a 4-second one is the first rung. Without this the
+ * prose kept the number the model wrote and the file came back another length,
+ * with nothing in the chat to explain the difference.
+ * @param pairs - the intents kept, with the entries the model wrote them in.
+ * @returns one line naming the real lengths, or an empty string when none moved.
+ */
+function realLengths(pairs: readonly { readonly entry: unknown; readonly intent: ImagineChatIntent }[]): string {
+  const lengths = new Set<number>()
+  for (const { entry, intent } of pairs) {
+    if (intent.seconds === undefined || typeof entry !== 'object' || entry === null) continue
+    const asked = finite((entry as Record<string, unknown>)['seconds'])
+    if (asked !== undefined && Math.round(asked) !== intent.seconds) lengths.add(intent.seconds)
+  }
+  if (lengths.size === 0) return ''
+  return message('chat.realDuration', { seconds: [...lengths].map(seconds => String(seconds)).join(', ') })
 }
 
 /**
@@ -930,6 +1227,7 @@ function parseWorkflowReply(
   text: string | undefined,
   entry: { readonly key: string; readonly label: string; readonly file: string },
   inventory: WorkflowInventory,
+  facts: readonly WorkflowFieldFact[] = [],
 ): ImagineChatReply | undefined {
   if (text === undefined) return undefined
   const object = jsonObjectOf(text)
@@ -942,7 +1240,7 @@ function parseWorkflowReply(
     .filter((change): change is WorkflowChange => change !== undefined)
     .slice(0, MAX_CHANGES)
   if (changes.length === 0) return spoken
-  const plan = inventory.plan(entry.key, changes)
+  const plan = inventory.plan(entry.key, changes, facts)
   if (plan === undefined) return spoken
   const said = [reply ?? '', ...plan.diff.length === 0 ? plan.errors : []]
     .filter(line => line.length > 0).join(' ')
@@ -959,6 +1257,123 @@ function parseWorkflowReply(
       errors: plan.errors,
       warnings: plan.warnings,
     },
+  }
+}
+
+/**
+ * The words that make a line a request about a graph rather than a run.
+ *
+ * The second pass exists for "show me the graph", "change the sampler steps",
+ * "which LoRA does this use". The model can name a workflow for any sentence,
+ * and it did: an ordinary "fammi una foto" came back as a graph question. The
+ * user's own words are the fact, so they are what opens the gateway.
+ */
+const WORKFLOW_TALK = /\b(?:workflow|grafo|graph|nodo|nodi|node|nodes|lora|sampler|campionatore|step|steps|passi|checkpoint|parametr[oi])\b/i
+
+/**
+ * Whether the user's line explicitly asks about a workflow or one of its
+ * parameters: the graph words above, or the workflow's own key, label or card
+ * title.
+ * @param asked - the line as the user wrote it.
+ * @param entry - the workflow the model named.
+ * @returns true when the second pass may run.
+ */
+function asksAboutWorkflow(asked: string, entry: WorkflowSummary): boolean {
+  if (WORKFLOW_TALK.test(asked)) return true
+  const flat = asked.toLowerCase()
+  const words = `${entry.key} ${entry.label} ${entry.card?.title ?? ''}`.toLowerCase().split(/[^a-z0-9]+/)
+  return words.some(word => word.length >= 4 && flat.includes(word))
+}
+
+/** The sentence that says one action's graph is not configured here. */
+function notConfigured(action: string): string {
+  return message('chat.notConfigured', { action })
+}
+
+/**
+ * Why one intent cannot run in this deployment, or undefined when it can.
+ *
+ * A run whose graph is not configured fails after the queue, with the GPU
+ * waiting and a sentence about a workflow: the chat can see the list of
+ * configured graphs, so it says it now and queues nothing. Only the graphs
+ * that are required are checked; an action that has a fallback (a recreation
+ * without its own graph renders on the video one) counts as available.
+ * @param intent - the run the reading asked for.
+ * @param inventory - the configured workflows and personal cards.
+ * @returns the sentence to say, or undefined.
+ */
+function missingGraph(intent: ImagineChatIntent, inventory: WorkflowInventory): string | undefined {
+  if (intent.action === 'custom') {
+    const id = intent.customWorkflowId
+    if (id === undefined) return notConfigured('custom')
+    return (inventory.cards ?? []).some(card => card.id === id)
+      ? undefined
+      : message('chat.cardNotConfigured', { id })
+  }
+  const configured = (run: string): boolean => inventory.list.some(entry => entry.run === run)
+  switch (intent.action) {
+    case 'remix':
+      // A zone change needs the graph that keeps the rest of the photo; a
+      // full redraw can run on either.
+      return intent.region === undefined
+        ? configured('edit') || configured('editRegion') ? undefined : notConfigured(intent.action)
+        : configured('editRegion') ? undefined : notConfigured('edit-region')
+    case 'upscale':
+      return configured('upscaleImage') || configured('upscaleVideo') || configured('upscaleVideoLong')
+        ? undefined
+        : notConfigured(intent.action)
+    case 'recreate':
+      return configured('recreateVideo') || configured('video') ? undefined : notConfigured(intent.action)
+    case 'video':
+      return configured('video') || configured('videoChain') ? undefined : notConfigured(intent.action)
+    case 'loop':
+      return configured('loopVideo') || configured('loopChain') ? undefined : notConfigured(intent.action)
+    case 'extend':
+      return configured('extendVideo') || configured('extendChain') ? undefined : notConfigured(intent.action)
+    case 'story':
+      return configured('videoOnSong') ? undefined : notConfigured(intent.action)
+    case 'objectSwap': {
+      const mode = intent.objectMode ?? 'change'
+      const run = mode === 'change' ? 'objectSwap'
+        : mode === 'remove' ? 'objectSwapRemove'
+          : mode === 'background' ? 'objectSwapBackground'
+            : 'objectSwapAdd'
+      return configured(run) || mode === 'add' && configured('objectSwapAddPhoto') ? undefined : notConfigured(intent.action)
+    }
+    case 'swapPerson':
+      return configured(intent.lipSync === false ? 'swapPersonNoLipSync' : 'swapPerson')
+        ? undefined
+        : notConfigured(intent.action)
+    default: {
+      const runs = ACTION_RUNS[intent.action]
+      // speak is not a graph: it is the speech service, and its own check runs there.
+      if (runs === undefined) return undefined
+      return configured(runs.workflow) ? undefined : notConfigured(intent.action)
+    }
+  }
+}
+
+/**
+ * Drop the runs this deployment cannot start, and say why.
+ * @param answer - the reading.
+ * @param inventory - the configured workflows and personal cards.
+ * @returns the same answer with only the runnable intents, and the refusal
+ *   sentences added to its prose.
+ */
+function availableIntents(answer: ImagineChatReply, inventory: WorkflowInventory | undefined): ImagineChatReply {
+  if (inventory === undefined) return answer
+  const kept: ImagineChatIntent[] = []
+  const refused: string[] = []
+  for (const intent of answer.intents) {
+    const reason = missingGraph(intent, inventory)
+    if (reason === undefined) kept.push(intent)
+    else refused.push(reason)
+  }
+  if (refused.length === 0) return answer
+  return {
+    ...answer,
+    intents: kept,
+    reply: [answer.reply, ...refused].filter(line => line.trim().length > 0).join(' '),
   }
 }
 
@@ -1132,27 +1547,62 @@ export async function readImagineChat(
    */
   // Parsed once: the workflow check and the reading below share it.
   const object = jsonObjectOf(written)
-  const asked = object === undefined ? undefined : textField(object, 'workflow')
-  const entry = asked === undefined ? undefined : inventory?.list.find(item => item.key === asked)
-  if (entry !== undefined && inventory !== undefined) {
-    say({ kind: 'step', step: 'workflow', detail: entry.label })
-    const nodes = inventory.summarise(entry.key)
-    const answer = nodes === undefined
-      ? undefined
-      : parseWorkflowReply(await ask(llm, answered, workflowChangeInstruction(request, entry, nodes), say, signal), entry, inventory)
-    /*
-     * The line was about a workflow, and the fallback below is a generation:
-     * a second pass that comes back unreadable would turn "quanti step fa il
-     * campionatore?" into an image of that sentence. It says so instead.
-     */
-    return answer ?? { reply: message('chat.workflowUnreadable', { label: entry.label }), intents: [], read: true }
-  }
-  const answer = parseImagineChat(object, known, {
+  const catalog: ImagineChatCatalog = {
     asked: request.text,
     ceiling: intentCeiling(request.staged ?? []),
     files: filesByName(shaped),
     ...request.voices === undefined ? {} : { voices: request.voices },
-  })
+    ...inventory?.cards === undefined ? {} : { cards: inventory.cards },
+  }
+  const first = parseImagineChat(object, known, catalog)
+  /*
+   * The gateway to the workflow pass, in this order: the model named a
+   * configured workflow, AND the user explicitly asked to see or change a
+   * graph (or named that workflow's own words). A model that answers an
+   * ordinary request with a workflow key is not answering the sentence: its
+   * intents are the answer, and the gateway is ignored instead of hijacking
+   * "fammi una foto" into a graph.
+   */
+  const askedKey = object === undefined ? undefined : textField(object, 'workflow')
+  const entry = askedKey === undefined ? undefined : inventory?.list.find(item => item.key === askedKey)
+  if (entry !== undefined && inventory !== undefined && asksAboutWorkflow(request.text, entry)) {
+    say({ kind: 'step', step: 'workflow', detail: entry.card?.title ?? entry.label })
+    const nodes = inventory.summarise(entry.key)
+    const facts = await inventory.facts(entry.key, signal).catch(() => undefined) ?? []
+    const fields = inventory.fields(entry.key) ?? []
+    const warnings = inventory.warnings(entry.key) ?? []
+    const instruction = nodes === undefined
+      ? undefined
+      : workflowChangeInstruction(request, entry, nodes, acceptedInputs(fields, facts), warnings)
+    const graph = instruction === undefined
+      ? undefined
+      : parseWorkflowReply(await ask(llm, answered, instruction, say, signal), entry, inventory, facts)
+    /*
+     * The runs the first pass queued travel with the graph answer: a sentence
+     * that asks for a photo and also asks about a graph does both, and the
+     * reading's intents are never thrown away for a proposal.
+     */
+    const kept = first === undefined ? undefined : availableIntents(first, inventory)
+    if (graph === undefined) {
+      /*
+       * The line was about a workflow, and the fallback below is a generation:
+       * a second pass that comes back unreadable would turn "quanti step fa il
+       * campionatore?" into an image of that sentence. It says so instead,
+       * keeping whatever the first pass did queue.
+       */
+      return kept ?? {
+        reply: message('chat.workflowUnreadable', { label: entry.card?.title ?? entry.label }),
+        intents: [],
+        read: true,
+      }
+    }
+    return {
+      ...graph,
+      intents: kept?.intents ?? [],
+      reply: [kept?.reply ?? '', graph.reply].filter(line => line.trim().length > 0).join(' '),
+    }
+  }
+  const answer = first === undefined ? undefined : availableIntents(first, inventory)
   if (answer !== undefined) return withAskedLine(retryEditAnswer(answer, noted), request.text)
   /*
    * A reader was configured and the line still was not read: either nothing

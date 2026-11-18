@@ -6,7 +6,9 @@
  * Until 2026-10-25 the page re-declared each of these beside the server's own.
  */
 
-import type { ImagineAction, ImagineObjectMode, MediaFileRef, ModelRoute } from './imagine-types.ts'
+import type {
+  ImagineAction, ImagineObjectMode, ImagineQuality, ImagineRegion, ImagineSpeed, MediaFileRef, ModelRoute,
+} from './imagine-types.ts'
 
 /** A value a workflow change reads or writes: everything else is structure. */
 export type WorkflowScalar = string | number | boolean
@@ -42,6 +44,31 @@ export interface WorkflowField {
   readonly value: WorkflowScalar
   /** Which control the value asks for. */
   readonly kind: 'text' | 'number' | 'boolean'
+}
+
+/**
+ * What one node input accepts, beyond the value it holds: the facts a change
+ * has to respect, read from ComfyUI (`/object_info`).
+ *
+ * The graph says what each input is NOW. It does not say that a combo holds a
+ * closed list, that a number has bounds, or that a measure must be a multiple
+ * of something: those live in the node's Python, and a value outside them is
+ * refused by ComfyUI only after the run has been queued.
+ */
+export interface WorkflowFieldFact {
+  /** Node id inside the graph. */
+  readonly node: string
+  /** The input key. */
+  readonly field: string
+  /** Which control the input takes; a combo is a closed list of strings. */
+  readonly kind: 'text' | 'number' | 'boolean' | 'combo'
+  /** The values a combo accepts, in the node's own spelling. */
+  readonly options?: readonly string[]
+  /** Bounds of a numeric input, when the node declares them. */
+  readonly min?: number
+  readonly max?: number
+  /** What a numeric input must be a multiple of, when the node declares it. */
+  readonly step?: number
 }
 
 /** What a set of changes would do to one workflow file, nothing written yet. */
@@ -111,6 +138,39 @@ export interface ImagineChatIntent {
   readonly keepAudio?: boolean
   /** Character swap only: false when the people in the clip do not sing or talk along. */
   readonly lipSync?: boolean
+  /**
+   * How much detail a run buys, with the graph's high recipe (`quality: 'high'`)
+   * or its slower one (`speed: 'slow'`).
+   *
+   * Both are the composer's «Quality» pill, whose two faces travel together;
+   * a sentence may ask for them ("falla in alta qualità", "fai la versione
+   * lenta") and until 2026-11-18 the reading could not carry the choice.
+   */
+  readonly quality?: ImagineQuality
+  readonly speed?: ImagineSpeed
+  /**
+   * Upscale only: the short side to raise the file to.
+   *
+   * One of the steps the page's upscale menu offers (1080/1440/2160 for a
+   * still, 720/1080 for a clip); the host refuses a value off that ladder.
+   */
+  readonly upscaleTo?: number
+  /**
+   * Remix only: the zone a precise edit may change, as fractions of the photo.
+   *
+   * The rest of the picture stays the source's own pixels. Absent is a full
+   * redraw, which is what "remix" means when nobody marks a zone.
+   */
+  readonly region?: ImagineRegion
+  /**
+   * Custom only: which uploaded card to run, by id.
+   *
+   * The card's own controls travel beside it in `customFields`, exactly as the
+   * MCP's `custom` action sends them.
+   */
+  readonly customWorkflowId?: string
+  /** Custom only: the card's exposed inputs, keyed `<node>.<field>`. */
+  readonly customFields?: Readonly<Record<string, string | number | boolean>>
 }
 
 /** One run of the project still going, as the page's job list shows it. */
