@@ -204,6 +204,22 @@ const now = (): HostSettingsValues => settings.current()
  * agent's eraser tool calls the plugin route over loopback. */
 const listenOn = { port: listenPort(config.port), host: listenHost(config.host) }
 
+/**
+ * The address the studio's own features use to reach it.
+ *
+ * The agent's eraser calls the plugin route over loopback: a server listening
+ * on every interface is reached at 127.0.0.1, while one bound to a single
+ * address (a container's LAN IP) does not answer on loopback at all and is
+ * reached at that address instead.
+ * @param host - the address the server binds.
+ * @param port - the port it listens on.
+ * @returns the origin, without a trailing slash.
+ */
+function ownAddress(host: string, port: number): string {
+  const addressed = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host
+  return `http://${addressed.includes(':') ? `[${addressed}]` : addressed}:${String(port)}`
+}
+
 /*
  * The warning about an open studio can be hidden for the whole studio: one
  * file beside the other records, read from every device.
@@ -285,7 +301,7 @@ const { outputDir } = toolComfy.apply(ctx, toolComfy.Config(config.toolComfy), {
       turnSeconds: now().agentTurnSeconds,
     }),
     capabilities: route => modelCapabilities(route),
-    selfURL: `http://127.0.0.1:${String(listenOn.port)}`,
+    selfURL: ownAddress(listenOn.host, listenOn.port),
   },
 })
 
