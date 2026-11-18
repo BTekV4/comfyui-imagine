@@ -62,6 +62,7 @@ const LIST: readonly WorkflowSummary[] = [
   { key: 'video', label: 'image → video', file: 'video.json', run: 'video' },
   { key: 'music', label: 'music generation', file: 'music.json', run: 'generateMusic' },
   { key: 'video-song', label: 'clip on a song', file: 'song.json', run: 'videoOnSong' },
+  { key: 'extend', label: 'video continuation', file: 'extend.json', run: 'extendVideo' },
 ]
 
 /** The personal card a sentence may run, with one exposed input. */

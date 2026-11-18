@@ -1330,8 +1330,14 @@ function missingGraph(intent: ImagineChatIntent, inventory: WorkflowInventory): 
       return configured('loopVideo') || configured('loopChain') ? undefined : notConfigured(intent.action)
     case 'extend':
       return configured('extendVideo') || configured('extendChain') ? undefined : notConfigured(intent.action)
+    // A story, a redo and a resume render shots on the clip graph (the
+    // singing one when there is a track) and continue each into the next.
     case 'story':
-      return configured('videoOnSong') ? undefined : notConfigured(intent.action)
+    case 'redo':
+    case 'resume':
+      return (configured('videoOnSong') || configured('video')) && configured('extendVideo')
+        ? undefined
+        : notConfigured(intent.action)
     case 'objectSwap': {
       const mode = intent.objectMode ?? 'change'
       const run = mode === 'change' ? 'objectSwap'
