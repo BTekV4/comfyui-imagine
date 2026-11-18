@@ -35,7 +35,7 @@ import type { ImagineQuality, ImagineSpeed, MediaKind } from '../../../shared/im
 import { h3Frame } from '../../../shared/imagine-sizing.ts'
 import { GUIDE_FRAMES } from './extend-video.ts'
 import { FPS } from './media-tools.ts'
-import { loadImagineOverrides, mergeWorkflowMaps } from './imagine-settings.ts'
+import { loadImagineOverrides, mergeWorkflowMaps, type WorkflowMap } from './imagine-settings.ts'
 import { loadPersona, setPersona } from './persona.ts'
 import { customGraphFile, customKey, listCustomWorkflowsSync, loadCustomWorkflow, loadCustomWorkflowsSync } from './custom-workflows.ts'
 import type { CustomWorkflowMeta } from '../../../shared/custom-workflows.ts'
@@ -47,6 +47,7 @@ import {
   BASE_FIELDS, OPTION_PINS, WORKFLOW_ROWS, type FieldSpec, type WorkflowEntries, type WorkflowGraphs,
 } from './workflow-fields.ts'
 import { loadWorkflows, type GraphHolder } from './workflow-load.ts'
+import { dropRefBranch } from './ref-branch.ts'
 import { graphEditor, workflowInventory } from './workflow-inventory.ts'
 import { createWorkflowOverlay } from './workflow-overlay.ts'
 import { customCoverHandler, customWorkflowsHandler } from './custom-workflow-routes.ts'
@@ -700,13 +701,7 @@ function parameterize(
   const graph = structuredClone(workflow.graph)
   if (workflow.refImageNodeId !== undefined && refImage === undefined) {
     // No reference: the branch leaves, and the links that pointed into it.
-    const gone = new Set([workflow.refImageNodeId, ...workflow.refEncodeNodeId === undefined ? [] : [workflow.refEncodeNodeId]])
-    for (const id of gone) delete graph[id]
-    for (const node of Object.values(graph)) {
-      for (const [field, value] of Object.entries(node.inputs)) {
-        if (Array.isArray(value) && typeof value[0] === 'string' && gone.has(value[0])) delete node.inputs[field]
-      }
-    }
+    dropRefBranch(graph, workflow.refImageNodeId, workflow.refEncodeNodeId)
   }
   /*
    * The card's own controls, written before anything else parameterizes the
@@ -1198,6 +1193,12 @@ interface ApplyOptions {
    * stories and drop orphans against a given ComfyUI.
    */
   readonly resumeSweep?: () => boolean
+  /**
+   * The workflow entries of `config.example.yaml`, when the file ships beside
+   * the app: the defaults of the included graphs, and the keys an old config
+   * is reported as missing.
+   */
+  readonly exampleWorkflows?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
 }
 
 /**
@@ -1245,9 +1246,20 @@ export function apply(ctx: ImagineHost, config: Config, host: ApplyOptions = {})
    * (`workflow-overlay.ts`).
    */
   const overlay = createWorkflowOverlay({ programDir: programDirFrom() })
-  const { rows, byRun: configuredWorkflows, holders } = loadWorkflows(
+  const { rows, byRun: configuredWorkflows, holders, gaps } = loadWorkflows(
     mergeWorkflowMaps(composedWorkflows, settings.overrides.workflows ?? {}), overlay,
+    host.exampleWorkflows as unknown as WorkflowMap | undefined,
   )
+  /*
+   * An old `config.yaml` boots, but the features added since it was copied are
+   * off without a word (`refImageNodeId`, a second high-recipe graph, a LoRA
+   * pin). Say which keys the example has and this file does not: the settings
+   * page shows the same list on the workflow.
+   */
+  for (const gap of gaps) {
+    console.warn(`[imagine] workflows.${gap.configKey}: config.yaml is missing ${gap.fields.join(', ')} (present in config.example.yaml); update the entry from the example`)
+  }
+  const configGaps = new Map(gaps.map(gap => [gap.configKey, gap.fields] as const))
   /*
    * The uploaded graphs join the configured ones under `custom:<id>`. The map
    * is mutable on purpose: a workflow saved from the page has to run without a
@@ -1292,7 +1304,7 @@ export function apply(ctx: ImagineHost, config: Config, host: ApplyOptions = {})
     .filter(meta => (imagineWorkflows as Record<string, unknown>)[customKey(meta.id)] !== undefined)
   const {
     inventory, applyKeyed, addLora, removeLora: removeLoraOf, lorasOf, tuneLora, restoreDefault,
-  } = workflowInventory(ctx, rows, editor, overlay, cardsOf)
+  } = workflowInventory(ctx, rows, editor, overlay, cardsOf, configGaps)
   /*
    * What the settings page reads of the layers this entry booted with. The
    * composed values come from `config.yaml`, the applied ones from the settings

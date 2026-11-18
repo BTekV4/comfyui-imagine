@@ -8,10 +8,12 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { ComfyError, type ComfyGraph } from '../comfyui/index.ts'
 import { customGraphFile, isCustomPath } from './custom-workflows.ts'
 import { finite, isPlainObject } from './guards.ts'
 import { isHighInputValue, migrateRetiredPika, type HighInput } from './high-inputs.ts'
+import { detectRefBranch } from './ref-branch.ts'
 import type { WorkflowMap } from './imagine-settings.ts'
 import type { LoadedWorkflow, WorkflowConfig, WorkflowExtras } from './index.ts'
 import { ALL_WORKFLOW_FIELDS, WORKFLOW_ROWS, type FieldSpec, type WorkflowGraphs } from './workflow-fields.ts'
@@ -140,7 +142,7 @@ export function readGraphFile(file: string, label: string = file): ComfyGraph {
  * @returns the graph with the pins the entry configured.
  * @throws {ComfyError} when the file cannot be read or is not an API graph.
  */
-function loadWorkflow(config: WorkflowConfig & WorkflowExtras, overlay: WorkflowOverlay): LoadedWorkflow {
+function loadWorkflow(config: WorkflowConfig & WorkflowExtras, overlay: WorkflowOverlay, fallback?: RefPins): LoadedWorkflow {
   /*
    * A `custom:<id>` path reads the graph from the workflows the user uploaded,
    * not from the repo: so a `config.yaml` action can point at a personal graph
@@ -154,7 +156,111 @@ function loadWorkflow(config: WorkflowConfig & WorkflowExtras, overlay: Workflow
     const value = loadedField(spec, (config as unknown as Record<string, unknown>)[field])
     if (value !== undefined) loaded[field] = value
   }
+  /*
+   * The reference branch of an edit, for a config written before its pins
+   * existed (2026-11-18): the graph itself says which loader and encoder are
+   * the second photo, and `config.example.yaml` names them for the graphs that
+   * ship with the app when an older or edited graph does not show the shape.
+   * An explicit pin always wins.
+   */
+  const imageNodeId = typeof loaded['imageNodeId'] === 'string' ? loaded['imageNodeId'] : undefined
+  if (loaded['refImageNodeId'] === undefined) {
+    const found = detectRefBranch(graph, imageNodeId) ?? fallback
+    if (found?.refImageNodeId !== undefined && graph[found.refImageNodeId] !== undefined) {
+      loaded['refImageNodeId'] = found.refImageNodeId
+      if (found.refEncodeNodeId !== undefined && graph[found.refEncodeNodeId] !== undefined) {
+        loaded['refEncodeNodeId'] = found.refEncodeNodeId
+      }
+    }
+  } else if (loaded['refEncodeNodeId'] === undefined) {
+    /* Half a pin (the old demo wrote one in 2026-11-15): the encoder still comes from the graph. */
+    const found = detectRefBranch(graph, imageNodeId)
+    if (found?.refImageNodeId === loaded['refImageNodeId'] && found.refEncodeNodeId !== undefined) {
+      loaded['refEncodeNodeId'] = found.refEncodeNodeId
+    }
+  }
   return loaded as unknown as LoadedWorkflow
+}
+
+/** The reference pins an example entry carries, when both are usable. */
+export interface RefPins {
+  readonly refImageNodeId?: string
+  readonly refEncodeNodeId?: string
+}
+
+/** The reference pins of one workflow entry, or undefined when it names none. */
+function refPinsOf(entry: Record<string, unknown> | undefined): RefPins | undefined {
+  if (entry === undefined) return undefined
+  const image = entry['refImageNodeId']
+  if (typeof image !== 'string' || image.length === 0) return undefined
+  const encode = entry['refEncodeNodeId']
+  return {
+    refImageNodeId: image,
+    ...typeof encode === 'string' && encode.length > 0 ? { refEncodeNodeId: encode } : {},
+  }
+}
+
+/**
+ * Whether two entries point at the same graph file.
+ *
+ * Only then is an example entry a default for this one: a config aimed at the
+ * user's own graph is not an old copy of the shipped one, and taking its pins
+ * would write node ids that file may not have.
+ * @param live - the configured path.
+ * @param example - the example's path.
+ * @returns true when both name the same non-virtual file.
+ */
+function sameGraph(live: unknown, example: unknown): boolean {
+  return typeof live === 'string' && typeof example === 'string'
+    && !isCustomPath(live) && !isCustomPath(example)
+    && resolve(live) === resolve(example)
+}
+
+/** A configured workflow entry the example has keys for and the config does not. */
+export interface WorkflowGap {
+  /** The entry in `config.yaml` (`editImage`). */
+  readonly configKey: string
+  /** The keys the example sets and the live entry lacks. */
+  readonly fields: readonly string[]
+}
+
+/**
+ * The keys a live config has lost against `config.example.yaml`, one entry per
+ * workflow.
+ *
+ * The point is the pins that arrived with a feature: an old `config.yaml`
+ * keeps booting (the schema tolerates absent keys), but the action runs with
+ * the graph's saved defaults and the user never learns why. Only entries that
+ * point at the same graph as the example are compared: a personal graph is
+ * not a stale copy of the shipped one.
+ * @param workflows - the composed workflow entries.
+ * @param exampleWorkflows - the entries of `config.example.yaml`, anchored the
+ *   same way, when the file ships beside the app.
+ * @returns the entries with missing keys, in config order.
+ */
+export function workflowGaps(workflows: WorkflowMap, exampleWorkflows?: WorkflowMap): readonly WorkflowGap[] {
+  if (exampleWorkflows === undefined) return []
+  const gaps: WorkflowGap[] = []
+  const examples = exampleWorkflows as unknown as Record<string, unknown>
+  for (const [configKey, liveEntry] of Object.entries(workflows)) {
+    const exampleEntry = examples[configKey]
+    if (!isPlainObject(liveEntry) || !isPlainObject(exampleEntry)) continue
+    const live = liveEntry as Record<string, unknown>
+    const example = exampleEntry as Record<string, unknown>
+    if (!sameGraph(live['path'], example['path'])) continue
+    /*
+     * `description` is a hint for the chat, not a value a run reads: every
+     * config written before the descriptions arrived would otherwise report
+     * two dozen entries on every boot, and drown the pins that do matter.
+     */
+    const fields = Object.entries(example)
+      .filter(([key, value]) => key !== 'path' && key !== 'description'
+        && value !== undefined && value !== null
+        && (live[key] === undefined || live[key] === null))
+      .map(([key]) => key)
+    if (fields.length > 0) gaps.push({ configKey, fields })
+  }
+  return gaps
 }
 
 /** One configured workflow row, loaded: the job runner's name, the studio's key and label, and its file. */
@@ -190,19 +296,34 @@ export interface GraphHolder {
  * @param workflows - the workflow entries, settings page over `config.yaml`.
  * @param overlay - where the graphs are read from (the user's copy, in a
  *   packaged app); every installation without one reads the files as they are.
- * @returns the loaded rows, the graphs by the job runner's name, and every
- *   loaded graph with its file (the high-recipe ones included).
+ * @param exampleWorkflows - the workflow entries of `config.example.yaml`,
+ *   anchored the same way: their reference pins are the defaults for the
+ *   shipped graphs, and their extra keys are what the log and the settings
+ *   page report a live config as missing.
+ * @returns the loaded rows, the graphs by the job runner's name, every loaded
+ *   graph with its file (the high-recipe ones included), and the keys the live
+ *   config lacks.
  */
-export function loadWorkflows(workflows: WorkflowMap, overlay: WorkflowOverlay = writableOverlay): {
+export function loadWorkflows(
+  workflows: WorkflowMap,
+  overlay: WorkflowOverlay = writableOverlay,
+  exampleWorkflows?: WorkflowMap,
+): {
   readonly rows: readonly LoadedRow[]
   readonly byRun: WorkflowGraphs
   readonly holders: readonly GraphHolder[]
+  readonly gaps: readonly WorkflowGap[]
 } {
   const holders: GraphHolder[] = []
   workflows = retiredPikaMigrated(workflows)
+  const gaps = workflowGaps(workflows, exampleWorkflows)
   const rows = WORKFLOW_ROWS.map((row): LoadedRow => {
     const entry = workflows[row.config] as (WorkflowConfig & WorkflowExtras) | undefined
-    const loaded = entry?.path === undefined || entry.path === '' ? undefined : loadWorkflow(entry, overlay)
+    const example = exampleWorkflows?.[row.config] as Record<string, unknown> | undefined
+    const fallback = entry !== undefined && example !== undefined && sameGraph(entry.path, example['path'])
+      ? refPinsOf(example)
+      : undefined
+    const loaded = entry?.path === undefined || entry.path === '' ? undefined : loadWorkflow(entry, overlay, fallback)
     if (loaded !== undefined && entry !== undefined) holders.push({ file: workflowFile(entry.path), loaded })
     return {
       run: row.run,
@@ -225,7 +346,12 @@ export function loadWorkflows(workflows: WorkflowMap, overlay: WorkflowOverlay =
     const entry = workflows[row.config] as (WorkflowConfig & WorkflowExtras) | undefined
     if (entry?.pathHigh === undefined || entry.pathHigh === '') continue
     const { highInputs: _overrides, ...pins } = entry
-    const loaded = loadWorkflow({ ...pins, path: entry.pathHigh }, overlay)
+    const example = exampleWorkflows?.[row.config] as Record<string, unknown> | undefined
+    const fallback = example !== undefined
+      && (sameGraph(entry.pathHigh, example['pathHigh']) || sameGraph(entry.pathHigh, example['path']))
+      ? refPinsOf(example)
+      : undefined
+    const loaded = loadWorkflow({ ...pins, path: entry.pathHigh }, overlay, fallback)
     high[row.run] = loaded
     holders.push({ file: workflowFile(entry.pathHigh), loaded })
   }
@@ -235,7 +361,7 @@ export function loadWorkflows(workflows: WorkflowMap, overlay: WorkflowOverlay =
       .map(row => [row.run, row.loaded])),
     ...Object.keys(high).length === 0 ? {} : { high },
   }
-  return { rows, byRun, holders }
+  return { rows, byRun, holders, gaps }
 }
 
 /**
