@@ -228,6 +228,10 @@ export const MESSAGES = {
     it: '«{action}» non è configurato in questa installazione: niente da mettere in coda.',
     en: '“{action}” is not configured in this installation: there is nothing to queue.',
   },
+  'chat.customNoCard': {
+    it: 'nessun workflow personale indicato: dimmi quale usare.',
+    en: 'no personal workflow was named: say which one to use.',
+  },
   'chat.cardNotConfigured': {
     it: 'il workflow personale {id} non c’è (o il suo grafo non si carica): niente da mettere in coda.',
     en: 'the personal workflow {id} is not there (or its graph does not load): there is nothing to queue.',
