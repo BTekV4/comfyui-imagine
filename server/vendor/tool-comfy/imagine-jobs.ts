@@ -105,6 +105,7 @@ export async function startImagineJob(
       ...request.megapixels === undefined ? {} : { megapixels: request.megapixels },
       ...request.speed === undefined ? {} : { speed: request.speed },
       ...request.quality === undefined ? {} : { quality: request.quality },
+      ...request.canvasAsked === true ? { canvasAsked: true } : {},
       ...action === 'upscale' && request.upscaleTo !== undefined ? { upscaleTo: request.upscaleTo } : {},
       ...plan.region === undefined ? {} : { region: plan.region },
       ...plan.painted === undefined ? {} : { painted: true },

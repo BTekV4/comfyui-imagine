@@ -18,9 +18,12 @@
 import { join } from 'node:path'
 import type { ImagineHost } from '../../src/host.ts'
 import {
-  IMAGINE_ACTIONS, IMAGINE_OBJECT_MODES, IMAGINE_QUALITIES, IMAGINE_SPEEDS,
+  IMAGINE_OBJECT_MODES, IMAGINE_QUALITIES, IMAGINE_SPEEDS,
   type ImagineAction, type ImagineObjectMode, type ImagineQuality, type ImagineRegion, type ImagineSpeed,
 } from '../../../shared/imagine-types.ts'
+import { CHAT_ACTIONS, isChatHostAction, type ImagineChatAction } from '../../../shared/imagine-chat.ts'
+import { grownRegion, wantsAudioMerge, wantsTextRemoval } from '../../../shared/imagine-grounding.ts'
+import { groundTarget } from './grounding.ts'
 import { RELIGHT_LOOKS, relightLookOf } from '../../../shared/relight-looks.ts'
 import {
   IMAGE_RESOLUTIONS, IMAGINE_ASPECTS, MAX_STORY_SECONDS, UPSCALE_IMAGE_STEPS, UPSCALE_VIDEO_STEPS,
@@ -29,7 +32,7 @@ import {
 import { LOOP_SECONDS, clampSeconds, clampStorySeconds } from '../../../shared/imagine-sizing.ts'
 import { MUSIC_MAX_SECONDS, MUSIC_MIN_SECONDS } from './music-prompt.ts'
 import { ACTION_RUNS } from './job-request.ts'
-import { probePixels, safeBasename } from './gallery.ts'
+import { kindOf, probePixels, safeBasename } from './gallery.ts'
 import { finite, textField } from './guards.ts'
 import { streamText, textRoutes, type StreamCapable } from './imagine-models.ts'
 import { message } from '../../src/messages.ts'
@@ -166,15 +169,19 @@ const ASKED = /\?\s*$|^\s*(?:perch[eé]|cosa|quanto|quanti|quante|quale|quali|ch
 
 /**
  * Actions the chat may queue: every studio action but the one nobody asks for
- * by name.
+ * by name, plus the host edits that need no graph.
  *
  * `scanFrame` is the half of «Recreate video» that draws the candidates and
  * stops for a choice: a written line queues the whole recipe, which draws its
  * one opening frame and goes on, because a chat turn cannot wait for a click.
  * The choice belongs to the card, where the candidates are on screen
  * (2026-10-24/25).
+ *
+ * `erase` and `addAudio` are host edits rather than actions (`shared/imagine-chat`):
+ * the masked removal and a track laid over a clip, neither of which redraws a
+ * graph. They are offered here so a line can ask for them by name.
  */
-const ACTIONS: readonly ImagineAction[] = IMAGINE_ACTIONS.filter(action => action !== 'scanFrame')
+const ACTIONS: readonly ImagineChatAction[] = CHAT_ACTIONS.filter(action => action !== 'scanFrame')
 
 /**
  * Whether the user's line sends the video to Instagram's vertical frame.
@@ -213,7 +220,7 @@ function namesRatio(asked: string, aspect: string): boolean {
   const words: Record<string, RegExp> = {
     '16:9': /\b(?:orizzontale|landscape|wide|widescreen)\b/i,
     '9:16': /\b(?:verticale|portrait|vertical)\b/i,
-    '1:1': /\b(?:quadrato|square)\b/i,
+    '1:1': /\b(?:quadrat[oa]|square)\b/i,
   }
   return words[aspect]?.test(asked) === true
 }
@@ -551,23 +558,28 @@ Actions you can queue:
 LOCAL CHANGES TO A PHOTO ("remove X", "add X", "move X", "change only X"):
 - "remix" redraws the whole photo. Write "prompt" as ONE short imperative sentence that names only the part to change and what to do with it ("Remove the extra arm", "Put a red scarf around her neck"). Do NOT describe the rest of the photo and do NOT list what must stay — no clothing, no body, no pose, no background, no light: the studio adds the fixed sentence that asks for everything else to stay the same, and a list of that kind is read as a description of the scene and gets the scene redrawn.
 - Never promise that the rest will come back identical: say the model will try to leave it as it is.
-- When the user names WHERE to change and the photo is in the chat or the project, give a "region": the graph then edits that rectangle and leaves the rest of the photo as it is, which is what "solo la giacca", "only the face" or "the top-left corner" are asking for. Without one the whole photo is redrawn.
+- When the change touches ONE thing the user names ("solo la giacca", "only the face", "the writing at the bottom"), put that thing in "target", written in the words of what the photo really contains (the description above says "a red handbag": "target" is "the red handbag", not "the bag"). The studio finds it on the photo and edits only that zone; if it cannot find it, it says so and redraws the whole photo instead.
+- Give a "region" only when the user says WHERE in the frame ("the top-left corner", "the bottom third") and you can work out the rectangle from their words: {"x": 0-1, "y": 0-1, "w": 0-1, "h": 0-1}, x/y from the top-left corner. Otherwise leave it out: a made-up rectangle edits the wrong part of the picture.
+- For "remix" do NOT choose a format (aspect or resolution): the photo keeps its own shape unless the user names one ("falla quadrata", "in 16:9"). An edit is not a new picture.
+- erase: takes WRITING, a LOGO or a WATERMARK out of a photo and leaves everything else exactly as it is: it is the masked eraser (IOPaint's LaMa), not a redraw, and a redraw cannot deliver it. It needs "source" (the photo) and "target" (what has to go, in the words of the description). Use it for "togli la scritta", "remove the watermark", "cancella il logo", "ripulisci il testo in basso". It is NOT "remix": for those the remix redraws the whole photo and leaves the writing there with a new look.
+- addAudio: lays a track that is ALREADY in the gallery over a clip that is ALREADY there, without re-rendering the picture: "source" is the clip, "song" is the audio file. Use it for "metti questa canzone su questo video", "unisci l'audio al video", "aggiungi la traccia a questa clip". It is NOT "story" (that renders new shots) and NOT "voice" (that changes the voice inside a track).
 - When the user says the result is still wrong ("still there", "non l'hai rimosso", "ce ancora"), "source" is the photo that run STARTED from (its "from ..." in the list), never the failed result: a correction asked of the failed output adds to it instead of undoing it.
 - After TWO failed attempts at removing the same thing, queue nothing: say in "reply" that a full redraw has already had its two tries, and that «Remove object» (IOPaint) paints the part out and fills only that area, leaving the rest identical; «Precise edit» is for changing a zone, not for removing. That is the right tool for a body part or an object lying over the body, not a refusal.
 
 Parameters:
-- aspect: one of ${IMAGINE_ASPECTS.join(', ')}. Vertical = 9:16, horizontal = 16:9, square = 1:1.
+- aspect: one of ${IMAGINE_ASPECTS.join(', ')}. Vertical = 9:16, horizontal = 16:9, square = 1:1. Never for remix unless the user named one.
 - resolution: one of ${IMAGE_RESOLUTIONS.join(', ')}. A video does not go past 720p.
 - seconds: the length asked for, in seconds. video: any length from 5 to ${String(MAX_STORY_SECONDS)} (one take from one photo, chained past 6 s); story: 20-${String(MAX_STORY_SECONDS)}; loop: 5-${String(Math.max(...LOOP_SECONDS))}; music: ${String(MUSIC_MIN_SECONDS)}-${String(MUSIC_MAX_SECONDS)} and only if it is said; recreate: ignored, the clip decides.
 - count: how many variants of the same prompt (1-4). Only for generate.
 - source: the name of a file from the list below, when the sentence starts from something that is already there.
 - sources: a list of image names, one per shot, for a music video cut between shots (story only). Copy them from the lists below, in the order they must appear.
-- song: the name of an audio file ALREADY in the gallery, when the video is to be cut to that track (then the action is story).
+- song: the name of an audio file ALREADY in the gallery, when the video is to be cut to that track (story), or when a track is laid over a clip that is already there (addAudio).
 - objectMode: only for objectSwap: one of change, remove, background, add (see its line above). Leave it out and the studio does "change".
 - quality: only for a photo or a card: "high" when the user asks for the best quality, the most detail, or "alta qualità". Leave it out for the normal quality; "standard" is not a sentence.
 - speed: only for a video: "slow" when the user asks for the high-quality/slower version, or "lenta". Leave it out for the fast one.
 - upscaleTo: only for upscale: the short side to reach, one of 1080, 1440, 2160 for a photo and 720, 1080 for a clip. Leave it out when the user does not say a size: the studio raises to the next step.
-- region: only for remix, when the user says WHERE to change ("only the jacket", "just the face", "the top left corner") and the photo is in the chat or the project. Give the rectangle as fractions of the photo: {"x": 0-1, "y": 0-1, "w": 0-1, "h": 0-1}, x/y from the top-left corner. Leave it out for a change to the whole photo.
+- target: only for remix and erase: the ONE thing the change or the removal is about, in the words of what the photo really contains. The studio grounds it on the photo.
+- region: only for remix, when the user says WHERE in the frame and the rectangle follows from their words. Fractions of the photo: {"x": 0-1, "y": 0-1, "w": 0-1, "h": 0-1}, x/y from the top-left corner. Leave it out for a change to the whole photo and whenever "target" says it better.
 - customWorkflowId: only for custom, copied EXACTLY from the personal cards below. Never invent one.
 - customFields: only for custom, an object with the card's own inputs, keyed "<node>.<field>" exactly as the card lists them, only the ones the user names a value for.
 - lipSync: only for swapPerson: false when the people in the clip do NOT sing or talk along (music they only dance or move to), so the new person does not mouth the vocals. Leave it out otherwise: lip-sync is on.
@@ -588,7 +600,7 @@ Videos over a song: there are two ways, and the user chooses:
 Do not answer that the video model cannot make the music: it can.
 
 ${request.defaults === undefined
-  ? `What is not said must NOT be invented, but in this chat there are no buttons: format, resolution and length are decided by you. If the user does not say them, choose the ones that suit the subject best and write them in the intent, then say so in "reply" in your own words. Do not ask for them: decide.`
+  ? `What is not said must NOT be invented, but in this chat there are no buttons: format, resolution and length are decided by you. If the user does not say them, choose the ones that suit the subject best and write them in the intent, then say so in "reply" in your own words. Do not ask for them: decide. The one exception is "remix": there you never choose a format, because the photo keeps its own shape.`
   : `What is not said must NOT be invented: leave it out and the current value applies (format ${request.defaults.aspect ?? '9:16'}, ${request.defaults.resolution ?? '720p'}, ${String(request.defaults.seconds ?? 5)} seconds).`}
 
 ${preset.length === 0 ? '' : `Composition chosen right now on the page, and not sent yet (it counts if the user says "this", "like that", "with this preset"): ${preset}.\n`}
@@ -675,6 +687,52 @@ Rules:
 }
 
 /**
+ * The values of one closed list worth showing to the reading.
+ *
+ * A checkpoint or LoRA folder holds hundreds of names, and printing the first
+ * forty put a catalogue behind one sentence while the name the user actually
+ * said could be the two-hundredth. The list is filtered by the words of the
+ * sentence instead, and the value the input holds now is always kept: it is
+ * what "the same but …" is compared against, and dropping it would make the
+ * reading propose a change to a value it cannot see.
+ *
+ * @param options - every value the node accepts.
+ * @param asked - the line the user wrote.
+ * @param current - the value the input holds now, when it is one of the list.
+ * @param limit - how many values may be shown.
+ * @returns the values to show, and how many were left out.
+ */
+export function comboOptions(
+  options: readonly string[],
+  asked: string,
+  current: string | undefined,
+  limit = OPTIONS_IN_PROMPT,
+): { readonly shown: readonly string[]; readonly hidden: number } {
+  const line = asked.toLowerCase()
+  /*
+   * The words keep the dots, dashes and underscores inside them: a name like
+   * "lora_52" is one word, and splitting it into "lora" and "52" made every
+   * LoRA in the folder look relevant.
+   */
+  const words = new Set(line.split(/[^\p{L}\p{N}._-]+/u).filter(word => word.length >= 3))
+  const relevant = options.filter((option) => {
+    if (option === current) return true
+    const folded = option.toLowerCase()
+    if (words.has(folded)) return true
+    if ([...words].some((word) => folded.includes(word))) return true
+    const parts = folded.split(/[^\p{L}\p{N}]+/u).filter(word => word.length >= 3)
+    return parts.some((word) => words.has(word))
+  })
+  // The current value comes first, so a list cut at the limit never hides it.
+  const known = current !== undefined && options.includes(current)
+  const chosen = known
+    ? [current, ...relevant.filter(option => option !== current)]
+    : relevant
+  const shown = chosen.slice(0, limit)
+  return { shown, hidden: options.length - shown.length }
+}
+
+/**
  * The constraints of a workflow's inputs, as one block of the second pass.
  *
  * A graph's JSON says what each value is now, not what it may be: the closed
@@ -684,9 +742,10 @@ Rules:
  * `planWorkflowPatch` so one that does not is refused rather than written.
  * @param fields - the workflow's editable inputs.
  * @param facts - what each input accepts, from ComfyUI.
+ * @param asked - the user's line, for the values worth showing.
  * @returns one line per constrained input, or an empty string when none is.
  */
-function acceptedInputs(fields: readonly WorkflowField[], facts: readonly WorkflowFieldFact[]): string {
+function acceptedInputs(fields: readonly WorkflowField[], facts: readonly WorkflowFieldFact[], asked = ''): string {
   const byKey = new Map(facts.map(fact => [`${fact.node}.${fact.field}`, fact]))
   const lines: string[] = []
   for (const field of fields) {
@@ -695,8 +754,11 @@ function acceptedInputs(fields: readonly WorkflowField[], facts: readonly Workfl
     const bits: string[] = []
     if (fact.kind === 'combo' && (fact.options?.length ?? 0) > 0) {
       const options = fact.options ?? []
-      const shown = options.slice(0, OPTIONS_IN_PROMPT)
-      bits.push(`one of: ${shown.join(' | ')}${options.length > shown.length ? ` (+${String(options.length - shown.length)} more, not listed: do not invent one of them)` : ''}`)
+      const current = typeof field.value === 'string' ? field.value : undefined
+      const { shown, hidden } = comboOptions(options, asked, current)
+      bits.push(shown.length === 0
+        ? `${String(options.length)} values, none named in the sentence: ask which one, do not invent it`
+        : `one of: ${shown.join(' | ')}${hidden > 0 ? ` (+${String(hidden)} more, not listed: do not invent one of them)` : ''}`)
     }
     if (fact.kind === 'number') {
       if (fact.min !== undefined || fact.max !== undefined) {
@@ -847,7 +909,7 @@ function intentOf(
   if (typeof raw !== 'object' || raw === null) return undefined
   const entry = raw as Record<string, unknown>
   const action = textField(entry, 'action')
-  if (action === undefined || !ACTIONS.includes(action as ImagineAction)) return undefined
+  if (action === undefined || !ACTIONS.includes(action as ImagineChatAction)) return undefined
   const aspect = textField(entry, 'aspect')
   const resolution = textField(entry, 'resolution')
   const source = textField(entry, 'source')
@@ -936,11 +998,20 @@ function intentOf(
   const modelAspect = aspect !== undefined && (IMAGINE_ASPECTS as readonly string[]).includes(aspect)
     ? aspect as typeof IMAGINE_ASPECTS[number]
     : undefined
+  /*
+   * An edit keeps the photo's own shape unless the line names a ratio. The
+   * Krea 2 edit graphs measure the photo they are given; handing them a
+   * studio canvas anyway is what made a 4:5 photo come back on a studio
+   * ratio with its composition cropped (2026-11-18). "falla quadrata" is a
+   * real brief and still travels as `aspect`; a shape nobody asked for does
+   * not.
+   */
+  const edit = action === 'remix'
   const chosenAspect = askedAspect as typeof IMAGINE_ASPECTS[number] | undefined
-    ?? aspectOfSource
-    ?? modelAspect
-    ?? (vertical ? '9:16' : undefined)
-  const chosenResolution = resolution ?? (vertical && chosenAspect === '9:16' ? '720p' : undefined)
+    ?? (edit ? undefined : aspectOfSource ?? modelAspect ?? (vertical ? '9:16' : undefined))
+  const chosenResolution = edit
+    ? (askedAspect === undefined ? undefined : resolution)
+    : resolution ?? (vertical && chosenAspect === '9:16' ? '720p' : undefined)
   /*
    * The two faces of the «Quality» pill: only the values the composer offers,
    * and only where the switch means something — a photo or a card buys
@@ -967,8 +1038,16 @@ function intentOf(
   const upscaleTo = action === 'upscale' && upscaleAsked !== undefined && upscaleSteps.includes(Math.round(upscaleAsked))
     ? Math.round(upscaleAsked)
     : undefined
-  // A zone is a remix's business: every other run redraws or renders its own frame.
-  const region = action === 'remix' ? regionOf(entry['region']) : undefined
+  // A zone belongs to the precise edit and to the eraser: every other run
+  // redraws or renders its own frame.
+  const region = action === 'remix' || action === 'erase' ? regionOf(entry['region']) : undefined
+  /*
+   * The thing the line names, for the two paths that have to point at it: a
+   * precise edit (the box becomes the zone) and the masked removal (the box
+   * becomes the mask). The reading writes it in the photo's own words when it
+   * was given the description, which is what the grounding step matches on.
+   */
+  const target = action === 'remix' || action === 'erase' ? textField(entry, 'target') : undefined
   /*
    * A personal card, by the id the inventory lists. An id the studio does not
    * hold is kept here so the reading can say "not configured" instead of
@@ -979,20 +1058,26 @@ function intentOf(
     ? undefined
     : catalog.cards?.find(entry_ => entry_.id === customWorkflowId)
   const customFields = action === 'custom' ? customFieldsOf(entry['customFields'], card) : undefined
-  const seconds = secondsFor(action as ImagineAction, chosenResolution, secondsAsked)
+  /*
+   * A host edit takes no length, no ratio and no ladder: it works on a file
+   * that is already there and publishes the same file changed. Reading those
+   * fields off its object would stamp a size on a photo nobody re-rendered.
+   */
+  const host = isChatHostAction(action)
+  const seconds = host ? undefined : secondsFor(action as ImagineAction, chosenResolution, secondsAsked)
   return {
-    action: action as ImagineAction,
+    action: action as ImagineChatAction,
     prompt: prompt ?? '',
-    ...chosenAspect === undefined ? {} : { aspect: chosenAspect },
-    ...chosenResolution !== undefined && IMAGE_RESOLUTIONS.includes(chosenResolution as (typeof IMAGE_RESOLUTIONS)[number])
-      ? { resolution: chosenResolution }
-      : {},
+    ...host || chosenAspect === undefined ? {} : { aspect: chosenAspect },
+    ...host || chosenResolution === undefined || !IMAGE_RESOLUTIONS.includes(chosenResolution as (typeof IMAGE_RESOLUTIONS)[number])
+      ? {}
+      : { resolution: chosenResolution },
     ...seconds === undefined ? {} : { seconds: Math.round(seconds) },
-    ...count === undefined ? {} : { count: Math.max(1, Math.min(4, Math.round(count))) },
-    ...lyrics === undefined ? {} : { lyrics },
-    ...voice === undefined ? {} : { voice },
+    ...host ? {} : count === undefined ? {} : { count: Math.max(1, Math.min(4, Math.round(count))) },
+    ...host ? {} : lyrics === undefined ? {} : { lyrics },
+    ...host ? {} : voice === undefined ? {} : { voice },
     // Two octaves either way: past that a voice is not shifted, it is broken.
-    ...pitch === undefined ? {} : { pitch: Math.max(-24, Math.min(24, Math.round(pitch))) },
+    ...host || pitch === undefined ? {} : { pitch: Math.max(-24, Math.min(24, Math.round(pitch))) },
     // A file the studio does not have is a hallucinated name, and sending it
     // would fail the run with a path error instead of using what is staged.
     ...source !== undefined && known.has(source) ? { source } : {},
@@ -1003,12 +1088,13 @@ function intentOf(
     ...lipSync === undefined ? {} : { lipSync },
     ...objectMode === undefined ? {} : { objectMode },
     ...light === undefined ? {} : { light },
-    ...quality === undefined ? {} : { quality },
-    ...speed === undefined ? {} : { speed },
-    ...upscaleTo === undefined ? {} : { upscaleTo },
+    ...host || quality === undefined ? {} : { quality },
+    ...host || speed === undefined ? {} : { speed },
+    ...host || upscaleTo === undefined ? {} : { upscaleTo },
     ...region === undefined ? {} : { region },
-    ...customWorkflowId === undefined ? {} : { customWorkflowId },
-    ...customFields === undefined ? {} : { customFields },
+    ...target === undefined ? {} : { target },
+    ...host ? {} : customWorkflowId === undefined ? {} : { customWorkflowId },
+    ...host ? {} : customFields === undefined ? {} : { customFields },
   }
 }
 
@@ -1302,7 +1388,36 @@ function notConfigured(action: string): string {
  * @param inventory - the configured workflows and personal cards.
  * @returns the sentence to say, or undefined.
  */
-function missingGraph(intent: ImagineChatIntent, inventory: WorkflowInventory): string | undefined {
+/**
+ * Why one host edit cannot run, or undefined when it can.
+ *
+ * The masked removal is a plugin: without the tool the page has no route, and
+ * the line is told so instead of the client failing on a 404. Both edits need
+ * the files they work on, and the eraser needs the thing to erase.
+ * @param intent - the host edit the reading asked for.
+ * @param eraseTool - whether «Remove object» (the IOPaint plugin) is on.
+ * @returns the sentence to say, or undefined.
+ */
+function hostEditProblem(intent: ImagineChatIntent, eraseTool: boolean): string | undefined {
+  if (intent.action === 'erase') {
+    if (!eraseTool) return message('chat.eraseNotConfigured')
+    if (intent.source === undefined) return message('chat.erasePhotoRequired')
+    const named = (intent.target ?? intent.prompt).trim()
+    return named.length === 0 ? message('chat.eraseTargetRequired') : undefined
+  }
+  if (intent.action === 'addAudio') {
+    if (intent.source === undefined) return message('chat.audioClipRequired')
+    return intent.song === undefined ? message('chat.audioTrackRequired') : undefined
+  }
+  return undefined
+}
+
+function missingGraph(intent: ImagineChatIntent, inventory: WorkflowInventory, eraseTool: boolean): string | undefined {
+  /*
+   * The host edits run on the host's own routes, not on a graph, so the
+   * inventory has nothing to say about them.
+   */
+  if (isChatHostAction(intent.action)) return hostEditProblem(intent, eraseTool)
   if (intent.action === 'custom') {
     const id = intent.customWorkflowId
     if (id === undefined) return message('chat.customNoCard')
@@ -1311,6 +1426,7 @@ function missingGraph(intent: ImagineChatIntent, inventory: WorkflowInventory): 
       : message('chat.cardNotConfigured', { id })
   }
   const configured = (run: string): boolean => inventory.list.some(entry => entry.run === run)
+  if (isChatHostAction(intent.action)) return undefined
   switch (intent.action) {
     case 'remix':
       // A zone change needs the graph that keeps the rest of the photo; a
@@ -1363,15 +1479,31 @@ function missingGraph(intent: ImagineChatIntent, inventory: WorkflowInventory): 
  * Drop the runs this deployment cannot start, and say why.
  * @param answer - the reading.
  * @param inventory - the configured workflows and personal cards.
+ * @param eraseTool - whether «Remove object» (the IOPaint plugin) is on.
  * @returns the same answer with only the runnable intents, and the refusal
  *   sentences added to its prose.
  */
-function availableIntents(answer: ImagineChatReply, inventory: WorkflowInventory | undefined): ImagineChatReply {
-  if (inventory === undefined) return answer
+function availableIntents(answer: ImagineChatReply, inventory: WorkflowInventory | undefined, eraseTool: boolean): ImagineChatReply {
+  /*
+   * Without an inventory the graphs are unknown, but the host edits are not:
+   * they run on the host's own routes. The why-not of the eraser still runs,
+   * so the answer does not send the page to a route that is not mounted.
+   */
+  if (inventory === undefined) {
+    const kept: ImagineChatIntent[] = []
+    const refused: string[] = []
+    for (const intent of answer.intents) {
+      const reason = isChatHostAction(intent.action) ? hostEditProblem(intent, eraseTool) : undefined
+      if (reason === undefined) kept.push(intent)
+      else refused.push(reason)
+    }
+    if (refused.length === 0) return answer
+    return { ...answer, intents: kept, reply: [answer.reply, ...refused].filter(line => line.trim().length > 0).join(' ') }
+  }
   const kept: ImagineChatIntent[] = []
   const refused: string[] = []
   for (const intent of answer.intents) {
-    const reason = missingGraph(intent, inventory)
+    const reason = missingGraph(intent, inventory, eraseTool)
     if (reason === undefined) kept.push(intent)
     else refused.push(reason)
   }
@@ -1381,6 +1513,169 @@ function availableIntents(answer: ImagineChatReply, inventory: WorkflowInventory
     intents: kept,
     reply: [answer.reply, ...refused].filter(line => line.trim().length > 0).join(' '),
   }
+}
+
+/**
+ * What the host knows about a file the reading named: its kind and the
+ * description already filed for it.
+ * @param request - the line's files, notes attached.
+ * @returns the lookup by name.
+ */
+function filesOf(request: ImagineChatRequest): ReadonlyMap<string, ImagineChatFile> {
+  const byName = new Map<string, ImagineChatFile>()
+  for (const file of [...request.staged ?? [], ...request.recent ?? []]) byName.set(file.name, file)
+  return byName
+}
+
+/** Whether a named gallery file is a still. */
+function isStill(name: string | undefined): boolean {
+  if (name === undefined) return false
+  const safe = safeBasename(name)
+  return safe !== undefined && kindOf(safe) === 'image'
+}
+
+/**
+ * Send a request to take writing out to the masked removal, not to a redraw.
+ *
+ * Decided from the user's words rather than from the reading's choice: a
+ * redraw cannot deliver it (it leaves the writing there with a new look), and
+ * the eraser is the only tool that takes it out and keeps the rest of the
+ * photo. It runs before the graph check, so the eraser can queue even on a
+ * deployment that has no edit graph, and it runs even when the plugin is off:
+ * the refusal then says the tool is off instead of starting a redraw that
+ * cannot work.
+ * @param answer - the reading.
+ * @param request - the line.
+ * @returns the same answer, its text removals turned into `erase` intents.
+ */
+function withTextRemoval(answer: ImagineChatReply, request: ImagineChatRequest): ImagineChatReply {
+  if (!wantsTextRemoval(request.text)) return answer
+  /*
+   * Answered in prose only: the photo in the chat and the words are the
+   * request, and the eraser is the only tool that delivers it. Nothing is
+   * synthesised over another run the reading did queue.
+   */
+  if (answer.intents.length === 0) {
+    const photo = (request.staged ?? []).find(file => file.kind === 'image')
+    return photo === undefined ? answer : {
+      ...answer,
+      intents: [{ action: 'erase', prompt: '', source: photo.name, target: request.text }],
+    }
+  }
+  let changed = false
+  const intents = answer.intents.map((intent) => {
+    if (intent.action !== 'remix' || !isStill(intent.source)) return intent
+    changed = true
+    return {
+      ...intent,
+      action: 'erase' as const,
+      target: intent.target ?? intent.prompt ?? request.text,
+    }
+  })
+  return changed ? { ...answer, intents } : answer
+}
+
+/**
+ * Turn the reading's named things into boxes, before anything is queued.
+ *
+ * Two jobs, both about not silently doing the wrong thing:
+ *
+ * - a line that asks for writing, a logo or a watermark to come out is sent
+ *   to the masked removal (IOPaint's LaMa), even when the reading called it a
+ *   remix: a redraw leaves the writing there with a new look, and only the
+ *   eraser takes it out and keeps the rest of the photo;
+ * - the thing the reading named is grounded on the photo (with the file's own
+ *   description, so "la borsa" becomes "the red handbag"). A found box becomes
+ *   the zone of a precise edit, or the mask of the removal. A box that is not
+ *   found is said out loud; a precise edit then redraws the whole photo, which
+ *   is the fallback the user asked for, and a removal is dropped with the way
+ *   to do it by hand.
+ *
+ * @param answer - the reading, with the runs this deployment can start.
+ * @param ctx - the host, for the vision service.
+ * @param request - the line, its files carrying their notes.
+ * @param outputDir - the gallery folder; without one nothing can be grounded.
+ * @param regionGraph - whether this deployment has the zone-edit graph.
+ * @param say - the turn's own event sink.
+ * @param signal - stops the looks when the chat closes.
+ * @returns the answer with boxes filled in and the sentences about what was
+ *   not found, and how many boxes were really found.
+ */
+async function groundAnswer(
+  answer: ImagineChatReply,
+  ctx: ImagineHost,
+  request: ImagineChatRequest,
+  outputDir: string | undefined,
+  regionGraph: boolean,
+  say: ImagineChatWatcher,
+  signal?: AbortSignal,
+): Promise<{ readonly answer: ImagineChatReply; readonly grounded: number }> {
+  const files = filesOf(request)
+  const notes: string[] = []
+  let grounded = 0
+  const ground = async (name: string | undefined, target: string): Promise<ImagineRegion | undefined> => {
+    if (outputDir === undefined || name === undefined || !isStill(name)) return undefined
+    say({ kind: 'step', step: 'grounding', detail: target })
+    const description = files.get(name)?.seen
+    return await groundTarget(ctx, outputDir, name, {
+      target,
+      ...description === undefined ? {} : { description },
+    }, request.model, signal)
+  }
+  const intents: ImagineChatIntent[] = []
+  /*
+   * A line that asks to lay a track over a clip, answered in prose only, is
+   * still that request: with the clip and the track both in the chat there is
+   * nothing left to ask, and the reading's own silence does not make the
+   * gesture disappear.
+   */
+  const asked = [...answer.intents]
+  if (answer.intents.length === 0 && wantsAudioMerge(request.text)) {
+    const staged = request.staged ?? []
+    const clip = staged.find(file => file.kind === 'video')
+    const track = staged.find(file => file.kind === 'audio')
+    if (clip !== undefined && track !== undefined) {
+      asked.push({ action: 'addAudio', prompt: request.text, source: clip.name, song: track.name })
+    }
+  }
+  for (const intent of asked) {
+    if (intent.action === 'erase') {
+      const target = intent.target ?? intent.prompt ?? request.text
+      const found = await ground(intent.source, target)
+      /*
+       * A rectangle the user marked is the fallback: the eraser can still run
+       * on it when the vision model cannot find the thing by name, and
+       * throwing a zone the user painted away would be worse than erasing it.
+       */
+      const region = found === undefined ? intent.region : grownRegion(found)
+      if (region === undefined) {
+        notes.push(message('chat.eraseNotFound'))
+        continue
+      }
+      if (found !== undefined) grounded += 1
+      intents.push({ ...intent, target, region })
+      continue
+    }
+    /*
+     * A precise edit with a named thing and no rectangle: the box found is
+     * the zone. Grown by a hair, so the zone reaches the edge of the thing
+     * the mask would otherwise clip.
+     */
+    if (intent.action === 'remix' && regionGraph && intent.region === undefined && (intent.target?.trim().length ?? 0) > 0) {
+      const found = await ground(intent.source, intent.target as string)
+      if (found === undefined) {
+        notes.push(message('chat.targetNotFound', { target: intent.target as string }))
+        intents.push(intent)
+        continue
+      }
+      grounded += 1
+      intents.push({ ...intent, region: grownRegion(found, 0.02) })
+      continue
+    }
+    intents.push(intent)
+  }
+  const reply = [answer.reply, ...notes].filter(line => line.trim().length > 0).join(' ')
+  return { answer: { ...answer, reply, intents }, grounded }
 }
 
 /**
@@ -1493,6 +1788,17 @@ export async function readImagineChat(
   }
   const known = new Set([...request.staged ?? [], ...request.recent ?? []].map(file => file.name))
   /*
+   * Whether the masked removal is on. The page knows it (the IOPaint plugin
+   * mounted or not) and the server does not, so the reading is told here.
+   */
+  const eraseTool = request.eraseTool === true
+  /*
+   * A zone needs the graph that keeps the rest of the photo: without it the
+   * grounding would hand the page a rectangle the host refuses at the POST,
+   * after the reading has already promised a precise edit.
+   */
+  const regionGraph = inventory?.list.some(entry => entry.run === 'editRegion') ?? false
+  /*
    * A model that cannot answer — an image model, a route that is down — hands
    * the line to the next candidate rather than to the fallback, which would
    * generate the sentence instead of reading it.
@@ -1560,7 +1866,8 @@ export async function readImagineChat(
     ...request.voices === undefined ? {} : { voices: request.voices },
     ...inventory?.cards === undefined ? {} : { cards: inventory.cards },
   }
-  const first = parseImagineChat(object, known, catalog)
+  const read = parseImagineChat(object, known, catalog)
+  const first = read === undefined ? undefined : withTextRemoval(read, request)
   /*
    * The gateway to the workflow pass, in this order: the model named a
    * configured workflow, AND the user explicitly asked to see or change a
@@ -1579,7 +1886,7 @@ export async function readImagineChat(
     const warnings = inventory.warnings(entry.key) ?? []
     const instruction = nodes === undefined
       ? undefined
-      : workflowChangeInstruction(request, entry, nodes, acceptedInputs(fields, facts), warnings)
+      : workflowChangeInstruction(request, entry, nodes, acceptedInputs(fields, facts, request.text), warnings)
     const graph = instruction === undefined
       ? undefined
       : parseWorkflowReply(await ask(llm, answered, instruction, say, signal), entry, inventory, facts)
@@ -1588,7 +1895,7 @@ export async function readImagineChat(
      * that asks for a photo and also asks about a graph does both, and the
      * reading's intents are never thrown away for a proposal.
      */
-    const kept = first === undefined ? undefined : availableIntents(first, inventory)
+    const kept = first === undefined ? undefined : availableIntents(first, inventory, eraseTool)
     if (graph === undefined) {
       /*
        * The line was about a workflow, and the fallback below is a generation:
@@ -1605,14 +1912,18 @@ export async function readImagineChat(
      * empty takes the sentence, and the retry rules still apply. Only the
      * shape of the answer is different — it also carries the proposal.
      */
-    return withAskedLine(retryEditAnswer({
+    const composed = withAskedLine(retryEditAnswer({
       ...graph,
       intents: kept?.intents ?? [],
       reply: [kept?.reply ?? '', graph.reply].filter(line => line.trim().length > 0).join(' '),
     }, noted), request.text)
+    return (await groundAnswer(composed, ctx, noted, outputDir, regionGraph, say, signal)).answer
   }
-  const answer = first === undefined ? undefined : availableIntents(first, inventory)
-  if (answer !== undefined) return withAskedLine(retryEditAnswer(answer, noted), request.text)
+  const answer = first === undefined ? undefined : availableIntents(first, inventory, eraseTool)
+  if (answer !== undefined) {
+    const composed = withAskedLine(retryEditAnswer(answer, noted), request.text)
+    return (await groundAnswer(composed, ctx, noted, outputDir, regionGraph, say, signal)).answer
+  }
   /*
    * A reader was configured and the line still was not read: either nothing
    * came back or what came back is not an answer. Both are failures of the

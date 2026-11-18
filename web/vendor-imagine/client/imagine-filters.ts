@@ -145,6 +145,8 @@ const GALLERY_TOOLS: Readonly<Record<GalleryTool, { readonly origin: HistoryOrig
   change_voice: { origin: 'voice', labelKey: 'imagine.label.voce-cambiata' },
   speak_text: { origin: 'voice', labelKey: 'imagine.label.voce-da-testo' },
   videoclip: { origin: 'clip', labelKey: 'imagine.label.videoclip' },
+  // The clip with a track laid over it: an edited video, not a new one.
+  add_audio: { origin: 'video', labelKey: 'imagine.label.traccia-unita' },
 }
 
 /** The host's own edits, which carry no tool: what the name's prefix says. */
@@ -190,6 +192,7 @@ const ACTION_LABEL_KEYS: Readonly<Record<ImagineAction | HostEdit, ComfyLocaleKe
   trim: 'imagine.label.video-tagliato',
   merge: 'imagine.label.video-uniti',
   frame: 'imagine.label.fotogramma-estratto',
+  addAudio: 'imagine.label.traccia-unita',
 }
 
 /**

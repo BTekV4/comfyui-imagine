@@ -10,8 +10,8 @@ import { basename, join } from 'node:path'
 import type { ImagineHost } from '../../src/host.ts'
 import { declaredOutputPath, freeOutputPath } from './index.ts'
 import type { ComfyProducedFile } from './index.ts'
-import { layPlateAudio, muxAudio, probeMedia, type MediaProbe } from './media-tools.ts'
-import { kindOf, probePixels } from './gallery.ts'
+import { layPlateAudio, muxAudio, probeMedia, samePicture, type MediaProbe } from './media-tools.ts'
+import { kindOf, probePixels, safeBasename } from './gallery.ts'
 import { exactVideoFrame, fourKFrame, parseSize, snapClip, snapStill } from './snap-size.ts'
 import { joinAtSeam } from './extend-video.ts'
 import { finalFileName, readStoryManifest, shotOfFileName, storyLabel, updateStoryManifest, updateStoryShot } from './story-manifest.ts'
@@ -69,7 +69,27 @@ interface FinishRun {
 export async function finishRun(run: FinishRun): Promise<void> {
   const delivered = await deliveredFiles(run)
   await snapToSize(run, delivered)
+  await sayWhenNothingChanged(run, delivered)
   await writeResult(run, delivered)
+}
+
+/**
+ * Say when an edit delivered the photo it started from.
+ *
+ * A full redraw that ignored the instruction — or a precise edit whose zone
+ * the sampler left alone — comes back as the source, and beside the original
+ * it reads as a broken run with no reason. The job still delivers the file;
+ * the notice is what tells the user to name the part more precisely, or to
+ * take it out with the eraser.
+ * @param run - the run, its files snapped to their size.
+ * @param delivered - the files the run is about to publish.
+ */
+async function sayWhenNothingChanged(run: FinishRun, delivered: readonly ComfyProducedFile[]): Promise<void> {
+  if (run.job.action !== 'remix' || run.job.source === undefined) return
+  const source = safeBasename(run.job.source)
+  const made = delivered.find(file => kindOf(file.path) === 'image')
+  if (source === undefined || made === undefined || kindOf(source) !== 'image') return
+  if (await samePicture(join(run.outputDir, source), made.path)) setJobNotice(run.job.id, 'edit-unchanged')
 }
 
 /**

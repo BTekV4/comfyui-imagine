@@ -14,7 +14,7 @@ import { dirname, join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { ComfyUi } from '../vendor/comfyui/index.ts'
 import { dataPath } from '../vendor/home-paths/index.ts'
-import { createMergeRoute, createTrimRoute } from './clips.ts'
+import { createAddAudioRoute, createMergeRoute, createTrimRoute } from './clips.ts'
 import { createCropRoute, createDuplicateRoute } from './stills.ts'
 import { createSegmentsRoutes } from './segments-route.ts'
 import { createLikesRoute } from './likes.ts'
@@ -454,6 +454,7 @@ const own: WebRoute[] = [
   }),
   { kind: 'exact', path: '/api/trim', handler: createTrimRoute(outputDir) },
   { kind: 'exact', path: '/api/merge', handler: createMergeRoute(outputDir) },
+  { kind: 'exact', path: '/api/add-audio', handler: createAddAudioRoute(outputDir) },
   { kind: 'exact', path: '/api/likes', handler: createLikesRoute(dataPath('comfy', 'likes.json'), outputDir) },
   { kind: 'exact', path: '/api/tags', handler: createTagsRoute(dataPath('comfy', 'tags.json'), outputDir) },
   { kind: 'exact', path: '/api/crop-copy', handler: createCropRoute(outputDir) },

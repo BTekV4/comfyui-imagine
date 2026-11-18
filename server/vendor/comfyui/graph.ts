@@ -72,13 +72,16 @@ export function videoInputNode(graph: ComfyGraph): ComfyNodeSlot | undefined {
 }
 
 /**
- * The `EmptyLatentImage` node whose `width`/`height` a size parameter writes
- * into; absent when the workflow derives size from an input image or the
- * model card instead.
+ * The empty-latent node whose `width`/`height` a size parameter writes into;
+ * absent when the workflow derives size from an input image or the model card
+ * instead.
+ *
+ * `EmptySD3LatentImage` is the SD3 family's node, which the Krea 2 edit graph
+ * uses to take its canvas from the photo it is given.
  * @param graph - the workflow graph.
  * @returns the node id and its inputs, or undefined.
  */
 export function sizeNode(graph: ComfyGraph): ComfyNodeSlot | undefined {
-  const slots = nodesByClass(graph, ['EmptyLatentImage'])
+  const slots = nodesByClass(graph, ['EmptyLatentImage', 'EmptySD3LatentImage'])
   return slots.length === 0 ? undefined : slots[0]
 }

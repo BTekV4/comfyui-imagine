@@ -55,6 +55,8 @@ export interface JobBody {
   source?: string
   size?: string
   aspectRatio?: string
+  /** The run's canvas came from a ratio the user named (the written lane). */
+  canvasAsked?: boolean
   seconds?: number
   megapixels?: number
   /** Character and object swap only: `480p`, `720p` or `1080p`. */
@@ -201,6 +203,7 @@ export async function startFromBody(routes: JobStartContext, body: JobBody): Pro
       ? { placement: body.placement as ImaginePlacement }
       : {},
     ...chosen === undefined ? {} : { model: chosen },
+    ...body.canvasAsked === true ? { canvasAsked: true } : {},
   }, speak)
   /*
    * A job queued from outside the studio belongs to the project it names,

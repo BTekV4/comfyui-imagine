@@ -24,6 +24,7 @@ import {
   IMAGINE_ACTIONS, IMAGINE_OBJECT_MODES, IMAGINE_QUALITIES, IMAGINE_SPEEDS, MEDIA_KINDS, type GalleryItem,
 } from '../shared/imagine-types.ts'
 import { IMAGINE_ASPECTS, IMAGE_RESOLUTIONS, type ImagineAspect, type ImagineResolution } from '../shared/imagine-media.ts'
+import { MUSIC_MAX_SECONDS, MUSIC_MIN_SECONDS } from '../server/vendor/tool-comfy/music-prompt.ts'
 import {
   SWAP_RESOLUTIONS, VIDEO_RESOLUTIONS, megapixelsFor, sizeFor, videoAspectLabel,
 } from '../shared/imagine-sizing.ts'
@@ -383,7 +384,7 @@ const zoneArg = z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.num
 const segmentsArg = z.array(z.number().int().min(0)).min(1)
   .describe('Segment indexes from imagine_segments: their masks are joined into the zone.')
 
-function buildServer(): McpServer {
+export function buildServer(): McpServer {
   const server = new McpServer({ name: 'imagine', version: '1.0.0' }, {
     instructions: [
       'ComfyUI Imagine: a local studio that runs ComfyUI graphs (Krea 2 images, Pika/H3 videos, character and object swaps, music, voice, upscaling).',
@@ -608,6 +609,64 @@ function buildServer(): McpServer {
   }, async ({ photo, region, project }) => guarded(async () => {
     await photoItem(photo)
     const made = await api<GalleryItem>('/api/crop-copy', { method: 'POST', body: JSON.stringify({ name: photo, region: checkedZone(region) }) })
+    return await fileIntoProject(made, project)
+  }))
+
+  server.registerTool('imagine_generate_music', {
+    title: 'Generate music',
+    description: 'Generate a separate audio track (MiniMax Music 3): `prompt` is the genre and production, `lyrics` is the text to sing (empty makes an instrumental). `seconds` only when a length is wanted; otherwise the studio decides it from the words. The same action the chat queues for "fai una canzone".',
+    inputSchema: {
+      prompt: z.string().min(1).describe('The song\'s genre and production, in English.'),
+      lyrics: z.string().default('').describe('The words to sing; empty for an instrumental.'),
+      seconds: z.number().int().min(MUSIC_MIN_SECONDS).max(MUSIC_MAX_SECONDS).optional().describe(`Length in seconds (${String(MUSIC_MIN_SECONDS)}-${String(MUSIC_MAX_SECONDS)}). Omit to let the studio read it off the words.`),
+      project: projectArg,
+    },
+  }, async ({ prompt, lyrics, seconds, project }) => guarded(async () => await startJob({
+    action: 'music', prompt, lyrics, ...seconds === undefined ? {} : { seconds },
+  }, project)))
+
+  server.registerTool('imagine_speak', {
+    title: 'Read a text aloud',
+    description: 'Text to speech: read a text and save the audio file. The right tool for "say this aloud", "turn it into audio", "a voice over". Not the same as imagine_change_voice (that changes the voice of a track that already exists) nor imagine_generate_music (that sings).',
+    inputSchema: {
+      text: z.string().min(1).describe('The text to read, in the language it is written in.'),
+      project: projectArg,
+    },
+  }, async ({ text, project }) => guarded(async () => await startJob({ action: 'speak', prompt: text }, project)))
+
+  server.registerTool('imagine_change_voice', {
+    title: 'Change the voice of a track',
+    description: 'Re-sing a track that already exists with another voice, keeping the music. `source` may be an audio file OR a video clip: from a clip the studio extracts its soundtrack, converts the voice and returns the clip with the new voice. `voice` is a voice the deployment installed; `pitch` is the shift in semitones (a deeper voice is negative). Same action as the chat\'s "cambia la voce".',
+    inputSchema: {
+      source: fileName('The audio track, or the clip whose voice changes'),
+      voice: z.string().optional().describe('Which voice to use, as this deployment names it (omit for its default).'),
+      pitch: z.number().int().min(-24).max(24).optional().describe('Semitones the voice is shifted by; negative goes down (eleven semitones are an octave).'),
+      project: projectArg,
+    },
+  }, async ({ source, voice, pitch, project }) => guarded(async () => {
+    await requireFiles([source])
+    return await startJob({
+      action: 'voice', prompt: '', source,
+      ...voice === undefined ? {} : { voice },
+      ...pitch === undefined ? {} : { pitch },
+    }, project)
+  }))
+
+  server.registerTool('imagine_add_audio', {
+    title: 'Lay a track over a clip',
+    description: 'Put an audio track that is already in the library over a video clip that is already there, without re-rendering the picture: the clip decides the length (the track is padded when shorter and cut when longer) and the original files stay. The chat\'s "unisci l\'audio al video". For a song cut into new shots use imagine_make_video or imagine_run_template with a song, not this.',
+    inputSchema: {
+      video: fileName('The clip that keeps its picture'),
+      track: fileName('The audio to lay over it'),
+      project: projectArg,
+    },
+  }, async ({ video, track, project }) => guarded(async () => {
+    await requireFiles([video, track])
+    const made = await api<GalleryItem>('/api/add-audio', {
+      method: 'POST',
+      body: JSON.stringify({ name: video, track }),
+      signal: AbortSignal.timeout(900_000),
+    })
     return await fileIntoProject(made, project)
   }))
 
@@ -890,33 +949,43 @@ function readBody(req: IncomingMessage): Promise<unknown> {
   })
 }
 
-createServer((req, res) => {
-  void (async () => {
-    const path = new URL(req.url ?? '/', 'http://x').pathname
-    if (path === '/health') return reply(res, 200, { ok: true })
-    if (path !== '/mcp') return reply(res, 404, { error: 'not found' })
-    if (!authorized(req)) return reply(res, 401, { error: 'unauthorized' })
-    if (req.method !== 'POST') {
-      // Stateless: no server-sent stream to resume, no session to delete.
-      return reply(res, 405, { jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed.' }, id: null })
-    }
-    let body: unknown
-    try {
-      body = await readBody(req)
-    } catch (error: unknown) {
-      return reply(res, 400, { jsonrpc: '2.0', error: { code: -32700, message: error instanceof Error ? error.message : 'Parse error' }, id: null })
-    }
-    const server = buildServer()
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })
-    res.on('close', () => { void transport.close(); void server.close() })
-    try {
-      await server.connect(transport)
-      await transport.handleRequest(req, res, body)
-    } catch (error: unknown) {
-      console.error('[imagine-mcp]', error)
-      if (!res.headersSent) reply(res, 500, { jsonrpc: '2.0', error: { code: -32603, message: 'Internal error' }, id: null })
-    }
-  })()
-}).listen(PORT, '0.0.0.0', () => {
-  console.log(`[imagine-mcp] listening on :${String(PORT)}/mcp → ${IMAGINE}`)
-})
+/**
+ * The HTTP side: one stateless Streamable-HTTP mount behind the bearer.
+ *
+ * Not started when `IMAGINE_MCP_NO_LISTEN=1`, which is how the tests build the
+ * server and list its tools without taking a port or needing a token on disk.
+ */
+function listen(): void {
+  createServer((req, res) => {
+    void (async () => {
+      const path = new URL(req.url ?? '/', 'http://x').pathname
+      if (path === '/health') return reply(res, 200, { ok: true })
+      if (path !== '/mcp') return reply(res, 404, { error: 'not found' })
+      if (!authorized(req)) return reply(res, 401, { error: 'unauthorized' })
+      if (req.method !== 'POST') {
+        // Stateless: no server-sent stream to resume, no session to delete.
+        return reply(res, 405, { jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed.' }, id: null })
+      }
+      let body: unknown
+      try {
+        body = await readBody(req)
+      } catch (error: unknown) {
+        return reply(res, 400, { jsonrpc: '2.0', error: { code: -32700, message: error instanceof Error ? error.message : 'Parse error' }, id: null })
+      }
+      const server = buildServer()
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })
+      res.on('close', () => { void transport.close(); void server.close() })
+      try {
+        await server.connect(transport)
+        await transport.handleRequest(req, res, body)
+      } catch (error: unknown) {
+        console.error('[imagine-mcp]', error)
+        if (!res.headersSent) reply(res, 500, { jsonrpc: '2.0', error: { code: -32603, message: 'Internal error' }, id: null })
+      }
+    })()
+  }).listen(PORT, '0.0.0.0', () => {
+    console.log(`[imagine-mcp] listening on :${String(PORT)}/mcp → ${IMAGINE}`)
+  })
+}
+
+if (process.env['IMAGINE_MCP_NO_LISTEN'] !== '1') listen()

@@ -111,6 +111,8 @@ const TOOL_PREFIXES: readonly (readonly [string, GalleryTool])[] = [
   ['swap_person-', 'swap_person'],
   // «Relight the photo»: the photo re-lit with one of the light looks (2026-11-06).
   ['relight-', 'relight'],
+  // «Add audio»: the clip with a track laid over it (2026-11-18).
+  ['add_audio-', 'add_audio'],
 ]
 
 /**

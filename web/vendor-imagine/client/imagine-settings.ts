@@ -21,7 +21,7 @@ import { VIDEO_MEGAPIXELS, clipSecondsFor } from '../../../shared/imagine-sizing
  */
 export {
   LOOP_SECONDS, STORY_MIN_SECONDS, VIDEO_RESOLUTIONS, clampResolution, clampSeconds, clampStorySeconds,
-  clipSecondsFor, megapixelsFor, sizeFor, canvasMegapixelsFor, videoAspectLabel, videoSecondsFor,
+  clipSecondsFor, megapixelsFor, sizeFor, editSizeFor, canvasMegapixelsFor, videoAspectLabel, videoSecondsFor,
   SWAP_RESOLUTIONS, swapResolutionOf,
 } from '../../../shared/imagine-sizing.ts'
 

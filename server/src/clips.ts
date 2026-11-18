@@ -1,12 +1,13 @@
 /**
- * Two clip edits the canvas offers on its own, as Grok Imagine's video bar
- * does (2026-10-17): Taglia keeps a stretch of a clip, Unisci plays several
- * clips one after the other. Both write a new gallery file beside the inputs
- * and never touch them.
+ * The clip edits the host makes on its own, as Grok Imagine's video bar does
+ * (2026-10-17): Taglia keeps a stretch of a clip, Unisci plays several clips
+ * one after the other, and «Add audio» lays a track over a clip that is
+ * already there. Each writes a new gallery file beside the inputs and never
+ * touches them.
  */
 import { join } from 'node:path'
 import { message } from './messages.ts'
-import { AAC_192K, FASTSTART, ffmpegTo, h264Out, probeMedia } from '../vendor/tool-comfy/media-tools.ts'
+import { AAC_192K, FASTSTART, ffmpegTo, h264Out, muxAudio, probeMedia } from '../vendor/tool-comfy/media-tools.ts'
 import { galleryEditRoute, galleryName, HttpError, stamp, stem } from './route-kit.ts'
 import type { Handler } from './host.ts'
 
@@ -82,6 +83,40 @@ export function createMergeRoute(outputDir: string): Handler {
       const target = join(outputDir, output)
       await ffmpegTo(target, ['-hide_banner', '-loglevel', 'error', '-y', ...inputs.flatMap(path => ['-i', path]), ...extra, '-filter_complex', graph, '-map', '[v]', '-map', '[a]', ...ENCODE, target], 1_200_000)
       return { output, origin: { action: 'merge', prompt: message('origin.merge', { count: clips.length }), source: clips[0] } }
+    },
+  })
+}
+
+/**
+ * «Add audio»: lay a track that is already in the gallery over a clip that is
+ * already there, without re-encoding the picture.
+ *
+ * The clip decides the length: the track is padded with silence when it is
+ * shorter and cut when it is longer, which is what "put this song on the
+ * video" means. The clip and the track are never touched; the result is a new
+ * file beside them.
+ * @param outputDir - the gallery folder.
+ * @returns the handler.
+ */
+export function createAddAudioRoute(outputDir: string): Handler {
+  return galleryEditRoute(outputDir, {
+    failure: { status: 500, what: 'clip.addAudioFailed' },
+    async run(body) {
+      const name = clipName(body['name'])
+      const track = galleryName(body['track'], 'audio')
+      if (name === undefined) throw new HttpError(400, message('clip.videoRequired'))
+      if (track === undefined) throw new HttpError(400, message('clip.trackRequired'))
+      const output = `add_audio-${stem(name)}-${stamp()}.mp4`
+      const target = join(outputDir, output)
+      await muxAudio(join(outputDir, name), join(outputDir, track), target, {
+        pad: true,
+        faststart: true,
+        timeoutMs: 900_000,
+      })
+      return {
+        output,
+        origin: { action: 'addAudio', prompt: message('origin.addAudio'), source: name },
+      }
     },
   })
 }

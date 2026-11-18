@@ -393,6 +393,7 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
     actions, view, projectId, projects, current, composer, busy, setBusy, reading, setReading, readingRef,
     trace, editJobs, patch, naming, visible, ownLive, jobs, allByName, pickedGroups, setPicked, proposal, setProposal,
     openClip: () => { setClipOpen(true) },
+    reloadGallery: reload,
   })
   const { run, sendLine } = runner
 

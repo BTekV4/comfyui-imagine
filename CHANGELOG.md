@@ -8,6 +8,41 @@ versions follow [semantic versioning](https://semver.org/).
 
 ### Added
 
+- **Writing, a logo and a watermark go straight to the masked eraser.** The
+  written lane recognises the request (from the sentence, not only from the
+  reading's choice) and runs «Remove object» (IOPaint's LaMa) instead of a
+  remix: nothing else redraws the photo around it. The zone is found by the
+  vision model, and the mask is grown and softened so the fill does not leave
+  the halo a hard edge leaves. It is a host edit, not a graph: no job is
+  queued.
+- **A named thing becomes the zone.** "Make the leather bag dark" is grounded
+  on the photo, with the file's own description, so the word the user used
+  ("la borsa") is matched to what is really there ("the red handbag") before a
+  box is drawn. A box that is not found is said out loud: the precise edit
+  falls back to the whole photo, and the eraser asks the user to paint the
+  part instead.
+- **A track can be laid over a clip** (`addAudio`, chat and MCP): the clip
+  decides the length, the picture is copied and never re-rendered, and the
+  original files stay.
+- **MCP audio tools**: `imagine_generate_music`, `imagine_speak`,
+  `imagine_change_voice` and `imagine_add_audio`, with the same actions the
+  chat queues.
+
+### Changed
+
+- **An image edit keeps the photo's own shape.** The Krea 2 edit graphs
+  measure the photo they are given; the written lane no longer sends a studio
+  canvas for a remix, so a 4:5 photo no longer comes back on a studio ratio
+  with its composition cropped. A ratio the user really names ("falla
+  quadrata") still travels.
+- **A closed list is filtered by the sentence.** The workflow second pass is
+  shown the combo values the user's words point at — and always the value the
+  input holds now — instead of the first forty, which could miss the one
+  LoRA the sentence named.
+- **An edit that changed nothing is reported.** When a remix delivers the
+  photo it started from, the job carries a notice saying so, instead of the
+  same picture landing on the board with no word.
+
 - **The written lane carries the composer's controls.** A sentence can ask for
   the «Quality» pill (`quality: "high"` for a photo, `speed: "slow"` for a
   clip), an upscale target (`upscaleTo`, on the ladder of the file's kind), and

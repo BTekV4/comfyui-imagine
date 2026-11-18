@@ -17,7 +17,7 @@ import {
 import { planWorkflowPatch } from '../server/vendor/tool-comfy/workflow-edit.ts'
 import { MUSIC_MAX_SECONDS, MUSIC_MIN_SECONDS } from '../server/vendor/tool-comfy/music-prompt.ts'
 import { MAX_STORY_SECONDS } from '../shared/imagine-media.ts'
-import { IMAGINE_ACTIONS } from '../shared/imagine-types.ts'
+import { CHAT_ACTIONS } from '../shared/imagine-chat.ts'
 import type { ImagineHost } from '../server/src/host.ts'
 import type { ComfyGraph } from '../server/vendor/comfyui/index.ts'
 import type { WorkflowFieldFact } from '../shared/imagine-chat.ts'
@@ -41,6 +41,31 @@ function hostSaying(...replies: readonly string[]): ImagineHost & { readonly pro
     },
   }
   return Object.assign(host as unknown as ImagineHost, { prompts })
+}
+
+/**
+ * A host whose text model answers as told AND whose vision service looks at
+ * the photo: the sight pass first, then the grounding question. Replies are
+ * chosen by the question, so the order the two passes run in does not matter.
+ */
+function hostWithVision(
+  sight: string,
+  ground: string,
+  ...replies: readonly string[]
+): ImagineHost & { readonly prompts: string[]; readonly visionPrompts: string[] } {
+  const base = hostSaying(...replies) as ImagineHost & { readonly prompts: string[] }
+  const visionPrompts: string[] = []
+  const host = {
+    ...base,
+    llm: base.llm,
+    auxiliary: {
+      async analyzeImage(_path: string, prompt: string) {
+        visionPrompts.push(prompt)
+        return { text: prompt.includes('Find ONE thing') ? ground : sight }
+      },
+    },
+  }
+  return Object.assign(host as unknown as ImagineHost, { prompts: base.prompts, visionPrompts })
 }
 
 /** A graph with one numeric input and one combo, enough to be refused on. */
@@ -123,7 +148,7 @@ test('every action the chat may queue has its own bullet, compose and custom inc
   const host = hostSaying(JSON.stringify({ reply: 'ok', intents: [] }))
   await readImagineChat(host, ask('ciao'), inventoryOf())
   const instruction = host.prompts[0] ?? ''
-  for (const action of IMAGINE_ACTIONS) {
+  for (const action of CHAT_ACTIONS) {
     // scanFrame is the half of «Recreate video» that stops for a click; the
     // written lane deliberately queues the whole recipe instead.
     if (action === 'scanFrame') continue
@@ -293,4 +318,173 @@ test('the reading is told when a workflow applies, and which cards it may run', 
   assert.ok(instruction.includes(CARD.id), 'the card id never reached the reading')
   assert.ok(instruction.includes('Lookbook'), 'the card title never reached the reading')
   assert.ok(instruction.includes('276.title'), 'the card inputs never reached the reading')
+})
+
+test('a line that removes writing goes to the eraser, with the box the grounding found', async () => {
+  const host = hostWithVision(
+    'A woman holding a red handbag, a small white caption in the lower left.',
+    '{"found": true, "box": [60, 820, 420, 920]}',
+    JSON.stringify({
+      reply: 'Taking the writing out.',
+      // The reading called it an edit: the user's words are the fact.
+      intents: [{ action: 'remix', prompt: 'remove the writing at the bottom', source: 'photo.png' }],
+    }),
+  )
+  const answer = await readImagineChat(host, ask('togli la scritta in basso', {
+    staged: [{ name: 'photo.png', kind: 'image' }],
+    eraseTool: true,
+  }), inventoryOf({ list: [...LIST, { key: 'edit-region', label: 'precise edit', file: 'r.json', run: 'editRegion' }] }), '/tmp/gallery')
+  assert.equal(answer.intents.length, 1)
+  assert.equal(answer.intents[0]?.action, 'erase')
+  // The box is the model's, grown on every side before the mask is painted.
+  const region = answer.intents[0]?.region
+  assert.ok(region !== undefined)
+  assert.ok(region.x < 0.06 && region.y < 0.82, 'the box was not grown')
+  assert.ok(region.x + region.w > 0.42 && region.y + region.h > 0.92, 'the box was not grown on the far side')
+  // The grounding question carried the sight of the photo, so "the writing"
+  // could be matched to the caption the picture really contains.
+  assert.ok(host.visionPrompts.some(prompt => prompt.includes('A woman holding a red handbag')), 'the description never reached the grounding')
+  assert.ok(host.visionPrompts.some(prompt => prompt.includes('remove the writing at the bottom')), 'the target never reached the grounding')
+})
+
+test('an eraser with the plugin off is said, not queued', async () => {
+  const host = hostSaying(JSON.stringify({
+    reply: 'Erasing it.',
+    intents: [{ action: 'erase', prompt: '', source: 'photo.png', target: 'the watermark' }],
+  }))
+  const answer = await readImagineChat(host, ask('togli il watermark', {
+    staged: [{ name: 'photo.png', kind: 'image' }],
+    eraseTool: false,
+  }), inventoryOf(), '/tmp/gallery')
+  assert.equal(answer.intents.length, 0)
+  assert.match(answer.reply, /non è attivo/)
+})
+
+test('a named thing the grounding cannot find is said, and the edit falls back to the whole photo', async () => {
+  const host = hostWithVision(
+    'A woman in a grey coat, no bag in the picture.',
+    '{"found": false}',
+    JSON.stringify({
+      reply: 'Making the coat leather.',
+      intents: [{ action: 'remix', prompt: 'make the bag leather', source: 'photo.png', target: 'the leather bag' }],
+    }),
+  )
+  const answer = await readImagineChat(host, ask('rendi di pelle la borsa', {
+    staged: [{ name: 'photo.png', kind: 'image' }],
+  }), inventoryOf({
+    list: [...LIST, { key: 'edit-region', label: 'precise edit', file: 'r.json', run: 'editRegion' }],
+  }), '/tmp/gallery')
+  assert.equal(answer.intents[0]?.action, 'remix')
+  assert.equal(answer.intents[0]?.region, undefined, 'a zone was invented')
+  assert.match(answer.reply, /Non sono riuscito a trovare/)
+  assert.match(answer.reply, /intera foto|whole photo/)
+})
+
+test('a track laid over a clip is an intent of its own, and the chat can add it when the reading is silent', async () => {
+  const host = hostSaying(JSON.stringify({
+    reply: 'Laying the track over it.',
+    intents: [{ action: 'addAudio', prompt: '', source: 'clip.mp4', song: 'song.mp3' }],
+  }))
+  const answer = await readImagineChat(host, ask('unisci questa canzone a questo video', {
+    staged: [{ name: 'clip.mp4', kind: 'video' }, { name: 'song.mp3', kind: 'audio' }],
+  }), inventoryOf())
+  assert.equal(answer.intents[0]?.action, 'addAudio')
+  assert.equal(answer.intents[0]?.song, 'song.mp3')
+
+  // The reading answered in prose only: the files in the chat are the request.
+  const silent = hostSaying(JSON.stringify({ reply: 'Sure.', intents: [] }))
+  const fallback = await readImagineChat(silent, ask('metti la traccia audio sul video', {
+    staged: [{ name: 'clip.mp4', kind: 'video' }, { name: 'song.mp3', kind: 'audio' }],
+  }), inventoryOf())
+  assert.equal(fallback.intents.length, 1)
+  assert.equal(fallback.intents[0]?.action, 'addAudio')
+  assert.equal(fallback.intents[0]?.source, 'clip.mp4')
+})
+
+test('a precise edit no longer forces a studio format on the photo', async () => {
+  const host = hostSaying(JSON.stringify({
+    reply: 'Editing the jacket.',
+    // The reading proposes a ratio; without the user naming one it is dropped.
+    intents: [{ action: 'remix', prompt: 'make the jacket leather', source: 'photo.png', aspect: '9:16', resolution: '1080p' }],
+  }))
+  const answer = await readImagineChat(host, ask('rendi di pelle la giacca', {
+    staged: [{ name: 'photo.png', kind: 'image' }],
+  }), inventoryOf({
+    list: [...LIST, { key: 'edit-region', label: 'precise edit', file: 'r.json', run: 'editRegion' }],
+  }))
+  assert.equal(answer.intents[0]?.action, 'remix')
+  assert.equal(answer.intents[0]?.aspect, undefined, 'the photo was given a studio shape it did not ask for')
+  assert.equal(answer.intents[0]?.resolution, undefined)
+})
+
+test('a ratio the user really names still travels with the edit', async () => {
+  const host = hostSaying(JSON.stringify({
+    reply: 'Squaring it.',
+    intents: [{ action: 'remix', prompt: 'make it square', source: 'photo.png' }],
+  }))
+  const answer = await readImagineChat(host, ask('falla quadrata', {
+    staged: [{ name: 'photo.png', kind: 'image' }],
+  }), inventoryOf({
+    list: [...LIST, { key: 'edit-region', label: 'precise edit', file: 'r.json', run: 'editRegion' }],
+  }))
+  assert.equal(answer.intents[0]?.aspect, '1:1')
+})
+
+test('the closed list is filtered by the sentence, and the current value is always shown', async () => {
+  const options = Array.from({ length: 60 }, (_value, index) => `lora_${String(index).padStart(2, '0')}.safetensors`)
+  const facts: readonly WorkflowFieldFact[] = [
+    { node: '276', field: 'lora_name', kind: 'combo', options },
+  ]
+  const fields = [
+    { node: '276', classType: 'LoadLora', field: 'lora_name', value: 'lora_00.safetensors', kind: 'text' as const },
+  ]
+  const host = hostSaying(
+    JSON.stringify({ reply: 'Sure.', workflow: 'generate' }),
+    JSON.stringify({ reply: 'Set.', changes: [{ node: '276', field: 'lora_name', value: 'lora_52.safetensors' }] }),
+  )
+  const answer = await readImagineChat(host, ask('metti la lora_52 nel workflow di generazione'), inventoryOf({
+    fields: () => fields,
+    facts: () => Promise.resolve(facts),
+  }))
+  assert.equal(answer.proposal?.diff[0]?.to, 'lora_52.safetensors')
+  const second = host.prompts[1] ?? ''
+  assert.ok(second.includes('lora_52.safetensors'), 'the value the sentence named was not shown')
+  assert.ok(second.includes('lora_00.safetensors'), 'the value the input holds now was not shown')
+  // The list is not the first forty any more: a value past them is there.
+  assert.ok(!second.includes('lora_39.safetensors'), 'unrelated values crowded the list')
+})
+
+test('a removal of writing is still the eraser when the reading answers in prose only', async () => {
+  const host = hostWithVision(
+    'A poster with the word OPEN printed across the middle.',
+    '{"found": true, "box": [200, 400, 800, 520]}',
+    JSON.stringify({ reply: 'Sure.', intents: [] }),
+  )
+  const answer = await readImagineChat(host, ask('togli la scritta OPEN dal poster', {
+    staged: [{ name: 'poster.png', kind: 'image' }],
+    eraseTool: true,
+  }), inventoryOf({ list: [...LIST, { key: 'edit-region', label: 'precise edit', file: 'r.json', run: 'editRegion' }] }), '/tmp/gallery')
+  assert.equal(answer.intents.length, 1)
+  assert.equal(answer.intents[0]?.action, 'erase')
+  assert.equal(answer.intents[0]?.source, 'poster.png')
+  assert.ok(answer.intents[0]?.region !== undefined, 'the eraser ran without a zone')
+})
+
+test('a zone the user marked is still erased when the thing cannot be grounded by name', async () => {
+  const host = hostWithVision(
+    'A plain wall with a small tag in the corner.',
+    '{"found": false}',
+    JSON.stringify({
+      reply: 'Erasing the painted zone.',
+      intents: [{ action: 'erase', prompt: '', source: 'wall.png', target: 'the tag', region: { x: 0.7, y: 0.1, w: 0.2, h: 0.15 } }],
+    }),
+  )
+  const answer = await readImagineChat(host, ask('togli quello che ho segnato', {
+    staged: [{ name: 'wall.png', kind: 'image' }],
+    eraseTool: true,
+  }), inventoryOf(), '/tmp/gallery')
+  assert.equal(answer.intents.length, 1)
+  assert.equal(answer.intents[0]?.action, 'erase')
+  assert.deepEqual(answer.intents[0]?.region, { x: 0.7, y: 0.1, w: 0.2, h: 0.15 })
+  assert.doesNotMatch(answer.reply, /Non ho trovato/)
 })
