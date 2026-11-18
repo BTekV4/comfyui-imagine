@@ -135,6 +135,7 @@ test('the field is saved and read back, and a value that is not a tier means the
     agentMaxSteps: 8,
     agentMaxJobs: 6,
     agentWaitSeconds: 300,
+    agentConfirmSeconds: 15,
     agentTurnSeconds: 900,
   }
   const settings = await createHostSettings({ file, passwordFile: join(root, 'password'), base, envKey: undefined })

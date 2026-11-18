@@ -1,9 +1,10 @@
 # The agent chat
 
-Status: F1 built on branch `agent-chat-core-20261118` (2026-11-18), not
-published. F0 was approved and its three open questions are decided below.
-The classic lane is still there, and it is what reads a line when the model
-cannot call tools or the switch is off.
+Status: F2 built on branch `agent-chat-media-20261118` (2026-11-18), on top of
+the F1 lane that was merged into `main` (PR #11). The parity tool is its own
+branch, `agent-chat-parity-20261118`. F0 was approved and its three open
+questions are decided below. The classic lane is still there, and it is what
+reads a line when the model cannot call tools or the switch is off.
 
 The chat inside a project reads one written line with one JSON call and answers
 with a fixed shape: an action, a prompt, a handful of fields. That shape was
@@ -128,15 +129,19 @@ normal user never has to touch:
 | `agentChat` | `auto` | `auto` = agent when the model declares tool calling, `off` = classic lane always, `on` = agent even if the model's declaration is missing (a probe decides). |
 | `agentMaxSteps` | 8 | Model calls in one turn (a turn with 3 tools is typically 4-5 calls). |
 | `agentMaxJobs` | 6 | Runs one turn may queue. |
-| `agentConfirmSeconds` | 15 | A requested clip longer than this is confirmed first. Story, music, montage, custom cards and upscale-to-4K are always confirmed: their GPU cost is a chain, not a clip. (F1 has no clip tools; F2 enforces this.) |
+| `agentConfirmSeconds` | 15 | A requested clip longer than this is confirmed first. Story, music, montage, custom cards and upscale-to-4K are always confirmed: their GPU cost is a chain, not a clip. F2 enforces this. |
 | `agentWaitSeconds` | 300 | How long one turn waits for a run before answering "it is still running". |
 | `agentTurnSeconds` | 900 | Hard ceiling of a turn; past it the loop stops and answers with what it queued. |
 
-Before a long job the loop ends its step with a `pending` frame (tool, a
-human-readable preview built by the client, and a token) and the page shows
-"Yes / No". The confirmation is a new POST that resumes the same session; a
-reload asks again, because a pending action is not worth persisting. The GPU is
-serial: a question is cheaper than a chain nobody wanted.
+Before a long job the loop ends its step with a `pending` frame (the tool,
+the studio action, a one-line summary in the interface's language, and a
+token) and the page shows "Yes / No". The answer is a new POST to the same
+route, carrying the token and the yes; it resumes the same turn with the rest
+of its step and its step budget, and the model reads the tool result as if
+nothing had paused. A no appends a refusal the model can act on. A reload asks
+again, because a pending action is not worth persisting: the token lives in
+memory and expires after ten minutes. The GPU is serial: a question is cheaper
+than a chain nobody wanted.
 
 There is no reliable per-graph GPU-time estimate in the studio, so the GPU cost
 of a turn is bounded by what can be counted: the number of runs, the requested
@@ -169,21 +174,34 @@ way a person would be told what is wrong.
 
 ### F2 — everything that renders
 
-`make_video`, `extend_video`, `make_story`, `make_music`, `add_audio`,
-`speak`, `change_voice`, `upscale`, `run_card` (personal cards with their own
-inputs), `redo_shot`, `resume_music_video`, plus `cancel_job` as a proposal.
-The long ones go through the confirmation gate above.
+| Tool | Arguments (checked) | What it does |
+|---|---|---|
+| `make_video` | `source`, `prompt?`, `seconds?`, `aspect?`, `resolution?`, `speed?`, `last_frame?` | Queues `video`; the source is a still, the length is the user's. |
+| `extend_video` | `source`, `prompt?`, `seconds?` | Queues `extend` on a clip. |
+| `loop_video` | `source`, `seconds?` | Queues `loop`: an animated background that repeats. |
+| `make_story` | `prompt`, `source?`, `sources?`, `seconds?`, `song?`, `lyrics?`, `hard_cuts?` | Queues `story`: a chain of shots, over a song or across photos. Always confirmed. |
+| `make_music` | `prompt`, `lyrics?`, `seconds?` | Queues `music`. Always confirmed. |
+| `add_audio` | `video`, `track` | Lays a track over a clip on the host route; no run, no question. |
+| `speak` | `text` | Queues `speak`. |
+| `change_voice` | `source`, `voice?`, `pitch?` | Queues `voice` on a track or a clip. |
+| `upscale` | `source`, `upscaleTo?` | Queues `upscale`; 4K on a still is always confirmed. |
+| `run_card` | `customWorkflowId`, `prompt?`, `customFields?`, `customFiles?` | Queues `custom`; the card's id and inputs are checked against the inventory. Always confirmed. |
+| `cancel_job` | `job` | Only ever proposes: the user's yes cancels the run. |
+
+`redo_shot` and `resume_music_video` are not separate tools: they are
+`run_action` with `redo`/`resume`, the studio's own actions (the parity
+branch).
 
 ### Parity
 
 The model must not be weaker in agent mode than the fields were. Every action
-the studio can run gets a tool eventually; until it has one, F2 adds a single
+the studio can run gets a tool eventually; the parity branch adds a single
 `run_action` tool with the studio's own fields (`IMAGINE_ACTIONS` plus the
 validated extras the MCP's `imagine_run_action` already takes), so object swap,
-character swap, recreate, relight, compose, loop, background removal and the
-remaining host edits are reachable. F1 covers the tools listed above and says
-so in its reply when a line asks for one of the others; it never invents an
-action. The parity gap is a phase boundary, not a design choice.
+character swap, recreate, relight, compose, redo, resume, background removal
+and the rest are reachable. The media branch answers "not in this version yet"
+for those, never with an invented action. The parity gap is a phase boundary,
+not a design choice.
 
 ### F3 — the surface
 
@@ -328,9 +346,10 @@ Each phase is its own branch and PR, not merged by the worker.
   switch (default `auto`), the route and its steps, tests with a fake model,
   and a real run on a test instance with neutral data (a 480p still, few
   steps). Branch `agent-chat-core-20261118`.
-- **F2** — video, extend, story, music, audio, voice, upscale, personal cards,
-  the confirmation gate and the wait/ceiling rules. Branch
-  `agent-chat-media-20261118`.
+- **F2** — video, extend, loop, story, music, audio, voice, upscale, personal
+  cards, the confirmation gate and the wait/ceiling rules. Branch
+  `agent-chat-media-20261118`; the parity tool (`run_action`) is
+  `agent-chat-parity-20261118`, on top of it.
 - **F3** — streamed reply, the step UI in the column, long memory and the
   rolling summary, retries and polish. Branch `agent-chat-ui-20261118`.
 
@@ -373,10 +392,32 @@ If F1 grows past what one review can hold, it splits into "loop and tools" and
   goes back to the model, the step ceiling ends with a reply, the probe is
   cached, the switch picks the lane, and the tool-turn wire shapes.
 
+### F2 — what is built
+
+- `agent-tools.ts`: the ten media tools of the table above, plus the
+  confirmation gate (`confirmationFor`) and `numbersInLine`, the recovery of a
+  count and a length the model drops.
+- `agent-loop.ts`: the turn is a state machine now. A confirmed call stops
+  before it runs; the session (messages, runs, files, step budget, deadline)
+  waits in memory by token, and the answer resumes it with the rest of the
+  step. A no is a tool result the model reads. A pending turn survives neither
+  a restart nor a reload, by design.
+- `imagine-routes.ts`: the agent route accepts the confirmation body and
+  resumes the same turn, streaming its steps as before.
+- `ChatColumn.tsx` / `use-runner.ts`: the confirmation card (Yes/No, in the
+  interface's language) and the resumed turn; a host edit the agent makes
+  (the track laid over a clip) joins the board as the eraser already did.
+- `agent-prompt.ts`: the tools, the confirmation rule, the cancel rule, the
+  personal cards, and the rule that the reply stays in the interface's
+  language when the line is written in another one.
+
 Not in F1, by the phase plan: clips, story, music, audio, voice, upscale,
-cards, the confirmation gate, cancel and the long-memory summary. A line that
-asks for one is told "this version cannot yet", never answered with an
-invented action.
+cards, the confirmation gate, cancel and the long-memory summary. F2 adds the
+first ten; the long-memory summary stays in F3. F1's own leftovers were fixed
+with F2: a count the user named ("tre foto") and a length ("16 secondi") are
+recovered from their line when the model drops them, and the instruction now
+says that a reply stays in the interface's language even when the user writes
+in another one (the prompt keeps their words).
 
 ### Proved on a trial instance (2026-11-18)
 
@@ -413,7 +454,50 @@ Italian pack, neutral images only. No user data.
   itself is never rewritten.
 
 Not proved: a turn that waits out a naturally slow clip (F1 has no clip
-tools; the wait was forced with the 5-second setting), and anything on
+tools; the wait was forced with the 5-second setting — F2 proves the real one
+below), and anything on Windows.
+
+### Proved on a trial instance (F2, 2026-11-18)
+
+The media branch, on port 3091, with its own `IMAGINE_HOME`, the Italian
+pack, `strata/qwen3.8-flash-next` through Strata's own `/v1` (no
+capabilities, so the cached probe decided the lane) and the real ComfyUI on
+the user's PC. A neutral blue 768×768 picture, no user data. `agentWaitSeconds`
+was 60 on the trial so a real clip would outlive the wait.
+
+- **The confirmation, in the page**: "Crea un video di 16 secondi da
+  photo.png: la camera si avvicina lentamente alla scena, a 480p" produced the
+  card "Un video di 16 secondi: vuoi che parta?" and nothing was queued before
+  the yes (screenshot `1-confirm.png`).
+- **The natural wait and the asynchronous result**: after the yes the turn
+  queued one `video` job, waited its 60 seconds, and closed with "La
+  generazione è in corso: il risultato comparirà nella chat quando sarà
+  pronto." The real chain finished after 7m50s (`create_video-9942b232.mp4`,
+  15.79 s, H.264 + AAC) and the page folded it under the reply line by
+  itself, with no further request (`4-result.png`). The job's request carried
+  `seconds: 16`, `megapixels: 0.4`; the deployment's chain graph rendered
+  720×1280 anyway, which is the graph's own canvas, not a value the agent
+  chose.
+- **The language retry**: with the interface in Italian, "Which files are in
+  this project? Name them in one sentence, in your own words." answered "Nel
+  progetto c'è un solo file, `photo.png`, ed è un'immagine tutta di un unico
+  colore blu uniforme…": an English line, an Italian reply, the user's words
+  untouched in the prompt.
+- **The cancel proposal, on a real run**: a `generate` job was queued through
+  the studio's own route, then "Annulla il lavoro che è appena partito."
+  produced a `cancel` offer naming that job's id, with the run untouched.
+  The no left it alone (it finished normally). The first real reply said
+  "ancora in coda" when the job had already finished; the declined answer now
+  carries the run's own state, so the model has the fact instead of guessing.
+- **Tests**: `test/agent-chat.test.ts` covers the gate (clip over the limit,
+  story, music, card, 4K), the resume and the no, the cancel proposal that
+  only stops on a yes, the count/length recovery, `add_audio` against a fake
+  host route, and the card inputs. The full suite is green (665 tests on the
+  media branch, 669 on the parity branch).
+
+Proved with fakes only: story, music, speak, change_voice, upscale and the
+personal cards (their tools are unit-tested, not rendered); a cancel accepted
+(only its proposal and its refusal ran against a real job); and everything on
 Windows.
 
 ## Open questions for the owner

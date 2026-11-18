@@ -44,6 +44,8 @@ export interface AgentLimits {
   readonly waitSeconds: number
   /** Hard ceiling of a turn. */
   readonly turnSeconds: number
+  /** A clip longer than this is confirmed before it is queued. */
+  readonly confirmSeconds: number
 }
 
 /** The confirmed limits: a normal user never has to touch them. */
@@ -53,6 +55,9 @@ export const AGENT_LIMITS_DEFAULT: AgentLimits = {
   maxJobs: 6,
   waitSeconds: 300,
   turnSeconds: 900,
+  // The owner's rule (2026-11-18): a clip up to fifteen seconds runs without
+  // asking; longer ones, and every chain, are confirmed first.
+  confirmSeconds: 15,
 }
 
 /**
@@ -67,6 +72,50 @@ export interface AgentChatAsk extends ImagineChatAsk {
   readonly voices?: readonly string[]
   /** The interface's language, filled by the server from the request header. */
   readonly language?: string
+  /**
+   * The answer to a confirmation the agent asked for: the token it sent, and
+   * whether the user said yes. A body carrying this resumes the same turn;
+   * the line itself is not read again.
+   */
+  readonly confirmation?: AgentConfirmation
+}
+
+/** One answer to a pending confirmation. */
+export interface AgentConfirmation {
+  /** The token of the {@link AgentPending} the page showed. */
+  readonly token: string
+  /** True when the user said yes; false stops the action and tells the model. */
+  readonly accept: boolean
+}
+
+/**
+ * A piece of work the agent stopped before doing, waiting for the user's yes.
+ *
+ * The loop never starts a run that costs more than the owner allowed without
+ * this: the token resumes the same turn, and a reload loses it (a pending
+ * action is not worth persisting).
+ */
+export interface AgentPending {
+  /** Opaque, single use, and only known to the page that received it. */
+  readonly token: string
+  /** The tool that stopped: `make_video`, `upscale`, `cancel_job`, … */
+  readonly tool: string
+  /** The studio action it would run, when there is one. */
+  readonly action?: string
+  /** What stops: `run` starts work, `cancel` stops a run. */
+  readonly kind: 'run' | 'cancel'
+  /** One line for the card, already in the interface's language. */
+  readonly summary: string
+  /** The length it would render, when the cost is a length. */
+  readonly seconds?: number
+  /** The file it starts from, when it starts from one. */
+  readonly source?: string
+  /** The personal card's title, when a card is what would run. */
+  readonly card?: string
+  /** The run a cancel offer is about. */
+  readonly jobId?: string
+  /** When the offer stops being valid (epoch milliseconds). */
+  readonly expiresAt: number
 }
 
 /** One tool call the model asked for, accumulated off the stream. */
@@ -164,6 +213,13 @@ export interface AgentChatAnswer {
   readonly skipped?: 'off' | 'no-tools' | 'failed'
   /** True when a queued run had not settled by the turn's wait ceiling. */
   readonly running?: boolean
+  /**
+   * Work the loop stopped before doing, waiting for the user's yes.
+   *
+   * The turn ends here with no reply of its own: the page shows the card, and
+   * the answer to it resumes the same turn (see {@link AgentChatAsk.confirmation}).
+   */
+  readonly pending?: AgentPending
   /** The classic lane's failure flag, kept so the page says the same thing. */
   readonly failed?: boolean
 }

@@ -18,6 +18,7 @@ import type { ImagineChatWorking } from '../../../shared/imagine-chat.ts'
 import type { MediaFileRef } from '../../../shared/imagine-types.ts'
 import { sightInMemory } from './imagine-sight.ts'
 import { recallNotes, type ImagineFileNote } from './imagine-notes.ts'
+import type { WorkflowCard } from './imagine-chat.ts'
 
 /** What the instruction needs to know about the turn. */
 export interface AgentPromptInput {
@@ -34,6 +35,8 @@ export interface AgentPromptInput {
   /** The turn's ceilings, said out loud so the model can plan within them. */
   readonly maxSteps: number
   readonly maxJobs: number
+  /** The personal cards this studio holds, when it has any. */
+  readonly cards?: readonly WorkflowCard[]
 }
 
 /** How many files the digest shows: the newest, which is what a line points at. */
@@ -57,15 +60,34 @@ export async function agentInstruction(input: AgentPromptInput): Promise<string>
   const eraser = input.eraseTool
     ? 'The eraser (`erase`) is mounted: use it for a logo, a watermark or a mark printed on the photo.'
     : 'The eraser (`erase`) is NOT mounted on this studio: do not offer it. A thing that has to disappear can wait for a local edit, but say the eraser is off.'
+  const cards = (input.cards ?? []).map((card) => {
+    const inputs = card.inputs.length === 0
+      ? ''
+      : `; inputs: ${card.inputs.map(entry => `${entry.label} = ${entry.node}.${entry.field} (${entry.kind})`).join(', ')}`
+    return `- ${card.id}: ${card.title}${card.description.trim().length === 0 ? '' : ` — ${card.description}`}${inputs}`
+  }).join('\n')
   return [
     'You are the agent of Imagine, a studio that draws pictures and renders videos with ComfyUI. You do the work with the tools, look at what they produced, and then write one short reply. Do not describe tools you did not call.',
     '',
-    `Reply in ${language}, and only in ${language}: no words from another language. The user may write in another language — their words still reach the prompt untouched.`,
+    `Reply in ${language}, and only in ${language}. The user may write in another language: their words stay in that language in the prompt, but the reply is still written in ${language}. Do not answer in the language they wrote in, and do not slip one of its words into the reply.`,
     '',
     'RULES',
-    '1. The prompt is the user\'s own description. Copy their words into the tool argument: do not translate them, do not add style words they did not write ("photorealistic", "soft light", "detailed", "8k"), do not shorten the part that carries the request. If they wrote one sentence, the prompt is that sentence. Choices they did not make are left to the studio\'s defaults: do not invent a ratio, a resolution, a count or a length. A choice they DID make goes in the argument in the studio\'s spelling ("480p", "9:16", "3 photos"): dropping it silently is the same fault as adding one.',
+    '1. The prompt is the user\'s own description. Copy their words into the tool argument: do not translate them, do not add style words they did not write ("photorealistic", "soft light", "detailed", "8k"), do not shorten the part that carries the request. If they wrote one sentence, the prompt is that sentence. Choices they did not make are left to the studio\'s defaults: do not invent a ratio, a resolution, a count or a length. A choice they DID make goes in the argument in the studio\'s spelling ("480p", "9:16", "3 photos", "16 seconds"): dropping it silently is the same fault as adding one. When they say a number of pictures or a length, write it in `count` or `seconds`; the studio can recover it from their line, but the argument is the honest place.',
     '2. One change per edit. When editing, the prompt is one imperative sentence naming only what changes; the studio keeps the rest of the photo itself. Name the thing in the photo\'s own words in `target` when the user did ("the red handbag", not "the bag").',
     '3. Say what happened. After a run, look at the file when the result could differ from the request, and compare. If it does not match, say so plainly; after two attempts on the same thing, stop and name the better tool (the masked removal for something that has to disappear). Never claim a result you did not see or that a tool did not report, and never state a size, a ratio or a count that the tool result does not confirm: the reply says what the studio actually ran.',
+    '',
+    'TOOLS',
+    '- A still: `generate_image`. An edit of a still: `edit_image`, or `erase` for writing, a logo, a watermark.',
+    '- A clip from a picture: `make_video` (it needs what happens: ask the user when the line only says "animate it"); continue an existing clip: `extend_video`; an animated background that repeats: `loop_video` (say what moves).',
+    '- A video in shots over a song or across several photos: `make_story`. A separate track: `make_music`. A track laid over a clip that exists: `add_audio`.',
+    '- Read a text aloud: `speak`; re-sing a track with another voice: `change_voice`.',
+    '- Raise a picture or a clip: `upscale`. A personal card: `run_card`, with its id copied from the list below.',
+    '- `look`, `project_files` and `job_status` are the read tools; use them instead of guessing.',
+    '- `cancel_job` only ever proposes: it never stops a run by itself.',
+    '',
+    'CONFIRMATIONS',
+    '- Some tools stop before doing the work and ask the user: a clip longer than a few seconds, always a story, music, a montage, a personal card and an upscale to 4K, and always a cancel. When that happens the turn ends and the page shows the offer. Do not call the tool again, do not work around it, and do not promise it already happened: the user\'s yes resumes the same turn and the result comes back to you. A no means the work does not run; say what could be changed instead.',
+    '- Never cancel anything without the user\'s yes, and never claim a run is cancelled before the tool says so.',
     '',
     'HOW TO WORK',
     '- Call one tool at a time; the queue is serial. Do not call the same tool twice with the same arguments.',
@@ -74,10 +96,12 @@ export async function agentInstruction(input: AgentPromptInput): Promise<string>
     '- Once the work is done, write the final reply as plain text. Do not call a tool just to confirm that you are finished.',
     `- This turn may call the model at most ${String(input.maxSteps)} times and queue at most ${String(input.maxJobs)} runs. A run still going when the turn ends stays queued: the result appears in the chat by itself, so say it is running instead of waiting forever.`,
     '',
-    'WHAT THIS VERSION DOES NOT DO',
-    'Video, extend, story, music, audio, voice, upscale, personal cards and the host edits other than the eraser are not tools yet. If the line asks for one, say that this version cannot run it yet; do not invent an action and do not use `generate_image` as a substitute for a clip.',
+    'THE OTHER STUDIO ACTIONS',
+    'Object swap, character swap, recreate, relight, compose, background removal and the rest are not tools yet: if the line asks for one, say so plainly and offer the closest tool above. Do not invent an action name.',
     '',
     eraser,
+    '',
+    cards.length === 0 ? '' : `PERSONAL CARDS (run one with \`run_card\`, its id copied exactly):\n${cards}`,
     '',
     'THE PROJECT',
     files.length === 0

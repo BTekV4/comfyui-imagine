@@ -8,11 +8,14 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   probeTools, readAgentChat, type AgentTurnDeps,
 } from '../server/vendor/tool-comfy/agent-loop.ts'
 import { putJob, type ImagineJob } from '../server/vendor/tool-comfy/job-queue.ts'
-import { choicesInLine } from '../server/vendor/tool-comfy/agent-tools.ts'
+import { choicesInLine, numbersInLine } from '../server/vendor/tool-comfy/agent-tools.ts'
 import type { ImagineHost } from '../server/src/host.ts'
 import type {
   AgentChatAsk, AgentModelEvent, AgentModelRequest, AgentToolSchema,
@@ -22,6 +25,16 @@ import type { JobBody } from '../server/vendor/tool-comfy/job-start.ts'
 import { sizeFor } from '../shared/imagine-sizing.ts'
 
 const MODEL = { provider: 'fake', model: 'fake' } as const
+
+/** A real 1x1 PNG: the media tools check that a source is in the gallery. */
+const ONE_PIXEL_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+)
+
+/** A media folder holding that PNG, for the tools that start from a file. */
+const mediaDir = await mkdtemp(join(tmpdir(), 'imagine-agent-media-'))
+await writeFile(join(mediaDir, 'photo.png'), ONE_PIXEL_PNG)
 
 /** One scripted model: a list of event groups, one per call. */
 function scriptedModel(scripts: readonly (readonly AgentModelEvent[])[]) {
@@ -82,16 +95,23 @@ function turn(
   scripts: readonly (readonly AgentModelEvent[])[],
   options: {
     text?: string
-    limits?: { maxSteps: number; maxJobs: number; waitSeconds: number; turnSeconds: number }
+    limits?: { maxSteps: number; maxJobs: number; waitSeconds: number; turnSeconds: number; confirmSeconds: number }
     mode?: 'auto' | 'off' | 'on'
     capabilities?: { toolCalling?: boolean; vision?: boolean }
     ctx?: ImagineHost
+    inventory?: import('../server/vendor/tool-comfy/imagine-chat.ts').WorkflowInventory
+    cancelled?: string[]
+    outputDir?: string
+    existingJobs?: readonly ImagineJob[]
+    selfURL?: string
+    adopted?: string[]
   } = {},
 ) {
   const model = scriptedModel(scripts)
   const started: JobBody[] = []
   const events: ImagineChatEvent[] = []
   const jobs = new Map<string, ImagineJob>()
+  for (const job of options.existingJobs ?? []) jobs.set(job.id, job)
   let serial = 0
   const request: AgentChatAsk = {
     text: options.text ?? 'una tazza rossa su un tavolo di legno',
@@ -104,14 +124,15 @@ function turn(
   const deps: AgentTurnDeps = {
     ctx: options.ctx ?? classicHost('{}'),
     request,
-    outputDir: '/nonexistent-imagine-agent-test',
+    outputDir: options.outputDir ?? '/nonexistent-imagine-agent-test',
     projectId: 'project-1',
     eraseTool: false,
     modelClient: model,
     surface: {
       mode: () => options.mode ?? 'on',
-      limits: () => options.limits ?? { maxSteps: 8, maxJobs: 6, waitSeconds: 300, turnSeconds: 900 },
+      limits: () => options.limits ?? { maxSteps: 8, maxJobs: 6, waitSeconds: 300, turnSeconds: 900, confirmSeconds: 15 },
       capabilities: async () => options.capabilities ?? { toolCalling: true },
+      ...options.selfURL === undefined ? {} : { selfURL: options.selfURL },
     },
     start: async (body) => {
       started.push(body)
@@ -125,7 +146,9 @@ function turn(
     jobView: job => job,
     listJobs: () => [...jobs.values()],
     getJob: id => jobs.get(id),
-    adoptFiles: async () => undefined,
+    adoptFiles: async (names) => { options.adopted?.push(...names) },
+    cancelJob: async (id) => { options.cancelled?.push(id); return true },
+    ...options.inventory === undefined ? {} : { inventory: options.inventory },
     say: event => { events.push(event) },
   }
   return { deps, model, started, events }
@@ -181,7 +204,7 @@ test('the step ceiling is a ceiling: one last call without tools writes the repl
     toolCall('generate_image', { prompt: 'seconda' }, 'call_2'),
     text('Ho messo in coda due foto.'),
   ]
-  const { deps, model, started } = turn(scripts, { limits: { maxSteps: 2, maxJobs: 6, waitSeconds: 300, turnSeconds: 900 } })
+  const { deps, model, started } = turn(scripts, { limits: { maxSteps: 2, maxJobs: 6, waitSeconds: 300, turnSeconds: 900, confirmSeconds: 15 } })
   const answer = await readAgentChat(deps)
   assert.equal(started.length, 2)
   assert.equal(model.requests.length, 3)
@@ -269,7 +292,7 @@ test('a run past the wait closes the turn, and the jobs keep going', async () =>
     modelClient: model,
     surface: {
       mode: () => 'on',
-      limits: () => ({ maxSteps: 8, maxJobs: 6, waitSeconds: 0, turnSeconds: 900 }),
+      limits: () => ({ maxSteps: 8, maxJobs: 6, waitSeconds: 0, turnSeconds: 900, confirmSeconds: 15 }),
       capabilities: async () => ({ toolCalling: true }),
     },
     start: async () => [running],
@@ -277,6 +300,7 @@ test('a run past the wait closes the turn, and the jobs keep going', async () =>
     listJobs: () => [running],
     getJob: id => id === running.id ? running : undefined,
     adoptFiles: async () => undefined,
+    cancelJob: async () => true,
     say: event => { events.push(event) },
   }
   const answer = await readAgentChat(deps)
@@ -295,4 +319,169 @@ test('a ratio and a resolution the user named are recovered from their line', ()
   assert.deepEqual(choicesInLine('una tazza rossa'), {})
   // A ratio that is not on the studio's ladder is not one.
   assert.deepEqual(choicesInLine('un poster 7:3'), {})
+})
+
+test('a clip tool sends the length and the ladder the user named', async () => {
+  const { deps, started } = turn([
+    toolCall('make_video', { source: 'photo.png', prompt: 'la camera si avvicina', seconds: 10, aspect: '9:16', resolution: '480p', speed: 'slow' }),
+    text('Fatto.'),
+  ], { text: 'un video di 10 secondi, verticale, a 480p', outputDir: mediaDir })
+  const answer = await readAgentChat(deps)
+  assert.equal(answer.mode, 'agent')
+  assert.equal(started.length, 1)
+  assert.equal(started[0]?.action, 'video')
+  assert.equal(started[0]?.seconds, 10)
+  assert.equal(started[0]?.aspectRatio, '9:16 (Portrait Widescreen)')
+  assert.equal(started[0]?.megapixels, 0.4)
+  assert.equal(started[0]?.speed, 'slow')
+  assert.equal(started[0]?.quality, 'high')
+  assert.equal(answer.pending, undefined)
+})
+
+test('a clip past the confirmation limit stops, and only a yes queues it', async () => {
+  const { deps, started, events } = turn([
+    toolCall('make_video', { source: 'photo.png', prompt: 'la camera si allontana', seconds: 20 }),
+    text('Fatto: venti secondi.'),
+  ], { text: 'un video di 20 secondi', outputDir: mediaDir })
+  const first = await readAgentChat(deps)
+  assert.equal(first.pending?.kind, 'run')
+  assert.equal(first.pending?.tool, 'make_video')
+  assert.equal(first.pending?.seconds, 20)
+  assert.match(first.pending?.summary ?? '', /20/)
+  assert.equal(started.length, 0, 'nothing is queued before the yes')
+  assert.equal(events.some(event => event.kind === 'step' && event.step === 'confirm'), true)
+  const second = await readAgentChat({ ...deps, request: { ...deps.request, confirmation: { token: first.pending?.token ?? '', accept: true } } })
+  assert.equal(started.length, 1)
+  assert.equal(second.pending, undefined)
+  assert.deepEqual(second.jobIds, ['job-1'])
+  assert.equal(second.reply, 'Fatto: venti secondi.')
+})
+
+test('a no tells the model and runs nothing', async () => {
+  const { deps, started, model } = turn([
+    toolCall('make_video', { source: 'photo.png', prompt: 'gira', seconds: 30 }),
+    text('Va bene, non lo faccio.'),
+  ], { outputDir: mediaDir })
+  const first = await readAgentChat(deps)
+  const second = await readAgentChat({ ...deps, request: { ...deps.request, confirmation: { token: first.pending?.token ?? '', accept: false } } })
+  assert.equal(started.length, 0)
+  const toolMessage = model.requests[1]?.messages.at(-1)
+  assert.equal(toolMessage?.role, 'tool')
+  assert.match(toolMessage?.content ?? '', /declined/)
+  assert.equal(second.reply, 'Va bene, non lo faccio.')
+})
+
+test('a story, a song, a card and a 4K upscale always ask first', async () => {
+  const inventory = {
+    list: [],
+    cards: [{ id: 'card-1', title: 'Ritratto pulito', description: '', inputs: [] }],
+    summarise: () => undefined,
+    fields: () => undefined,
+    facts: async () => undefined,
+    warnings: () => undefined,
+    overridden: () => false,
+    plan: () => undefined,
+  } as unknown as import('../server/vendor/tool-comfy/imagine-chat.ts').WorkflowInventory
+  const cases: readonly (readonly [string, Record<string, unknown>])[] = [
+    ['make_story', { prompt: 'un viaggio', source: 'photo.png', seconds: 20 }],
+    ['make_music', { prompt: 'jazz lento', seconds: 40 }],
+    ['run_card', { customWorkflowId: 'card-1' }],
+    ['upscale', { source: 'photo.png', upscaleTo: 2160 }],
+  ]
+  for (const [name, args] of cases) {
+    const { deps, started } = turn([toolCall(name, args), text('ok')], { inventory, outputDir: mediaDir })
+    const answer = await readAgentChat(deps)
+    assert.equal(answer.pending?.tool, name, `${name} asks first`)
+    assert.equal(started.length, 0)
+  }
+  // A step that is not 4K does not ask.
+  const plain = turn([toolCall('upscale', { source: 'photo.png', upscaleTo: 1440 }), text('ok')], { outputDir: mediaDir })
+  const answer = await readAgentChat(plain.deps)
+  assert.equal(answer.pending, undefined)
+  assert.equal(plain.started.length, 1)
+})
+
+test('a cancel is only ever a proposal, and the yes really stops the run', async () => {
+  const cancelled: string[] = []
+  const { deps } = turn([
+    toolCall('cancel_job', { job: 'live-1' }),
+    text('L\'ho fermato.'),
+  ], { cancelled, existingJobs: [{ id: 'live-1', action: 'video', prompt: 'un clip', status: 'running', createdAt: Date.now() }] })
+  const first = await readAgentChat(deps)
+  assert.equal(first.pending?.kind, 'cancel')
+  assert.equal(cancelled.length, 0, 'the proposal never stops anything by itself')
+  const second = await readAgentChat({ ...deps, request: { ...deps.request, confirmation: { token: first.pending?.token ?? '', accept: true } } })
+  assert.deepEqual(cancelled, ['live-1'])
+  assert.equal(second.reply, 'L\'ho fermato.')
+})
+
+test('a count and a length the user named are recovered from their line', () => {
+  assert.deepEqual(numbersInLine('fai tre foto di un faro'), { count: 3 })
+  assert.deepEqual(numbersInLine('un video di 16 secondi'), { seconds: 16 })
+  assert.deepEqual(numbersInLine('un clip da 30s'), { seconds: 30 })
+  assert.deepEqual(numbersInLine('due minuti di video'), { seconds: 120 })
+  assert.deepEqual(numbersInLine('un video in 16:9'), {})
+})
+
+test('the count and the length the model drops still reach the run', async () => {
+  const photos = turn([toolCall('generate_image', { prompt: 'un faro' }), text('Tre foto.')], { text: 'fai tre foto di un faro' })
+  await readAgentChat(photos.deps)
+  assert.equal(photos.started[0]?.count, 3)
+  const clip = turn([toolCall('make_video', { source: 'photo.png', prompt: 'gira' }), text('Sedici secondi.')], { text: 'un video di 16 secondi', outputDir: mediaDir })
+  const answer = await readAgentChat(clip.deps)
+  // The length is over the limit: the recovery also drives the confirmation.
+  assert.equal(answer.pending?.seconds, 16)
+})
+
+test('a personal card runs with its own exposed inputs, and nothing else', async () => {
+  const inventory = {
+    list: [],
+    cards: [{
+      id: 'card-1', title: 'Ritratto pulito', description: '',
+      inputs: [
+        { node: '10', field: 'text', label: 'Testo', kind: 'text' },
+        { node: '10', field: 'steps', label: 'Passi', kind: 'number' },
+      ],
+    }],
+    summarise: () => undefined,
+    fields: () => undefined,
+    facts: async () => undefined,
+    warnings: () => undefined,
+    overridden: () => false,
+    plan: () => undefined,
+  } as unknown as import('../server/vendor/tool-comfy/imagine-chat.ts').WorkflowInventory
+  const { deps, started } = turn([
+    toolCall('run_card', { customWorkflowId: 'card-1', prompt: 'un ritratto', customFields: { '10.text': 'ciao', '10.steps': 8, '99.invented': 'x' } }),
+    text('Fatto.'),
+  ], { inventory, outputDir: mediaDir })
+  const first = await readAgentChat(deps)
+  assert.equal(first.pending?.card, 'Ritratto pulito')
+  await readAgentChat({ ...deps, request: { ...deps.request, confirmation: { token: first.pending?.token ?? '', accept: true } } })
+  assert.equal(started[0]?.action, 'custom')
+  assert.equal(started[0]?.customWorkflowId, 'card-1')
+  assert.deepEqual(started[0]?.customFields, { '10.text': 'ciao', '10.steps': 8 })
+})
+
+test('a track is laid over a clip on the host, with no run and no question', async () => {
+  await writeFile(join(mediaDir, 'track.mp3'), Buffer.alloc(8))
+  await writeFile(join(mediaDir, 'clip.mp4'), Buffer.alloc(8))
+  const realFetch = globalThis.fetch
+  let asked: { url: string; body: unknown } | undefined
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    asked = { url: String(input), body: JSON.parse(String(init?.body)) }
+    return new Response(JSON.stringify({ name: 'joined.mp4', kind: 'video', size: 3, mtime: 1 }), { status: 200, headers: { 'content-type': 'application/json' } })
+  }) as typeof fetch
+  try {
+    const made: string[] = []
+    const { deps } = turn([
+      toolCall('add_audio', { video: 'clip.mp4', track: 'track.mp3' }),
+      text('Fatto.'),
+    ], { outputDir: mediaDir, selfURL: 'http://studio.test', adopted: made })
+    const answer = await readAgentChat(deps)
+    assert.equal(answer.pending, undefined, 'a host edit does not ask')
+    assert.deepEqual(made, ['joined.mp4'])
+    assert.deepEqual(asked, { url: 'http://studio.test/api/add-audio', body: { name: 'clip.mp4', track: 'track.mp3' } })
+  } finally {
+    globalThis.fetch = realFetch
+  }
 })

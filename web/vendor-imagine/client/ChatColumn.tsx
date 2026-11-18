@@ -13,6 +13,7 @@ import { Still } from './Still.tsx'
 import { THUMB_SMALL, THUMB_TILE, thumbUrlOf } from './gallery-api.ts'
 import { setupPackUnverified, type ImagineJobView as ImagineJob, type MediaFileRef } from '../../../shared/imagine-types.ts'
 import type { WorkflowProposal } from '../../../shared/imagine-chat.ts'
+import type { AgentPending } from '../../../shared/agent-chat.ts'
 import type { ImagineMessage, ImagineProject } from '../../../shared/imagine-projects.ts'
 import { isSeedMessage } from './imagine-projects.ts'
 import { clockStamp, formatGigabytes } from './format.ts'
@@ -177,6 +178,10 @@ interface ChatColumnProps {
   /** The trace of the reading in progress, or of the last one. */
   readonly trace: TraceStore
   readonly proposal: WorkflowProposal | undefined
+  /** The work the agent stopped before doing, waiting for a yes. */
+  readonly pending: AgentPending | undefined
+  /** Answers that offer: true runs it, false tells the model no. */
+  readonly onConfirm: (accept: boolean) => void
   /**
    * The opening frames of a "Recreate video" waiting for a choice.
    *
@@ -373,7 +378,7 @@ function ReadingTrace({ trace, reading, onStop }: {
 
 export const ChatColumn = memo(function ChatColumn(props: ChatColumnProps) {
   const {
-    project, picked, ownLive, reading, busy, trace, proposal, choose, composer, onOpenFile,
+    project, picked, ownLive, reading, busy, trace, proposal, pending, onConfirm, choose, composer, onOpenFile,
     onClearChat, onHideChat, onRetry, onDeleteMessage, onApplyProposal, onCancelProposal, onStopReading, onStopJob, onApproveSetup,
     onChooseFrame, onDismissChoose, onResizeStart,
   } = props
@@ -575,6 +580,35 @@ export const ChatColumn = memo(function ChatColumn(props: ChatColumnProps) {
               </button>
               <button type="button" className={css.proposalCancel} onClick={onCancelProposal}>
                 {translate('imagine.workflowCancel')}
+              </button>
+            </div>
+          </div>
+        )}
+        {/*
+        * The work the agent stopped before doing. It is a question, not a
+        * run: nothing is queued, nothing is cancelled, and the buttons are
+        * the only way forward. A question that outlived the page is gone
+        * with it, on purpose (see `AgentPending`).
+        */}
+        {pending !== undefined && (
+          <div className={css.proposal} data-imagine-confirm={pending.kind}>
+            <p className={css.proposalFile}>{pending.summary}</p>
+            <div className={css.proposalActions}>
+              <button
+                type="button"
+                className={css.proposalApply}
+                disabled={reading}
+                onClick={() => { onConfirm(true) }}
+              >
+                {translate(pending.kind === 'cancel' ? 'imagine.agentConfirmCancelYes' : 'imagine.agentConfirmYes')}
+              </button>
+              <button
+                type="button"
+                className={css.proposalCancel}
+                disabled={reading}
+                onClick={() => { onConfirm(false) }}
+              >
+                {translate(pending.kind === 'cancel' ? 'imagine.agentConfirmCancelNo' : 'imagine.agentConfirmNo')}
               </button>
             </div>
           </div>

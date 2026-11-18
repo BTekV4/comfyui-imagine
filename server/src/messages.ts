@@ -230,6 +230,46 @@ export const MESSAGES = {
     it: 'Sta ancora girando: il risultato comparirà qui appena è pronto.',
     en: 'It is still running: the result will appear here as soon as it is ready.',
   },
+  'agent.confirmClip': {
+    it: 'Un video di {seconds} secondi: vuoi che parta?',
+    en: 'A {seconds}-second clip: shall I start it?',
+  },
+  'agent.confirmStory': {
+    it: 'Una storia di {seconds} secondi, a più scene: vuoi che parta?',
+    en: 'A {seconds}-second story, rendered scene by scene: shall I start it?',
+  },
+  'agent.confirmStoryNoLength': {
+    it: 'Una storia a più scene, con la lunghezza decisa dalla traccia: vuoi che parta?',
+    en: 'A story in several shots, its length decided by the track: shall I start it?',
+  },
+  'agent.confirmMusic': {
+    it: 'Una traccia musicale di {seconds} secondi: vuoi che parta?',
+    en: 'A {seconds}-second music track: shall I start it?',
+  },
+  'agent.confirmMusicNoLength': {
+    it: 'Una traccia musicale, con la lunghezza decisa dalle parole: vuoi che parta?',
+    en: 'A music track, its length decided by the words: shall I start it?',
+  },
+  'agent.confirmCard': {
+    it: 'La card personale «{card}»: vuoi che parta?',
+    en: 'The personal card “{card}”: shall I run it?',
+  },
+  'agent.confirmUpscale4k': {
+    it: 'Un upscale a 4K: vuoi che parta?',
+    en: 'An upscale to 4K: shall I start it?',
+  },
+  'agent.confirmCancel': {
+    it: 'Annullare il lavoro {job}?',
+    en: 'Cancel the run {job}?',
+  },
+  'agent.confirmInvalid': {
+    it: 'La conferma non è valida: non ho fatto partire niente.',
+    en: 'The confirmation is not valid: nothing was started.',
+  },
+  'agent.confirmExpired': {
+    it: 'La conferma è scaduta: non ho fatto partire niente. Chiedimelo di nuovo.',
+    en: 'The confirmation expired: nothing was started. Ask me again.',
+  },
   'chat.modelSilent': {
     it: 'Non sono riuscito a leggere la frase: il modello non ha risposto, o ha risposto qualcosa che non so leggere. Non ho generato niente. Riprova, o dimmi in breve cosa vuoi.',
     en: 'I could not read the sentence: the model did not answer, or it answered something I cannot read. Nothing was generated. Try again, or tell me briefly what you want.',

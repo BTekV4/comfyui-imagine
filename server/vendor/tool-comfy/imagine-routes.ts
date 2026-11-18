@@ -362,9 +362,17 @@ const agentRoute: Route = async (req, res, routes) => {
   if (!allowOnly(req, res, 'POST')) return
   let asked = await readObject<AgentChatAsk & { stream?: unknown }>(req, CHAT_BODY_BYTES)
   asked = { ...asked, language: languageOf(req) }
-  if (typeof asked.text !== 'string' || asked.text.trim().length === 0) {
+  // A confirmation is an answer to an offer, not a new line: it carries no text.
+  if (asked.confirmation === undefined && (typeof asked.text !== 'string' || asked.text.trim().length === 0)) {
     sendJson(res, 400, { error: message('request.textRequired') })
     return
+  }
+  if (asked.confirmation !== undefined) {
+    const token = asked.confirmation.token
+    if (typeof token !== 'string' || token.length === 0 || typeof asked.confirmation.accept !== 'boolean') {
+      sendJson(res, 400, { error: message('agent.confirmInvalid') })
+      return
+    }
   }
   if (routes.workflows.changeVoice?.voices !== undefined) {
     asked = { ...asked, voices: routes.workflows.changeVoice.voices }
@@ -392,6 +400,7 @@ const agentRoute: Route = async (req, res, routes) => {
     adoptFiles: async (names) => {
       if (project !== undefined) await adoptJobsInto([project], names)
     },
+    cancelJob: async id => await cancelImagineJob(routes.ctx, id),
     say: () => undefined,
   }
   if (asked.stream === true) {

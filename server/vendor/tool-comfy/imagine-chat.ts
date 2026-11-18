@@ -871,7 +871,7 @@ function regionOf(raw: unknown): ImagineRegion | undefined {
  * @param card - the card the intent names.
  * @returns the values by `<node>.<field>`, or undefined when there is none.
  */
-function customFieldsOf(
+export function customFieldsOf(
   raw: unknown,
   card: WorkflowCard | undefined,
 ): Readonly<Record<string, string | number | boolean>> | undefined {

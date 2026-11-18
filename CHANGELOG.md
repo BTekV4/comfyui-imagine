@@ -8,6 +8,17 @@ versions follow [semantic versioning](https://semver.org/).
 
 ### Added
 
+- **The agent chat renders video, sound and cards, and asks before the
+  expensive work.** The agent lane of a project's chat now has tools for a
+  clip from a picture, a continuation, an animated loop, a story, a piece of
+  music, a track laid over a clip, speech, a voice change, an upscale and a
+  personal card. A clip longer than fifteen seconds, a story, music, a
+  montage, a personal card and a 4K upscale stop before they start: the turn
+  ends with a Yes/No card, nothing is queued and nothing is cancelled until
+  the answer, and the yes resumes the same turn. `cancel_job` only ever
+  proposes; the user's yes is what stops the run. The tools are the page's
+  own paths (`startFromBody`, the host's `/api/add-audio`), so an agent run
+  is an ordinary job on the board and can be cancelled from the gallery.
 - **Writing, a logo and a watermark go straight to the masked eraser.** The
   written lane recognises the request (from the sentence, not only from the
   reading's choice) and runs «Remove object» (IOPaint's LaMa) instead of a
@@ -79,6 +90,14 @@ versions follow [semantic versioning](https://semver.org/).
 
 ### Fixed
 
+- **The agent recovers a count and a length the model drops.** "Tre foto" and
+  "un video di 16 secondi" were said in the reply and missing from the call;
+  the studio now reads them from the user's line, as it already did for a
+  ratio and a resolution. The length is also what drives the confirmation.
+- **The agent's reply stays in the interface's language.** A line written in
+  another language keeps its words in the prompt, but the instruction now says
+  explicitly that the reply is still written in the page's language, with no
+  word of the other one.
 - **A graph this deployment does not configure is said in the chat**, before a
   job exists, instead of failing after the queue. A card whose graph does not
   load is reported the same way.

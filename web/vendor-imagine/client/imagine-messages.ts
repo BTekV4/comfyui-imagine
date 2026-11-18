@@ -225,6 +225,7 @@ export function thoughtOf(event: ImagineChatEvent): ImagineThought | undefined {
     case 'queued': return step(translate('imagine.thoughtQueued', { action: event.detail ?? '' }))
     case 'waiting': return step(translate('imagine.thoughtWaiting', { percent: event.percent === undefined ? '…' : `${String(event.percent)}%` }))
     case 'looked': return step(translate('imagine.thoughtLooked', { file: event.detail ?? '' }))
+    case 'confirm': return step(translate('imagine.thoughtConfirm', { detail: event.detail ?? '' }), true)
     default: return undefined
   }
 }

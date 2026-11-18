@@ -356,7 +356,7 @@ export type ImagineChatEvent =
      * four are the agent's (a tool called, a run queued, a wait, a look).
      */
     readonly step: 'sight' | 'route' | 'writing' | 'workflow' | 'retry' | 'fallback' | 'grounding'
-      | 'tool' | 'queued' | 'waiting' | 'looked'
+      | 'tool' | 'queued' | 'waiting' | 'looked' | 'confirm'
     /** What the step is about: a model, a workflow label, a file name, a prompt. */
     readonly detail?: string
     /** How many things the step covered, when it covered things. */

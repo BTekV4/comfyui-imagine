@@ -14,7 +14,7 @@ import type {
 import type {
   ImagineChatAsk, ImagineChatEvent, ImagineChatReply, WorkflowDiff, WorkflowPlan, WorkflowValueChange,
 } from '../../../shared/imagine-chat.ts'
-import type { AgentChatAnswer, AgentChatAsk } from '../../../shared/agent-chat.ts'
+import type { AgentChatAnswer, AgentChatAsk, AgentConfirmation } from '../../../shared/agent-chat.ts'
 import type { CanvasRect, ImagineProject, ImagineRemovals } from '../../../shared/imagine-projects.ts'
 import type { SocialComment, SocialCommentPass, SocialPost, SocialPostKind, SocialStory } from '../../../shared/social-types.ts'
 
@@ -277,6 +277,32 @@ export async function readAgentChat(
 ): Promise<AgentChatAnswer> {
   const streaming = watch !== undefined
   const response = await request('/comfy-imagine/agent', 'POST', streaming ? { ...asked, stream: true } : asked,
+    signal === undefined ? {} : { signal })
+  if (!streaming) return await readJson<AgentChatAnswer>(response, 'chat')
+  return await readEventStream<AgentChatAnswer>(response, watch)
+}
+
+/**
+ * Answer the confirmation an agent turn stopped on (POST /comfy-imagine/agent).
+ *
+ * The token resumes the same turn on the server, so saying yes queues the run
+ * the agent offered and its reply comes back through the same stream. A token
+ * that expired is answered with a sentence, never with work.
+ * @param confirmation - the token and the user's yes or no.
+ * @param projectId - the board project the resumed runs belong to.
+ * @param signal - aborts the resumed turn (the stop button).
+ * @param watch - told about each step of the rest of the turn.
+ * @returns the rest of the turn.
+ */
+export async function confirmAgentChat(
+  confirmation: AgentConfirmation,
+  projectId: string,
+  signal?: AbortSignal,
+  watch?: (event: ImagineChatEvent) => void,
+): Promise<AgentChatAnswer> {
+  const streaming = watch !== undefined
+  const body = { text: '', projectId, confirmation, ...streaming ? { stream: true } : {} }
+  const response = await request('/comfy-imagine/agent', 'POST', body,
     signal === undefined ? {} : { signal })
   if (!streaming) return await readJson<AgentChatAnswer>(response, 'chat')
   return await readEventStream<AgentChatAnswer>(response, watch)

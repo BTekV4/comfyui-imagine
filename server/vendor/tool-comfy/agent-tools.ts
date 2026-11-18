@@ -19,9 +19,13 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ImagineHost } from '../../src/host.ts'
+import { message } from '../../src/messages.ts'
 import { ERASE_FEATHER, grownRegion } from '../../../shared/imagine-grounding.ts'
-import { IMAGE_RESOLUTIONS, IMAGINE_ASPECTS, type ImagineAspect, type ImagineResolution } from '../../../shared/imagine-media.ts'
-import { sizeFor } from '../../../shared/imagine-sizing.ts'
+import {
+  IMAGE_RESOLUTIONS, IMAGINE_ASPECTS, UPSCALE_IMAGE_STEPS, UPSCALE_VIDEO_STEPS,
+  type ImagineAspect, type ImagineResolution,
+} from '../../../shared/imagine-media.ts'
+import { VIDEO_RESOLUTIONS, megapixelsFor, sizeFor, videoAspectLabel } from '../../../shared/imagine-sizing.ts'
 import type { ImagineChatEvent } from '../../../shared/imagine-chat.ts'
 import type { GalleryItem, ImagineJobView, ImagineRegion, MediaFileRef, ModelRoute } from '../../../shared/imagine-types.ts'
 import type { AgentToolSchema } from '../../../shared/agent-chat.ts'
@@ -37,6 +41,7 @@ import { loadImagineStore } from './imagine-store.ts'
 import { lookWith } from './imagine-models.ts'
 import type { ImagineJob } from './job-queue.ts'
 import type { JobBody } from './job-start.ts'
+import { customFieldsOf, type WorkflowInventory } from './imagine-chat.ts'
 
 /** What one tool call produced: the result the model reads, and the runs to wait for. */
 export interface AgentToolOutcome {
@@ -80,6 +85,12 @@ export interface AgentToolDeps {
   readonly adoptFiles: (names: readonly string[]) => Promise<void>
   /** The files the page offered the turn (staged and recent). */
   readonly known: readonly MediaFileRef[]
+  /** The configured workflows and the personal cards this studio holds. */
+  readonly inventory?: WorkflowInventory
+  /** The voices this deployment installed, for a voice change. */
+  readonly voices?: readonly string[]
+  /** Stops a run, after the user confirmed the offer to cancel it. */
+  readonly cancelJob: (id: string) => Promise<boolean>
   /** How many more runs the turn may queue. */
   readonly canQueue: () => number
   /** Tells the page a step happened. */
@@ -172,7 +183,9 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       if (resolution !== undefined && !(IMAGE_RESOLUTIONS as readonly string[]).includes(resolution)) {
         return refused(`resolution must be one of ${IMAGE_RESOLUTIONS.join(', ')}`)
       }
-      const count = args['count'] === undefined ? 1 : Number(args['count'])
+      // A count the user named ("tre foto") is recovered when the model drops
+      // it, as the ratio and the resolution already were (F1 fix, 2026-11-18).
+      const count = args['count'] === undefined ? numbersInLine(deps.asked).count ?? 1 : Number(args['count'])
       if (!Number.isInteger(count) || count < 1 || count > MAX_COUNT) {
         return refused(`count must be an integer from 1 to ${String(MAX_COUNT)}`)
       }
@@ -486,7 +499,727 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       return done({ ok: true, jobs: live.map(job => viewOf(deps, job)), note: live.length === 0 ? 'no run is in progress' : undefined })
     },
   },
+  {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'make_video',
+        description: 'Animate a picture into a clip (image to video). One continuous take: up to 6 s it is one clip, longer is rendered as chained scenes. Use `last_frame` to land the clip on a second picture (one clip, 6 s at most). A clip longer than the confirmation limit stops for the user\'s yes before it is queued.',
+        parameters: {
+          type: 'object',
+          properties: {
+            source: { type: 'string', description: 'The starting picture, by gallery name.' },
+            prompt: { type: 'string', description: 'What happens (motion, camera), in the user\'s words. Empty lets the studio write it from the picture.' },
+            seconds: { type: 'integer', minimum: 2, maximum: 60, description: 'Length in seconds; the user\'s length when they named one.' },
+            aspect: { type: 'string', enum: [...IMAGINE_ASPECTS], description: 'Frame shape; omit for the studio default.' },
+            resolution: { type: 'string', enum: [...VIDEO_RESOLUTIONS], description: 'Clip ladder: 480p or 720p.' },
+            speed: { type: 'string', enum: ['fast', 'slow'], description: 'slow = the high-quality graph (several times longer).' },
+            last_frame: { type: 'string', description: 'A gallery picture the clip should end on.' },
+          },
+          required: ['source'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async run(args, deps) {
+      const source = str(args['source'])
+      if (source === undefined) return refused('source is required: the picture to animate, by gallery name')
+      const item = await galleryKind(deps, source, ['image'])
+      if (typeof item === 'string') return refused(item)
+      const last = str(args['last_frame'])
+      if (last !== undefined) {
+        const frame = await galleryKind(deps, last, ['image'])
+        if (typeof frame === 'string') return refused(frame)
+      }
+      const prompt = str(args['prompt']) ?? ''
+      if (prompt.length > MAX_PROMPT) return refused(`prompt is longer than ${String(MAX_PROMPT)} characters`)
+      // The studio refuses a clip with no description: it has nothing to
+      // animate. Say it here, so the model asks the user instead of guessing.
+      if (prompt.length === 0) {
+        return refused('a clip needs what happens in it: ask the user for the motion, or copy their description')
+      }
+      const numbers = numbersInLine(deps.asked)
+      const seconds = args['seconds'] === undefined ? numbers.seconds ?? 5 : Math.round(Number(args['seconds']))
+      if (!Number.isFinite(seconds) || seconds < 2 || seconds > 60) return refused('seconds must be from 2 to 60')
+      if (last !== undefined && seconds > 6) return refused('a clip that lands on a last frame is one clip: seconds must be 6 or less')
+      const named = choicesInLine(deps.asked)
+      const aspect = str(args['aspect']) ?? named.aspect
+      if (aspect !== undefined && !(IMAGINE_ASPECTS as readonly string[]).includes(aspect)) {
+        return refused(`aspect must be one of ${IMAGINE_ASPECTS.join(', ')}`)
+      }
+      const resolution = str(args['resolution']) ?? named.resolution ?? '720p'
+      if (!(VIDEO_RESOLUTIONS as readonly string[]).includes(resolution)) {
+        return refused(`a clip renders at ${VIDEO_RESOLUTIONS.join(' or ')}; ${resolution} is not on its ladder`)
+      }
+      const speed = str(args['speed']) ?? 'fast'
+      if (speed !== 'fast' && speed !== 'slow') return refused('speed must be fast or slow')
+      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      deps.say({ kind: 'step', step: 'tool', name: 'make_video', detail: prompt })
+      const jobs = await deps.start({
+        action: 'video',
+        prompt,
+        source: item.name,
+        seconds,
+        ...aspect === undefined ? {} : { aspectRatio: videoAspectLabel(aspect as ImagineAspect), canvasAsked: true },
+        megapixels: megapixelsFor(resolution as ImagineResolution),
+        speed,
+        quality: speed === 'slow' ? 'high' : 'standard',
+        ...last === undefined ? {} : { lastSource: last },
+        ...deps.projectId === undefined ? {} : { projectId: deps.projectId },
+        ...deps.model === undefined ? {} : { model: deps.model },
+      })
+      for (const job of jobs) deps.say({ kind: 'step', step: 'queued', jobId: job.id, detail: job.action })
+      return {
+        result: { ok: true, queued: jobs.map(job => job.id), state: 'queued', seconds, source: item.name },
+        jobs,
+        files: [],
+      }
+    },
+  },
+  {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'extend_video',
+        description: 'Continue a clip that already exists (the result is the whole clip with its continuation). Past 6 s it is rendered as chained scenes. A length longer than the confirmation limit stops for the user\'s yes.',
+        parameters: {
+          type: 'object',
+          properties: {
+            source: { type: 'string', description: 'The clip to continue, by gallery name.' },
+            prompt: { type: 'string', description: 'What happens next, in the user\'s words. Empty continues the clip\'s own motion.' },
+            seconds: { type: 'integer', minimum: 2, maximum: 60, description: 'How much to add, in seconds.' },
+          },
+          required: ['source'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async run(args, deps) {
+      const source = str(args['source'])
+      if (source === undefined) return refused('source is required: the clip to continue, by gallery name')
+      const item = await galleryKind(deps, source, ['video'])
+      if (typeof item === 'string') return refused(item)
+      const prompt = str(args['prompt']) ?? ''
+      if (prompt.length > MAX_PROMPT) return refused(`prompt is longer than ${String(MAX_PROMPT)} characters`)
+      const seconds = args['seconds'] === undefined ? numbersInLine(deps.asked).seconds ?? 5 : Math.round(Number(args['seconds']))
+      if (!Number.isFinite(seconds) || seconds < 2 || seconds > 60) return refused('seconds must be from 2 to 60')
+      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      deps.say({ kind: 'step', step: 'tool', name: 'extend_video', detail: prompt })
+      const jobs = await deps.start({
+        action: 'extend',
+        prompt,
+        source: item.name,
+        seconds,
+        ...deps.projectId === undefined ? {} : { projectId: deps.projectId },
+        ...deps.model === undefined ? {} : { model: deps.model },
+      })
+      for (const job of jobs) deps.say({ kind: 'step', step: 'queued', jobId: job.id, detail: job.action })
+      return { result: { ok: true, queued: jobs.map(job => job.id), state: 'queued', seconds }, jobs, files: [] }
+    },
+  },
+  {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'loop_video',
+        description: 'An animated background from a picture: the clip begins and ends on the same frame, so it repeats with no seam. Not for a scene with a beginning and an end (that is make_video). A length longer than the confirmation limit stops for the user\'s yes.',
+        parameters: {
+          type: 'object',
+          properties: {
+            source: { type: 'string', description: 'The picture, by gallery name.' },
+            prompt: { type: 'string', description: 'What moves in the background, in the user\'s words.' },
+            seconds: { type: 'integer', minimum: 5, maximum: 60, description: 'Length in seconds; the studio joins its segments past 10.' },
+          },
+          required: ['source'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async run(args, deps) {
+      const source = str(args['source'])
+      if (source === undefined) return refused('source is required: the picture, by gallery name')
+      const item = await galleryKind(deps, source, ['image'])
+      if (typeof item === 'string') return refused(item)
+      const prompt = str(args['prompt']) ?? ''
+      if (prompt.length === 0) {
+        return refused('a loop needs what moves in it: ask the user what should move, or copy their description')
+      }
+      if (prompt.length > MAX_PROMPT) return refused(`prompt is longer than ${String(MAX_PROMPT)} characters`)
+      const seconds = args['seconds'] === undefined ? numbersInLine(deps.asked).seconds ?? 5 : Math.round(Number(args['seconds']))
+      if (!Number.isFinite(seconds) || seconds < 5 || seconds > 60) return refused('a loop runs from 5 to 60 seconds')
+      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      deps.say({ kind: 'step', step: 'tool', name: 'loop_video', detail: prompt })
+      const jobs = await deps.start({
+        action: 'loop',
+        prompt,
+        source: item.name,
+        seconds,
+        ...deps.projectId === undefined ? {} : { projectId: deps.projectId },
+        ...deps.model === undefined ? {} : { model: deps.model },
+      })
+      for (const job of jobs) deps.say({ kind: 'step', step: 'queued', jobId: job.id, detail: job.action })
+      return { result: { ok: true, queued: jobs.map(job => job.id), state: 'queued', seconds }, jobs, files: [] }
+    },
+  },
+  {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'make_story',
+        description: 'A video cut into shots, 20-300 s: over a song, or one shot per photo (a montage). It always stops for the user\'s yes before it is queued. Use `sources` for several photos (one shot each) and `source` for one photo grown scene by scene; `song` is an existing audio track, `lyrics` the text the shots sing.',
+        parameters: {
+          type: 'object',
+          properties: {
+            prompt: { type: 'string', description: 'What the video is about, in the user\'s words.' },
+            source: { type: 'string', description: 'One picture or clip the story grows from, by gallery name.' },
+            sources: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 12, description: 'One gallery photo per shot (a montage).' },
+            seconds: { type: 'integer', minimum: 20, maximum: 300, description: 'Total length; a song decides it when one is given.' },
+            song: { type: 'string', description: 'An audio track already in the gallery, by name.' },
+            lyrics: { type: 'string', description: 'The text the shots themselves sing, when the user gave one.' },
+            hard_cuts: { type: 'boolean', description: 'True when the shots are joined on hard cuts instead of one continuous take.' },
+          },
+          required: ['prompt'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async run(args, deps) {
+      const prompt = str(args['prompt']) ?? deps.asked
+      if (prompt.length === 0) return refused('prompt is required: what the story is about')
+      if (prompt.length > MAX_PROMPT) return refused(`prompt is longer than ${String(MAX_PROMPT)} characters`)
+      let source: string | undefined
+      const one = str(args['source'])
+      if (one !== undefined) {
+        const item = await galleryKind(deps, one, ['image', 'video'])
+        if (typeof item === 'string') return refused(item)
+        source = item.name
+      }
+      const photos: string[] = []
+      if (Array.isArray(args['sources'])) {
+        for (const name of args['sources']) {
+          if (typeof name !== 'string') continue
+          const photo = await galleryKind(deps, name, ['image'])
+          if (typeof photo === 'string') return refused(photo)
+          photos.push(photo.name)
+        }
+      }
+      if (source === undefined && photos.length === 0) {
+        return refused('a story needs a picture (`source`) or a list of photos (`sources`)')
+      }
+      let song: string | undefined
+      const track = str(args['song'])
+      if (track !== undefined) {
+        const item = await galleryKind(deps, track, ['audio'])
+        if (typeof item === 'string') return refused(item)
+        song = item.name
+      }
+      const seconds = args['seconds'] === undefined ? numbersInLine(deps.asked).seconds : Math.round(Number(args['seconds']))
+      if (seconds !== undefined && (!Number.isFinite(seconds) || seconds < 20 || seconds > 300)) {
+        return refused('a story runs from 20 to 300 seconds')
+      }
+      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      deps.say({ kind: 'step', step: 'tool', name: 'make_story', detail: prompt })
+      const jobs = await deps.start({
+        action: 'story',
+        prompt,
+        ...source === undefined ? {} : { source },
+        ...photos.length === 0 ? {} : { sources: photos },
+        ...seconds === undefined ? {} : { seconds },
+        ...song === undefined ? {} : { song },
+        ...str(args['lyrics']) === undefined ? {} : { lyrics: str(args['lyrics']) },
+        ...args['hard_cuts'] === true ? { hardCuts: true } : {},
+        ...deps.projectId === undefined ? {} : { projectId: deps.projectId },
+        ...deps.model === undefined ? {} : { model: deps.model },
+      })
+      for (const job of jobs) deps.say({ kind: 'step', step: 'queued', jobId: job.id, detail: job.action })
+      return {
+        result: {
+          ok: true, queued: jobs.map(job => job.id), state: 'queued', shots: jobs.length,
+          ...seconds === undefined ? {} : { seconds },
+          ...song === undefined ? {} : { song },
+        },
+        jobs,
+        files: [],
+      }
+    },
+  },
+  {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'make_music',
+        description: 'A separate music track from a style and optional lyrics (it always stops for the user\'s yes). `prompt` is the style, `lyrics` the words to sing; `seconds` only when the user named a length (30-300), otherwise the studio decides from the words.',
+        parameters: {
+          type: 'object',
+          properties: {
+            prompt: { type: 'string', description: 'The style or genre, in the user\'s words.' },
+            lyrics: { type: 'string', description: 'The words to sing, copied from the user\'s message.' },
+            seconds: { type: 'integer', minimum: 30, maximum: 300, description: 'The length the user asked for, when they named one.' },
+          },
+          required: ['prompt'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async run(args, deps) {
+      const prompt = str(args['prompt'])
+      if (prompt === undefined) return refused('prompt is required: the style of the track')
+      if (prompt.length > MAX_PROMPT) return refused(`prompt is longer than ${String(MAX_PROMPT)} characters`)
+      const seconds = args['seconds'] === undefined ? numbersInLine(deps.asked).seconds : Math.round(Number(args['seconds']))
+      if (seconds !== undefined && (!Number.isFinite(seconds) || seconds < 30 || seconds > 300)) {
+        return refused('music runs from 30 to 300 seconds, or leaves the length to the studio')
+      }
+      const lyrics = str(args['lyrics'])
+      if (lyrics !== undefined && lyrics.length > 8_000) return refused('lyrics are longer than 8000 characters')
+      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      deps.say({ kind: 'step', step: 'tool', name: 'make_music', detail: prompt })
+      const jobs = await deps.start({
+        action: 'music',
+        prompt,
+        ...lyrics === undefined ? {} : { lyrics },
+        ...seconds === undefined ? {} : { seconds },
+        ...deps.projectId === undefined ? {} : { projectId: deps.projectId },
+        ...deps.model === undefined ? {} : { model: deps.model },
+      })
+      for (const job of jobs) deps.say({ kind: 'step', step: 'queued', jobId: job.id, detail: job.action })
+      return { result: { ok: true, queued: jobs.map(job => job.id), state: 'queued' }, jobs, files: [] }
+    },
+  },
+  {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'add_audio',
+        description: 'Lay an audio track that already exists over a clip that already exists, without re-rendering the picture: the clip decides the length. The host does it in seconds, so no run is queued and no confirmation is asked.',
+        parameters: {
+          type: 'object',
+          properties: {
+            video: { type: 'string', description: 'The clip that keeps its picture, by gallery name.' },
+            track: { type: 'string', description: 'The audio track to lay over it, by gallery name.' },
+          },
+          required: ['video', 'track'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async run(args, deps) {
+      if (deps.selfURL === undefined) return refused('the audio join is not reachable from the server')
+      const video = str(args['video'])
+      const track = str(args['track'])
+      if (video === undefined || track === undefined) return refused('video and track are required')
+      const clip = await galleryKind(deps, video, ['video'])
+      if (typeof clip === 'string') return refused(clip)
+      const audio = await galleryKind(deps, track, ['audio'])
+      if (typeof audio === 'string') return refused(audio)
+      deps.say({ kind: 'step', step: 'tool', name: 'add_audio', detail: `${audio.name} → ${clip.name}` })
+      let answer: Response
+      try {
+        answer = await fetch(`${deps.selfURL.replace(/\/+$/, '')}/api/add-audio`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name: clip.name, track: audio.name }),
+          signal: deps.signal,
+        })
+      } catch (error: unknown) {
+        return refused(`the audio join did not answer: ${error instanceof Error ? error.message : String(error)}`)
+      }
+      if (!answer.ok) {
+        const detail = await answer.text().catch(() => '')
+        return refused(`the audio join answered ${String(answer.status)}: ${detail.slice(0, 300)}`)
+      }
+      const made = await answer.json().catch(() => undefined) as GalleryItem | undefined
+      if (made === undefined || typeof made.name !== 'string') return refused('the audio join answered no file')
+      await deps.adoptFiles([made.name]).catch(() => undefined)
+      return {
+        result: { ok: true, file: made.name, kind: 'video', note: 'the picture is the clip\'s own, copied' },
+        jobs: [],
+        files: [{ name: made.name, kind: kindOf(made.name) ?? 'video' }],
+      }
+    },
+  },
+  {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'speak',
+        description: 'Read a text aloud and save the audio (text to speech). Not change_voice (that re-sings a track that exists) and not make_music (that sings).',
+        parameters: {
+          type: 'object',
+          properties: {
+            text: { type: 'string', description: 'The text to read, in the language it is written in.' },
+          },
+          required: ['text'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async run(args, deps) {
+      const text = str(args['text'])
+      if (text === undefined) return refused('text is required: the words to read aloud')
+      if (text.length > MAX_PROMPT) return refused(`text is longer than ${String(MAX_PROMPT)} characters`)
+      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      deps.say({ kind: 'step', step: 'tool', name: 'speak', detail: text.slice(0, 80) })
+      const jobs = await deps.start({
+        action: 'speak',
+        prompt: text,
+        ...deps.projectId === undefined ? {} : { projectId: deps.projectId },
+        ...deps.model === undefined ? {} : { model: deps.model },
+      })
+      for (const job of jobs) deps.say({ kind: 'step', step: 'queued', jobId: job.id, detail: job.action })
+      return { result: { ok: true, queued: jobs.map(job => job.id), state: 'queued' }, jobs, files: [] }
+    },
+  },
+  {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'change_voice',
+        description: 'Re-sing a track that already exists with another voice, keeping the music. `source` may be an audio file or a clip (the studio takes the clip\'s soundtrack and returns the clip with the new voice). `pitch` is the shift in semitones: a deeper voice is negative.',
+        parameters: {
+          type: 'object',
+          properties: {
+            source: { type: 'string', description: 'The audio track or the clip whose voice changes, by gallery name.' },
+            voice: { type: 'string', description: 'Which installed voice to use; omit for the studio\'s default.' },
+            pitch: { type: 'integer', minimum: -24, maximum: 24, description: 'Semitones to shift by; negative goes down.' },
+          },
+          required: ['source'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async run(args, deps) {
+      const source = str(args['source'])
+      if (source === undefined) return refused('source is required: the track or clip whose voice changes')
+      const item = await galleryKind(deps, source, ['audio', 'video'])
+      if (typeof item === 'string') return refused(item)
+      const voice = str(args['voice'])
+      if (voice !== undefined && deps.voices !== undefined && deps.voices.length > 0 && !deps.voices.includes(voice)) {
+        return refused(`voice must be one of the installed voices: ${deps.voices.join(', ')}`)
+      }
+      const pitch = args['pitch'] === undefined ? undefined : Math.round(Number(args['pitch']))
+      if (pitch !== undefined && (!Number.isFinite(pitch) || pitch < -24 || pitch > 24)) {
+        return refused('pitch must be an integer from -24 to 24 semitones')
+      }
+      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      deps.say({ kind: 'step', step: 'tool', name: 'change_voice', detail: item.name })
+      const jobs = await deps.start({
+        action: 'voice',
+        prompt: '',
+        source: item.name,
+        ...voice === undefined ? {} : { voice },
+        ...pitch === undefined ? {} : { pitch },
+        ...deps.projectId === undefined ? {} : { projectId: deps.projectId },
+        ...deps.model === undefined ? {} : { model: deps.model },
+      })
+      for (const job of jobs) deps.say({ kind: 'step', step: 'queued', jobId: job.id, detail: job.action })
+      return { result: { ok: true, queued: jobs.map(job => job.id), state: 'queued' }, jobs, files: [] }
+    },
+  },
+  {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'upscale',
+        description: 'Raise the resolution of a picture or a clip that already exists. A still goes to 1080, 1440 or 2160 (4K); a clip to 720 or 1080. An upscale to 4K always stops for the user\'s yes.',
+        parameters: {
+          type: 'object',
+          properties: {
+            source: { type: 'string', description: 'The picture or clip, by gallery name.' },
+            upscaleTo: { type: 'integer', enum: [720, 1080, 1440, 2160], description: 'The short side to reach; omit to raise to the next step.' },
+          },
+          required: ['source'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async run(args, deps) {
+      const source = str(args['source'])
+      if (source === undefined) return refused('source is required: the picture or clip to raise')
+      const item = await galleryKind(deps, source, ['image', 'video'])
+      if (typeof item === 'string') return refused(item)
+      const ladder: readonly number[] = item.kind === 'video' ? UPSCALE_VIDEO_STEPS : UPSCALE_IMAGE_STEPS
+      const asked = args['upscaleTo'] === undefined ? undefined : Math.round(Number(args['upscaleTo']))
+      if (asked !== undefined && !ladder.includes(asked)) {
+        return refused(`a ${item.kind} goes to ${ladder.join(', ')}; ${String(asked)} is not on its ladder`)
+      }
+      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      deps.say({ kind: 'step', step: 'tool', name: 'upscale', detail: item.name })
+      const jobs = await deps.start({
+        action: 'upscale',
+        prompt: '',
+        source: item.name,
+        ...asked === undefined ? {} : { upscaleTo: asked },
+        ...deps.projectId === undefined ? {} : { projectId: deps.projectId },
+        ...deps.model === undefined ? {} : { model: deps.model },
+      })
+      for (const job of jobs) deps.say({ kind: 'step', step: 'queued', jobId: job.id, detail: job.action })
+      return { result: { ok: true, queued: jobs.map(job => job.id), state: 'queued' }, jobs, files: [] }
+    },
+  },
+  {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'run_card',
+        description: 'Run one of this studio\'s personal cards («Your workflows») with its own inputs. The id and the input keys are copied exactly from the personal cards in this instruction; never invent one. It always stops for the user\'s yes.',
+        parameters: {
+          type: 'object',
+          properties: {
+            customWorkflowId: { type: 'string', description: 'The card id, copied exactly from the list.' },
+            prompt: { type: 'string', description: 'What to draw, in the user\'s words.' },
+            customFields: { type: 'object', description: 'The card\'s exposed inputs, keyed "<node>.<field>".', additionalProperties: true },
+            customFiles: { type: 'object', description: 'The card\'s file slots: node id → gallery file name.', additionalProperties: { type: 'string' } },
+          },
+          required: ['customWorkflowId'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async run(args, deps) {
+      const id = str(args['customWorkflowId'])
+      if (id === undefined) return refused('customWorkflowId is required: the card id, copied from the list')
+      const cards = deps.inventory?.cards ?? []
+      const card = cards.find(entry => entry.id === id)
+      if (card === undefined) {
+        return refused(`no personal card has id ${id}; the cards are: ${cards.map(entry => `${entry.id} (${entry.title})`).join(', ') || 'none'}`)
+      }
+      const prompt = str(args['prompt']) ?? ''
+      if (prompt.length > MAX_PROMPT) return refused(`prompt is longer than ${String(MAX_PROMPT)} characters`)
+      const fields = customFieldsOf(args['customFields'], card)
+      const files: Record<string, string> = {}
+      if (typeof args['customFiles'] === 'object' && args['customFiles'] !== null) {
+        for (const [node, name] of Object.entries(args['customFiles'])) {
+          if (typeof name !== 'string' || !/^\d+$/.test(node)) return refused('customFiles must map a node id to a gallery file name')
+          const item = await galleryKind(deps, name, ['image', 'video', 'audio'])
+          if (typeof item === 'string') return refused(item)
+          files[node] = item.name
+        }
+      }
+      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      deps.say({ kind: 'step', step: 'tool', name: 'run_card', detail: card.title })
+      const jobs = await deps.start({
+        action: 'custom',
+        prompt,
+        customWorkflowId: card.id,
+        ...fields === undefined ? {} : { customFields: fields },
+        ...Object.keys(files).length === 0 ? {} : { customFiles: files },
+        ...deps.projectId === undefined ? {} : { projectId: deps.projectId },
+        ...deps.model === undefined ? {} : { model: deps.model },
+      })
+      for (const job of jobs) deps.say({ kind: 'step', step: 'queued', jobId: job.id, detail: job.action })
+      return { result: { ok: true, queued: jobs.map(job => job.id), state: 'queued', card: card.title }, jobs, files: [] }
+    },
+  },
+  {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'cancel_job',
+        description: 'Propose stopping a run. This NEVER stops anything by itself: the proposal always goes to the user, and only their yes cancels the run. Use it when the user asks to stop a run, or when a run is clearly not what they wanted.',
+        parameters: {
+          type: 'object',
+          properties: {
+            job: { type: 'string', description: 'The id of the run to stop.' },
+          },
+          required: ['job'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async run(args, deps) {
+      const id = str(args['job'])
+      if (id === undefined) return refused('job is required: the id of the run to stop')
+      const job = deps.getJob(id)
+      if (job === undefined) return refused(`no run with id ${id} is in memory (runs live half an hour after they finish)`)
+      if (job.status === 'done' || job.status === 'error' || job.status === 'cancelled') {
+        return refused(`run ${id} had already ${job.status === 'done' ? 'finished' : job.status}`)
+      }
+      const stopped = await deps.cancelJob(id)
+      if (!stopped) return refused(`run ${id} could not be stopped`)
+      return done({ ok: true, cancelled: id })
+    },
+  },
 ]
+
+/**
+ * The confirmation a tool call needs before it runs, or undefined when it may
+ * run at once.
+ *
+ * The owner's rule (2026-11-18): a clip longer than `confirmSeconds` is
+ * confirmed first, and a story, a piece of music, a montage, a personal card
+ * and an upscale to 4K always are: their cost is a chain, not one clip. A
+ * cancel is only ever a proposal. The function reads the same arguments the
+ * tool will read, and never throws on an argument the model got wrong: the
+ * tool itself refuses that with a sentence, after the gate.
+ * @param name - the tool the model called.
+ * @param args - its arguments, unchecked.
+ * @param asked - the user's line, for a length or a count they named.
+ * @param confirmSeconds - the longest clip that runs without asking.
+ * @param deps - the turn, for the personal cards and the run a cancel is about.
+ * @returns the offer the page shows, or undefined.
+ */
+export function confirmationFor(
+  name: string,
+  args: Readonly<Record<string, unknown>>,
+  asked: string,
+  confirmSeconds: number,
+  deps: Pick<AgentToolDeps, 'inventory' | 'getJob'>,
+): Omit<AgentPendingOffer, 'token' | 'expiresAt'> | undefined {
+  const named = numbersInLine(asked)
+  const secondsOf = (fallback: number): number => args['seconds'] === undefined
+    ? named.seconds ?? fallback
+    : Math.round(Number(args['seconds']))
+  if (name === 'make_video' || name === 'extend_video' || name === 'loop_video') {
+    const seconds = secondsOf(5)
+    // An argument the tool itself will refuse is not worth a question, and a
+    // clip that lands on a last frame is one clip anyway.
+    if (!Number.isFinite(seconds) || seconds < 2 || seconds > 60) return undefined
+    if (name === 'make_video' && str(args['last_frame']) !== undefined) return undefined
+    if ((name === 'make_video' || name === 'loop_video') && str(args['prompt']) === undefined) return undefined
+    if (seconds <= confirmSeconds) return undefined
+    return {
+      kind: 'run',
+      tool: name,
+      action: name === 'make_video' ? 'video' : name === 'extend_video' ? 'extend' : 'loop',
+      summary: message('agent.confirmClip', { seconds: String(seconds) }),
+      seconds,
+      ...str(args['source']) === undefined ? {} : { source: str(args['source']) as string },
+    }
+  }
+  if (name === 'make_story') {
+    const seconds = args['seconds'] === undefined ? named.seconds : Math.round(Number(args['seconds']))
+    const known = seconds !== undefined && Number.isFinite(seconds) ? seconds : undefined
+    return {
+      kind: 'run',
+      tool: name,
+      action: 'story',
+      summary: known === undefined
+        ? message('agent.confirmStoryNoLength')
+        : message('agent.confirmStory', { seconds: String(known) }),
+      ...known === undefined ? {} : { seconds: known },
+      ...str(args['source']) === undefined ? {} : { source: str(args['source']) as string },
+    }
+  }
+  if (name === 'make_music') {
+    const seconds = args['seconds'] === undefined ? named.seconds : Math.round(Number(args['seconds']))
+    const known = seconds !== undefined && Number.isFinite(seconds) ? seconds : undefined
+    return {
+      kind: 'run',
+      tool: name,
+      action: 'music',
+      summary: known === undefined ? message('agent.confirmMusicNoLength') : message('agent.confirmMusic', { seconds: String(known) }),
+      ...known === undefined ? {} : { seconds: known },
+    }
+  }
+  if (name === 'upscale') {
+    const to = args['upscaleTo'] === undefined ? undefined : Math.round(Number(args['upscaleTo']))
+    const source = str(args['source'])
+    // 4K is a still's step: a clip tops at 1080, and the tool refuses 2160.
+    if (to !== 2160 || (source !== undefined && kindOf(source) === 'video')) return undefined
+    return {
+      kind: 'run',
+      tool: name,
+      action: 'upscale',
+      summary: message('agent.confirmUpscale4k'),
+      ...str(args['source']) === undefined ? {} : { source: str(args['source']) as string },
+    }
+  }
+  if (name === 'run_card') {
+    const id = str(args['customWorkflowId'])
+    const card = (deps.inventory?.cards ?? []).find(entry => entry.id === id)
+    // An id the card list does not hold is refused by the tool, not asked about.
+    if (card === undefined) return undefined
+    return {
+      kind: 'run',
+      tool: name,
+      action: 'custom',
+      summary: message('agent.confirmCard', { card: card?.title ?? id ?? '?' }),
+      ...card === undefined ? {} : { card: card.title },
+    }
+  }
+  if (name === 'cancel_job') {
+    const id = str(args['job'])
+    if (id === undefined) return undefined
+    const job = deps.getJob(id)
+    // Nothing to stop: the tool refuses with the reason instead of asking.
+    if (job === undefined || job.status === 'done' || job.status === 'error' || job.status === 'cancelled') return undefined
+    return {
+      kind: 'cancel',
+      tool: name,
+      summary: message('agent.confirmCancel', { job: job === undefined ? id : `${job.action} (${id})` }),
+      jobId: id,
+    }
+  }
+  return undefined
+}
+
+/** The offer {@link confirmationFor} builds, before the token is minted. */
+export interface AgentPendingOffer {
+  readonly kind: 'run' | 'cancel'
+  readonly tool: string
+  readonly action?: string
+  readonly summary: string
+  readonly seconds?: number
+  readonly source?: string
+  readonly card?: string
+  readonly jobId?: string
+}
+
+/**
+ * A length or a count the user named in their line, which the model may leave
+ * out of the call even when it repeats it in the reply.
+ *
+ * Only the closed shapes are read: a length with its unit ("16 secondi",
+ * "30s", "un minuto") and a count before a picture word ("tre foto", "2
+ * immagini"). A ratio ("16:9") is never a length, and a bare number is not a
+ * count: guessing there would invent a run nobody asked for.
+ * @param asked - the user's line.
+ * @returns the seconds and the count it names, when it names them.
+ */
+export function numbersInLine(asked: string): { seconds?: number; count?: number } {
+  const text = asked.toLowerCase()
+  const unit = '(?:s\\b|sec\\b|secs\\b|secondo|secondi|second|seconds)'
+  let seconds: number | undefined
+  const digits = new RegExp(`(\\d{1,3})\\s*${unit}`).exec(text)?.[1]
+  if (digits !== undefined) seconds = Number(digits)
+  if (seconds === undefined) {
+    if (/\bmezzo minuto\b|\bhalf a minute\b/.test(text)) seconds = 30
+    else if (/\bun minuto\b|\bone minute\b|\ba minute\b/.test(text)) seconds = 60
+    else if (/\bdue minuti\b|\btwo minutes\b/.test(text)) seconds = 120
+    else if (/\btre minuti\b|\bthree minutes\b/.test(text)) seconds = 180
+  }
+  const words: Readonly<Record<string, number>> = {
+    un: 1, una: 1, uno: 1, one: 1, a: 1, due: 2, two: 2, tre: 3, three: 3, quattro: 4, four: 4,
+    cinque: 5, five: 5, sei: 6, six: 6, sette: 7, seven: 7, otto: 8, eight: 8,
+  }
+  let count: number | undefined
+  const picture = '(?:foto|fotografie|immagin[ei]|variant[ei]|version[ei]|immagine|pictures?|photos?|images?|variants?|versions?)'
+  const counted = new RegExp(`(\\d{1,2})\\s+${picture}`).exec(text)?.[1]
+  if (counted !== undefined) count = Number(counted)
+  if (count === undefined) {
+    const spelled = new RegExp(`\\b(${Object.keys(words).join('|')})\\s+${picture}`).exec(text)?.[1]
+    if (spelled !== undefined) count = words[spelled]
+  }
+  return {
+    ...seconds === undefined ? {} : { seconds },
+    ...count === undefined ? {} : { count },
+  }
+}
+
+/** The gallery file of one of the kinds the tool accepts, or a refusal. */
+async function galleryKind(
+  deps: AgentToolDeps,
+  name: string,
+  kinds: readonly GalleryItem['kind'][],
+): Promise<GalleryItem | string> {
+  const safe = safeBasename(name)
+  if (safe === undefined || kindOf(safe) === undefined) return `"${name}" is not a file in the gallery`
+  const kind = kindOf(safe) as GalleryItem['kind']
+  if (!kinds.includes(kind)) return `"${safe}" is ${kind === 'image' ? 'a picture' : `a ${kind}`}; this tool takes ${kinds.join(' or ')}`
+  const item = await galleryItemOf(deps.outputDir, safe)
+  return item ?? `"${safe}" is not in the gallery`
+}
+
 
 /**
  * The tools the loop offers, as the gateway takes them.
