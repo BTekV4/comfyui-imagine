@@ -108,4 +108,8 @@ permissions the filesystem gives them.
   only the development and build tree (`vite`, `picomatch`, `tinyglobby`) are
   known and accepted: none of them is in the packages a release ships (the
   server, the MCP server and the plugins are self-contained bundles), and
-  Dependabot updates them every month.
+  Dependabot updates them every month. The CI gate runs
+  `npm audit --omit=dev --audit-level=high` on every push and pull request, so
+  the production dependency tree (the only one a release carries) must stay
+  free of high or critical advisories; the dev-only ones are outside that
+  check.
