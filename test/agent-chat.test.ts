@@ -15,7 +15,7 @@ import {
   probeTools, readAgentChat, type AgentTurnDeps,
 } from '../server/vendor/tool-comfy/agent-loop.ts'
 import { putJob, type ImagineJob } from '../server/vendor/tool-comfy/job-queue.ts'
-import { choicesInLine, numbersInLine } from '../server/vendor/tool-comfy/agent-tools.ts'
+import { asksOnlyForMusic, choicesInLine, numbersInLine } from '../server/vendor/tool-comfy/agent-tools.ts'
 import type { ImagineHost } from '../server/src/host.ts'
 import type {
   AgentChatAsk, AgentModelEvent, AgentModelRequest, AgentToolSchema,
@@ -570,4 +570,111 @@ test('run_action goes through the confirmation gate too', async () => {
   const plain = turn([toolCall('run_action', { action: 'video', prompt: 'gira', source: 'photo.png', extras: { seconds: 10 } }), text('ok')], { outputDir: mediaDir })
   assert.equal((await readAgentChat(plain.deps)).pending, undefined)
   assert.equal(plain.started.length, 1)
+})
+
+test('a line that asks only for a track is refused by make_story, and pointed at make_music', async () => {
+  const { deps, started, model } = turn([
+    toolCall('make_story', { prompt: 'musica rilassante', seconds: 30 }),
+    text('Uso make_music.'),
+  ], { text: 'Fai 30 secondi di musica rilassante' })
+  const answer = await readAgentChat(deps)
+  assert.equal(answer.pending, undefined, 'a track is not a story to confirm')
+  assert.equal(started.length, 0)
+  const refusal = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as { ok?: boolean; error?: string }
+  assert.equal(refusal.ok, false)
+  assert.match(refusal.error ?? '', /make_music/)
+})
+
+test('a line that names a video with its song still belongs to make_story', async () => {
+  const { deps } = turn([
+    toolCall('make_story', { prompt: 'un viaggio', source: 'photo.png', song: 'track.mp3', seconds: 30 }),
+    text('ok'),
+  ], { text: 'un video di 30 secondi con questa canzone', outputDir: mediaDir })
+  await writeFile(join(mediaDir, 'track.mp3'), Buffer.alloc(8))
+  const answer = await readAgentChat(deps)
+  assert.equal(answer.pending?.tool, 'make_story')
+})
+
+test('music words are read from the line, and a picture word makes it a story', () => {
+  assert.equal(asksOnlyForMusic('Fai 30 secondi di musica rilassante'), true)
+  assert.equal(asksOnlyForMusic('Crea una canzone triste'), true)
+  assert.equal(asksOnlyForMusic('Solo musica, nessun video'), true)
+  assert.equal(asksOnlyForMusic('Make a 30 second track'), true)
+  assert.equal(asksOnlyForMusic('un video di 30 secondi con questa canzone'), false)
+  assert.equal(asksOnlyForMusic('un montaggio sulle note di questa canzone'), false)
+  assert.equal(asksOnlyForMusic('una storia di 20 secondi'), false)
+})
+
+test('a run waiting for an install is reported as such, never as running', async () => {
+  const stalled: ImagineJob = {
+    id: 'stall-1',
+    action: 'upscale',
+    prompt: '',
+    status: 'queued',
+    createdAt: Date.now(),
+    notice: 'setup-needed',
+    setup: { packs: [], models: [{ name: 'seedvr2_7b_sharp_nvfp4.safetensors', folder: 'upscale', size: 4_760_000_000 }], bytes: 4_760_000_000 },
+  }
+  putJob(stalled.id, stalled)
+  const model = scriptedModel([
+    toolCall('upscale', { source: 'photo.png', upscaleTo: 1440 }),
+    text('Non doveva arrivare qui.'),
+  ])
+  const events: ImagineChatEvent[] = []
+  const deps: AgentTurnDeps = {
+    ctx: classicHost('{}'),
+    request: { text: 'ingrandisci la foto', history: [], staged: [], recent: [], model: MODEL, projectId: 'project-1' },
+    outputDir: mediaDir,
+    projectId: 'project-1',
+    eraseTool: false,
+    modelClient: model,
+    surface: {
+      mode: () => 'on',
+      limits: () => ({ maxSteps: 8, maxJobs: 6, waitSeconds: 300, turnSeconds: 900, confirmSeconds: 15 }),
+      capabilities: async () => ({ toolCalling: true }),
+    },
+    start: async () => [stalled],
+    jobView: job => job,
+    listJobs: () => [stalled],
+    getJob: id => id === stalled.id ? stalled : undefined,
+    adoptFiles: async () => undefined,
+    cancelJob: async () => true,
+    say: event => { events.push(event) },
+  }
+  const answer = await readAgentChat(deps)
+  assert.match(answer.reply, /seedvr2_7b_sharp_nvfp4\.safetensors/)
+  assert.match(answer.reply, /Installa/)
+  assert.doesNotMatch(answer.reply, /in corso|ancora girando/)
+  assert.equal(answer.running, undefined)
+  assert.deepEqual(answer.jobIds, ['stall-1'])
+  // The fixed reply ends the turn: the model never got a second call in which
+  // to call the waiting run "in corso".
+  assert.equal(model.requests.length, 1)
+})
+
+test('job_status says a run waits for an install, and names what is missing', async () => {
+  const stalled: ImagineJob = {
+    id: 'stall-2',
+    action: 'upscale',
+    prompt: '',
+    status: 'queued',
+    createdAt: Date.now(),
+    notice: 'setup-needed',
+    setup: { packs: [], models: [{ name: 'seedvr2_7b_sharp_nvfp4.safetensors', folder: 'upscale', size: 4_760_000_000 }], bytes: 4_760_000_000 },
+  }
+  putJob(stalled.id, stalled)
+  const { deps, model } = turn([toolCall('job_status', { job: 'stall-2' }), text('ok')], { existingJobs: [stalled] })
+  await readAgentChat(deps)
+  const result = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as {
+    job?: { state?: string; missing?: string[]; waitingFor?: string }
+  }
+  assert.equal(result.job?.state, 'setup-needed')
+  assert.deepEqual(result.job?.missing, ['seedvr2_7b_sharp_nvfp4.safetensors (4.8 GB)'])
+  assert.match(result.job?.waitingFor ?? '', /not rendering/)
+})
+
+test('a model that writes nothing still leaves something to read', async () => {
+  const { deps } = turn([[], []])
+  const answer = await readAgentChat(deps)
+  assert.ok(answer.reply.trim().length > 0)
 })

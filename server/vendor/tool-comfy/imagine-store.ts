@@ -718,6 +718,13 @@ function sanitizeMessage(value: unknown): ImagineMessage | undefined {
   // gave was dropped on the next save with nothing said about it.
   if (record.role !== 'user' && record.role !== 'assistant' && record.role !== 'status') return undefined
   if (typeof record.text !== 'string') return undefined
+  /*
+   * An assistant line with no text is not an answer. A turn that stopped for a
+   * confirmation used to be saved with its thinking and an empty reply, and
+   * the project showed an empty bubble (F2); the page no longer writes one,
+   * and a store written before this fix loses it on the next read.
+   */
+  if (record.role === 'assistant' && record.text.trim().length === 0) return undefined
   const createdAt = typeof record.createdAt === 'number' && Number.isFinite(record.createdAt) ? record.createdAt : 0
   const files = sanitizeFiles(record.files)
   return {

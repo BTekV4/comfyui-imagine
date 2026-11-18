@@ -30,6 +30,7 @@ import type { JobBody } from './job-start.ts'
 import { agentInstruction, finalReplyAsk } from './agent-prompt.ts'
 import {
   agentToolSchemas, confirmationFor, runAgentTool, type AgentPendingOffer, type AgentToolDeps,
+  type AgentToolOutcome,
 } from './agent-tools.ts'
 
 /** What the host hands the loop: the switch, the limits and the declarations. */
@@ -274,6 +275,8 @@ interface TurnState {
   reply: string
   gaveUpWaiting: boolean
   contained: boolean
+  /** A queued run waits for the user to approve an install on ComfyUI. */
+  setup?: { readonly what: string; readonly jobIds: readonly string[] }
   /** Calls of an assistant message already written, to run after a resume. */
   cursor?: { readonly calls: readonly AgentToolCall[]; readonly index: number }
 }
@@ -408,16 +411,16 @@ async function resumeAgentChat(deps: AgentTurnDeps): Promise<AgentChatAnswer> {
     state.jobs.push(...queued)
     state.files.push(...outcome.files.filter(file => !state.files.some(seen => seen.name === file.name)))
     const waited = queued.length === 0
-      ? { all: true, anyRunning: false }
+      ? { all: true, anyRunning: false, setup: [] as readonly ImagineJob[] }
       : await waitForJobs(queued, deps, state.deadline, limits.waitSeconds)
     const lived = queued.map(job => deps.getJob(job.id) ?? job)
-    const result = waited.all && queued.length > 0
-      ? { ...outcome.result, state: finalState(lived), files: lived.flatMap(job => job.files?.map(file => file.name) ?? []) }
-      : waited.anyRunning && queued.length > 0
-      ? { ...outcome.result, state: 'running', waiting: 'the run is still going; the result appears in the chat when it is done' }
-      : outcome.result
+    const result = waitedResult(outcome, waited, lived)
     state.messages.push({ role: 'tool', toolCallId: session.call.id, content: JSON.stringify(result) })
-    if (waited.anyRunning) {
+    if (waited.setup.length > 0) {
+      state.setup = { what: setupWhat(waited.setup), jobIds: waited.setup.map(job => job.id) }
+      state.gaveUpWaiting = true
+      closeRemainingCalls(state, session.calls, session.index + 1, 'not run: an earlier run waits for the user to approve an install on ComfyUI')
+    } else if (waited.anyRunning) {
       state.gaveUpWaiting = true
       closeRemainingCalls(state, session.calls, session.index + 1, 'not run: an earlier run is still going')
     } else {
@@ -559,21 +562,24 @@ async function driveTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentCh
       state.jobs.push(...queued)
       state.files.push(...outcome.files.filter(file => !state.files.some(seen => seen.name === file.name)))
       const waited = queued.length === 0
-        ? { all: true, anyRunning: false }
+        ? { all: true, anyRunning: false, setup: [] as readonly ImagineJob[] }
         : await waitForJobs(queued, deps, state.deadline, limits.waitSeconds)
       // The queue's live copies: the start returned the jobs as they were
       // queued, and only the map knows what each of them made.
       const lived = queued.map(job => deps.getJob(job.id) ?? job)
-      const result = waited.all && queued.length > 0
-        ? { ...outcome.result, state: finalState(lived), files: lived.flatMap(job => job.files?.map(file => file.name) ?? []) }
-        : waited.anyRunning && queued.length > 0
-        ? { ...outcome.result, state: 'running', waiting: 'the run is still going; the result appears in the chat when it is done' }
-        : outcome.result
+      const result = waitedResult(outcome, waited, lived)
       state.messages.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify(result) })
       // The wait is the turn's whole patience with a run: past it the reply
       // says "still running" and the result appears in the chat by itself.
       // Polling the model further would only keep the spinner alive.
       nextIndex = index + 1
+      if (waited.setup.length > 0) {
+        state.setup = { what: setupWhat(waited.setup), jobIds: waited.setup.map(job => job.id) }
+        state.gaveUpWaiting = true
+        closeRemainingCalls(state, calls, index + 1, 'not run: an earlier run waits for the user to approve an install on ComfyUI')
+        nextIndex = calls.length
+        break
+      }
       if (waited.anyRunning) {
         state.gaveUpWaiting = true
         closeRemainingCalls(state, calls, index + 1, 'not run: an earlier run is still going')
@@ -599,6 +605,14 @@ async function driveTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentCh
  */
 async function finishTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentChatAnswer> {
   /*
+   * A run waiting for the user to approve an install is not a run in
+   * progress: the model must not be given a chance to call it "in corso". The
+   * reply is the fact and the button to press, in the interface's language.
+   */
+  if (state.setup !== undefined) {
+    state.reply = message('agent.waitingSetup', { what: state.setup.what })
+  }
+  /*
    * The model did not write a reply — it used every step on tools, or the turn
    * hit its ceiling. One last call with no tools asks for it, so the chat never
    * ends with nothing to read.
@@ -617,11 +631,16 @@ async function finishTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentC
     }
   }
   // The queue's live copy, not the snapshot the start returned: it was queued
-  // when the array was built and only the map knows it finished.
-  const running = state.jobs.some(job => !settled(deps.getJob(job.id) ?? job))
+  // when the array was built and only the map knows it finished. A run waiting
+  // for its install is not "running" here: its own sentence says that.
+  const setupIds = new Set(state.setup?.jobIds ?? [])
+  const live = state.jobs.map(job => deps.getJob(job.id) ?? job)
+  const running = live.some(job => !settled(job) && !setupIds.has(job.id))
   if (state.reply.length === 0) {
+    const failed = live.find(job => job.status === 'error' && job.error !== undefined)
     state.reply = running
       ? message('chat.agentStillRunning')
+      : failed?.error !== undefined ? message('agent.runFailed', { error: failed.error })
       : state.contained ? message('chat.agentFailed') : message('chat.agentEmpty')
   }
   return {
@@ -660,19 +679,23 @@ function prunePending(now: number): void {
  *
  * Event-driven, not a poll: `whenJobsSettle` wakes on the queue's own writes.
  * A second clock ticks the progress at a human pace while the first waits, so
- * the page can say "42%" without turning the wait into a busy loop.
+ * the page can say "42%" without turning the wait into a busy loop. A run that
+ * waits for the user to approve an install (`setup-needed`) ends the wait: the
+ * GPU is not working on it, and the turn has to say what is missing instead of
+ * "still running".
  * @param jobs - the runs to wait for.
  * @param deps - the turn, for the queue view.
  * @param turnDeadline - the turn's ceiling.
  * @param waitSeconds - how long one turn may wait.
- * @returns whether every run settled, and whether any was still running.
+ * @returns whether every run settled, whether any was still running, and the
+ *   runs waiting for an install.
  */
 async function waitForJobs(
   jobs: readonly ImagineJob[],
   deps: AgentTurnDeps,
   turnDeadline: number,
   waitSeconds: number,
-): Promise<{ readonly all: boolean; readonly anyRunning: boolean }> {
+): Promise<{ readonly all: boolean; readonly anyRunning: boolean; readonly setup: readonly ImagineJob[] }> {
   const until = Math.min(turnDeadline, Date.now() + waitSeconds * 1_000)
   const ids = jobs.map(job => job.id)
   const beat = setInterval(() => {
@@ -690,15 +713,67 @@ async function waitForJobs(
   }, WAIT_TICK_MS)
   beat.unref()
   try {
-    await whenJobsSettle(ids, Math.max(0, until - Date.now()))
+    await whenJobsSettle(ids, Math.max(0, until - Date.now()), job => job.notice === 'setup-needed')
   } finally {
     clearInterval(beat)
   }
-  const remaining = ids.filter(id => {
+  const setup = ids
+    .map(id => deps.getJob(id))
+    .filter((job): job is ImagineJob => job !== undefined && !settled(job) && job.notice === 'setup-needed')
+  const waiting = new Set(setup.map(job => job.id))
+  const remaining = ids.filter((id) => {
     const job = deps.getJob(id)
-    return job !== undefined && !settled(job)
+    return job !== undefined && !settled(job) && !waiting.has(id)
   })
-  return { all: remaining.length === 0, anyRunning: remaining.length > 0 }
+  return { all: remaining.length === 0 && setup.length === 0, anyRunning: remaining.length > 0, setup }
+}
+
+/**
+ * The tool result of one call whose runs were waited for: finished, waiting for
+ * an install, or still going. The setup case says so in words the model can
+ * repeat; "still running" for a run that waits for the user is the F2 fault.
+ * @param outcome - what the tool made.
+ * @param waited - how the wait ended.
+ * @param lived - the runs as the queue has them now.
+ * @returns the object the model reads.
+ */
+function waitedResult(
+  outcome: AgentToolOutcome,
+  waited: { readonly all: boolean; readonly anyRunning: boolean; readonly setup: readonly ImagineJob[] },
+  lived: readonly ImagineJob[],
+): Readonly<Record<string, unknown>> {
+  if (waited.setup.length > 0) {
+    return {
+      ...outcome.result,
+      state: 'setup-needed',
+      missing: waited.setup.flatMap(job => setupMissing(job)),
+      note: 'the run is not rendering: it waits for the user to approve an install on ComfyUI. Tell them what is missing.',
+    }
+  }
+  if (waited.all && lived.length > 0) {
+    return { ...outcome.result, state: finalState(lived), files: lived.flatMap(job => job.files?.map(file => file.name) ?? []) }
+  }
+  if (waited.anyRunning && lived.length > 0) {
+    return { ...outcome.result, state: 'running', waiting: 'the run is still going; the result appears in the chat when it is done' }
+  }
+  return outcome.result
+}
+
+/** What a run's setup plan is missing, as the model should say it. */
+function setupMissing(job: ImagineJob): string[] {
+  const plan = job.setup
+  if (plan === undefined) return []
+  const gb = (bytes: number): string => `${(bytes / 1e9).toFixed(1)} GB`
+  return [
+    ...plan.packs.map(pack => pack.name),
+    ...plan.models.map(model => `${model.name} (${gb(model.size)})`),
+  ]
+}
+
+/** What the runs waiting for an install need, in one clause. */
+function setupWhat(jobs: readonly ImagineJob[]): string {
+  const names = [...new Set(jobs.flatMap(job => setupMissing(job)))]
+  return names.length === 0 ? 'a model or a node pack ComfyUI does not have' : names.join(', ')
 }
 
 /** Whether a run stopped moving. */

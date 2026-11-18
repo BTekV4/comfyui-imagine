@@ -481,7 +481,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       type: 'function',
       function: {
         name: 'job_status',
-        description: 'The state of one run by id, or of the runs still going. Use it to answer "is it done?" without guessing.',
+        description: 'The real state of one run by id, or of the runs still going: queued, running (with progress), waiting for the user to approve an install on ComfyUI (`setup-needed`, with `missing`), done, error (with the reason) or cancelled. Use it to answer "is it done?" without guessing.',
         parameters: {
           type: 'object',
           properties: {
@@ -499,7 +499,16 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         return done({ ok: true, job: viewOf(deps, job) })
       }
       const live = deps.listJobs().filter(job => job.status === 'queued' || job.status === 'running')
-      return done({ ok: true, jobs: live.map(job => viewOf(deps, job)), note: live.length === 0 ? 'no run is in progress' : undefined })
+      const waiting = live.filter(job => job.notice === 'setup-needed')
+      return done({
+        ok: true,
+        jobs: live.map(job => viewOf(deps, job)),
+        note: live.length === 0
+          ? 'no run is in progress'
+          : waiting.length === 0
+          ? undefined
+          : `${String(waiting.length)} run waits for the user to approve an install on ComfyUI: it is not rendering until then`,
+      })
     },
   },
   {
@@ -669,7 +678,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       type: 'function',
       function: {
         name: 'make_story',
-        description: 'A video cut into shots, 20-300 s: over a song, or one shot per photo (a montage). It always stops for the user\'s yes before it is queued. Use `sources` for several photos (one shot each) and `source` for one photo grown scene by scene; `song` is an existing audio track, `lyrics` the text the shots sing.',
+        description: 'A VIDEO cut into shots, 20-300 s: over a song, or one shot per photo (a montage). It always renders pictures, so use it only when the user asks for a video, a clip, a montage or a story; when the line asks for music, a song or a track alone, that is make_music (audio only), never this tool. It always stops for the user\'s yes before it is queued. Use `sources` for several photos (one shot each) and `source` for one photo grown scene by scene; `song` is an existing audio track, `lyrics` the text the shots sing.',
         parameters: {
           type: 'object',
           properties: {
@@ -690,6 +699,16 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       const prompt = str(args['prompt']) ?? deps.asked
       if (prompt.length === 0) return refused('prompt is required: what the story is about')
       if (prompt.length > MAX_PROMPT) return refused(`prompt is longer than ${String(MAX_PROMPT)} characters`)
+      /*
+       * F2 routed "30 seconds of music" to a story: the tool's own words
+       * mention the song, and the model took it. A story always renders
+       * pictures, so a line that asks for a track and nothing to watch is
+       * pointed at the audio-only tool instead of queuing a video nobody
+       * asked for.
+       */
+      if (asksOnlyForMusic(deps.asked)) {
+        return refused('this line asks for music alone, not a video: make_story renders a video in shots. Use make_music for a music track (audio only); if the user wants pictures over that track, call make_story with the photos and the song.')
+      }
       let source: string | undefined
       const one = str(args['source'])
       if (one !== undefined) {
@@ -751,7 +770,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       type: 'function',
       function: {
         name: 'make_music',
-        description: 'A separate music track from a style and optional lyrics (it always stops for the user\'s yes). `prompt` is the style, `lyrics` the words to sing; `seconds` only when the user named a length (30-300), otherwise the studio decides from the words.',
+        description: 'A separate music track: audio only, with no pictures. Use it whenever the user asks for music, a song, a track, a beat or a jingle of its own, even when they name a length; make_story is for a video that happens to have a song. It always stops for the user\'s yes. `prompt` is the style, `lyrics` the words to sing; `seconds` only when the user named a length (30-300), otherwise the studio decides from the words.',
         parameters: {
           type: 'object',
           properties: {
@@ -1189,6 +1208,9 @@ export function confirmationFor(
     }
   }
   if (name === 'make_story') {
+    // A line that asks for a track and nothing to watch is refused by the
+    // tool with the audio-only tool named: there is nothing to confirm first.
+    if (asksOnlyForMusic(asked)) return undefined
     const seconds = args['seconds'] === undefined ? named.seconds : Math.round(Number(args['seconds']))
     const known = seconds !== undefined && Number.isFinite(seconds) ? seconds : undefined
     return {
@@ -1316,6 +1338,27 @@ export interface AgentPendingOffer {
   readonly source?: string
   readonly card?: string
   readonly jobId?: string
+}
+
+/**
+ * Whether a line asks for a piece of music and nothing to watch.
+ *
+ * The router in F2 sent "30 secondi di musica" to `make_story`, because a story
+ * can carry a song. It can, but it always renders pictures: a line naming only
+ * a track (or saying "no video") belongs to `make_music`. Pictures or a video
+ * in the line make it a story, and an explicit "only music" / "no video" wins
+ * over a stray picture word.
+ * @param asked - the user's line.
+ * @returns true when the line is about a track alone.
+ */
+export function asksOnlyForMusic(asked: string): boolean {
+  const text = asked.toLowerCase()
+  if (!/\b(music\w*|brano|traccia|canzone|song|track|beat|jingle|soundtrack|colonna sonora)\b/.test(text)) return false
+  if (/\b(solo|soltanto|only|just)\s+(la\s+)?(musica|music|canzone|song|traccia|track|brano)\b/.test(text)) return true
+  if (/\b(nessun|senza)\s+(il\s+)?video\b|\b(no|not|without)\s+(a\s+|any\s+)?video\b|\bnon\s+(un\s+)?video\b/.test(text)) return true
+  const video = /\b(video\w*|filmato|film|clip|scena|scene|shots?|montaggio|montage|fotogrammi|frames?|riprese|videoclip|storia|story)\b/
+  const pictures = /\b(foto\w*|fotografie|immagin[ei]|pictures?|photos?|images?)\b/
+  return !video.test(text) && !pictures.test(text)
 }
 
 /**
@@ -1457,6 +1500,11 @@ export async function runAgentTool(
 
 /**
  * One run as the model reads it: state, where it is, and what it made.
+ *
+ * A run can be waiting for the user without running: ComfyUI has to install a
+ * model or a node pack first (`notice: 'setup-needed'`), and the page shows the
+ * install button. The state says so here, with what is missing, instead of the
+ * plain `queued` that read as "in progress" in F2.
  * @param deps - the turn's state, for the live progress.
  * @param job - the run.
  * @returns a compact object, no pixels.
@@ -1464,18 +1512,33 @@ export async function runAgentTool(
 function viewOf(deps: AgentToolDeps, job: ImagineJob): Readonly<Record<string, unknown>> {
   const view = deps.jobView(job)
   const progress = view.progress
+  const waitingForSetup = job.notice === 'setup-needed' && job.setup !== undefined
   return {
     id: job.id,
     action: job.action,
-    state: job.status,
+    state: waitingForSetup ? 'setup-needed' : job.status,
+    ...waitingForSetup ? {} : { status: job.status },
     prompt: job.prompt.length > 300 ? `${job.prompt.slice(0, 299)}…` : job.prompt,
     ...job.source === undefined ? {} : { source: job.source },
     ...progress?.percent === undefined ? {} : { percent: progress.percent },
     ...progress?.nodeClass === undefined ? {} : { stage: progress.nodeClass },
     ...progress?.etaSeconds === undefined ? {} : { etaSeconds: progress.etaSeconds },
+    ...job.notice === undefined ? {} : { notice: job.notice },
+    ...job.setup === undefined ? {} : { missing: missingOf(job.setup), downloadBytes: job.setup.bytes },
+    ...job.setupProgress === undefined ? {} : { install: job.setupProgress },
+    ...waitingForSetup ? { waitingFor: 'the user\'s yes to install on ComfyUI: it is not rendering' } : {},
     ...job.error === undefined ? {} : { error: job.error },
     ...job.files === undefined || job.files.length === 0 ? {} : { files: job.files.map(file => file.name) },
   }
+}
+
+/** What a setup plan is missing, one sentence per entry, for the model to repeat. */
+function missingOf(plan: NonNullable<ImagineJob['setup']>): string[] {
+  const gb = (bytes: number): string => `${(bytes / 1e9).toFixed(1)} GB`
+  return [
+    ...plan.packs.map(pack => pack.name),
+    ...plan.models.map(model => `${model.name} (${gb(model.size)})`),
+  ]
 }
 
 /**
