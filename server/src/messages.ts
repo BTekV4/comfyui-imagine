@@ -88,6 +88,14 @@ export const MESSAGES = {
   'json.objectRequired': { it: 'serve un oggetto JSON', en: 'a JSON object is needed' },
   'body.tooLarge': { it: 'richiesta troppo grande', en: 'the request is too large' },
   'password.tooShort': { it: 'la password deve avere almeno 8 caratteri', en: 'the password must be at least 8 characters' },
+  'settings.unknownProvider': {
+    it: 'provider sconosciuto: {provider}. La config.yaml definisce: {known}. Scegli un modello dal catalogo dopo aver corretto l’indirizzo del gateway.',
+    en: 'unknown provider: {provider}. config.yaml defines: {known}. Add the model from the catalog after fixing the gateway address.',
+  },
+  'settings.modelsInvalid': {
+    it: 'i modelli inviati non hanno la forma giusta (servono provider e id)',
+    en: 'the models sent are not shaped right (a provider and an id are needed)',
+  },
   'password.notSet': { it: 'imposta prima una password', en: 'set a password first' },
   'password.badRecord': { it: 'record della password non valido', en: 'invalid password record' },
   'route.methodNotAccepted': { it: 'metodo non ammesso', en: 'method not allowed' },

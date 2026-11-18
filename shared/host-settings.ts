@@ -92,6 +92,13 @@ export type HostSettingsView = Omit<HostSettingsValues, 'apiKey' | 'hfToken'> & 
   readonly passwordSet: boolean
   /** Whether the resume sweep was on when this process started (it acts only then). */
   readonly bootResumeSweep: boolean
+  /**
+   * The provider `config.yaml` defines for the gateway address the page shows,
+   * matched by baseURL. The catalog writes this name on a model it adds: the
+   * provider has to be one the config defines, or the chat refuses the model
+   * with `llm.unknownProvider` (F2 wrote `omniroute` on a config using `local`).
+   */
+  readonly gatewayProvider: string
 }
 
 /** What the page saves: the fields it changed, the key and a new password. */

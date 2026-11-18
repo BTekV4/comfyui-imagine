@@ -145,7 +145,7 @@ function baseSettings(): HostSettingsValues {
 test('the field is saved and read back, and a value that is not a tier means the default', async () => {
   const file = join(root, 'host-settings.json')
   const base = baseSettings()
-  const settings = await createHostSettings({ file, passwordFile: join(root, 'password'), base, envKey: undefined })
+  const settings = await createHostSettings({ file, passwordFile: join(root, 'password'), base, envKey: undefined, providers: ['local'], providerFor: () => 'local' })
   assert.equal(settings.current().thinking, 'low')
 
   // A tier the gateway declares is saved even if the code does not name it.
@@ -158,14 +158,14 @@ test('the field is saved and read back, and a value that is not a tier means the
 
   // A hand-written file with an impossible value does not reach the gateway.
   await writeFile(file, JSON.stringify({ thinking: 'Altissimo!' }))
-  const again = await createHostSettings({ file, passwordFile: join(root, 'password'), base, envKey: undefined })
+  const again = await createHostSettings({ file, passwordFile: join(root, 'password'), base, envKey: undefined, providers: ['local'], providerFor: () => 'local' })
   assert.equal(again.current().thinking, 'low')
 })
 
 test('the agent confirmation limit is saved, and only a whole number of seconds is taken', async () => {
   const file = join(root, 'confirm-settings.json')
   const base = baseSettings()
-  const settings = await createHostSettings({ file, passwordFile: join(root, 'password'), base, envKey: undefined })
+  const settings = await createHostSettings({ file, passwordFile: join(root, 'password'), base, envKey: undefined, providers: ['local'], providerFor: () => 'local' })
   // The confirmed default: a clip up to fifteen seconds runs without asking.
   assert.equal(settings.current().agentConfirmSeconds, AGENT_LIMITS_DEFAULT.confirmSeconds)
 
@@ -182,6 +182,6 @@ test('the agent confirmation limit is saved, and only a whole number of seconds 
 
   // A hand-written file with an impossible value falls back to the default.
   await writeFile(file, JSON.stringify({ agentConfirmSeconds: 0 }))
-  const again = await createHostSettings({ file, passwordFile: join(root, 'password'), base, envKey: undefined })
+  const again = await createHostSettings({ file, passwordFile: join(root, 'password'), base, envKey: undefined, providers: ['local'], providerFor: () => 'local' })
   assert.equal(again.current().agentConfirmSeconds, AGENT_LIMITS_DEFAULT.confirmSeconds)
 })

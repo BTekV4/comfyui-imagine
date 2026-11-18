@@ -37,11 +37,41 @@ const isModel = (value: unknown): value is ModelEntry =>
   typeof value === 'object' && value !== null
   && typeof (value as ModelEntry).provider === 'string' && typeof (value as ModelEntry).id === 'string'
 
+/**
+ * The provider `config.yaml` defines for the gateway the settings page shows.
+ *
+ * The page's catalog adds a model to the composer, and the name it writes has
+ * to be one the config defines: the entry whose baseURL matches the gateway
+ * address, else the provider serving the default model, else the first one
+ * configured. Until F2 the page wrote a hard-coded `omniroute`, which a config
+ * using `local` did not define.
+ * @param providers - the config's providers, by id.
+ * @param defaultProvider - the provider the default model names.
+ * @param url - the gateway address in force.
+ * @returns the provider id.
+ */
+export function providerOfGateway(
+  providers: Readonly<Record<string, { readonly baseURL: string }>>,
+  defaultProvider: string,
+  url: string,
+): string {
+  const normalized = (value: string): string => value.replace(/\/+$/, '')
+  const entries = Object.entries(providers)
+  const byURL = entries.find(([, provider]) => normalized(provider.baseURL) === normalized(url))
+  if (byURL !== undefined) return byURL[0]
+  if (providers[defaultProvider] !== undefined) return defaultProvider
+  return entries[0]?.[0] ?? 'gateway'
+}
+
 export async function createHostSettings(options: {
   file: string
   passwordFile: string
   base: HostSettingsValues
   envKey: string | undefined
+  /** The provider ids `config.yaml` defines: a model may only name one of these. */
+  providers: readonly string[]
+  /** The provider the config defines for the gateway address, matched by baseURL. */
+  providerFor: (gatewayURL: string) => string
 }): Promise<HostSettings> {
   const read = await readJsonFile(options.file, '[imagine]')
   /*
@@ -82,6 +112,16 @@ export async function createHostSettings(options: {
     stored = next
   }
 
+  /** Refuse a provider the config does not define, naming the ones it does. */
+  const unknownProvider = (ids: readonly string[]): void => {
+    const unknown = [...new Set(ids.filter(id => !options.providers.includes(id)))]
+    if (unknown.length === 0) return
+    throw new Error(message('settings.unknownProvider', {
+      provider: unknown.join(', '),
+      known: options.providers.join(', ') || 'none',
+    }))
+  }
+
   const view = (): HostSettingsView => {
     const { apiKey, hfToken, ...rest } = merged()
     const key = apiKey !== '' ? apiKey : options.envKey ?? ''
@@ -93,6 +133,7 @@ export async function createHostSettings(options: {
       apiKeyTail: key.length > 4 ? key.slice(-4) : '',
       passwordSet,
       bootResumeSweep,
+      gatewayProvider: options.providerFor(rest.gatewayURL),
     }
   }
 
@@ -106,8 +147,24 @@ export async function createHostSettings(options: {
       }
       take('gatewayURL', value => typeof value === 'string' && /^https?:\/\//.test(value))
       take('apiKey', value => typeof value === 'string')
-      take('models', value => Array.isArray(value) && value.every(isModel))
-      take('defaultModel', isRoute)
+      /*
+       * A model the page adds names a provider: it has to be one `config.yaml`
+       * defines. The catalog used to write the hard-coded `omniroute`, which a
+       * config using `local` refuses at chat time with `llm.unknownProvider`
+       * (F2): refuse it here, where the message can say which ones exist.
+       */
+      if (patch.models !== undefined) {
+        if (!Array.isArray(patch.models) || !patch.models.every(isModel)) {
+          throw new Error(message('settings.modelsInvalid'))
+        }
+        unknownProvider(patch.models.map(entry => entry.provider))
+        next['models'] = patch.models
+      }
+      if (patch.defaultModel !== undefined) {
+        if (!isRoute(patch.defaultModel)) throw new Error(message('settings.modelsInvalid'))
+        unknownProvider([patch.defaultModel.provider])
+        next['defaultModel'] = patch.defaultModel
+      }
       take('thinking', isThinkingLevel)
       take('resumeSweep', value => typeof value === 'boolean')
       take('requireLogin', value => typeof value === 'boolean')

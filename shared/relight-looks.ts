@@ -32,10 +32,15 @@ export interface RelightLook {
  * sentence fills the last slot. The graph may keep its own copy of this; the
  * host writes the whole instruction, so a graph whose text node holds only the
  * look's sentence works the same way.
+ *
+ * The retention clause names the subject and its pose/framing, not a person:
+ * the recipe is used on objects too, and "keep the person, face, identity"
+ * told the model to preserve a face that was not in the photo (F2, on a cup).
+ * The look's own sentence is left as openjutsu wrote it: it is the light.
  */
 export const RELIGHT_PROMPT_PREFIX =
-  'Relight this photograph. Keep the person, face, identity, expression, pose, hair, clothing, framing'
-  + ' and setting exactly as they are; change only the lighting and the colour of the light.'
+  'Relight this photograph. Keep the subject, its appearance, pose, framing and setting exactly as they are;'
+  + ' change only the lighting and the colour of the light.'
 
 /** The seventeen looks, in the recipe's order. */
 export const RELIGHT_LOOKS: readonly RelightLook[] = [

@@ -50,6 +50,13 @@ test('the prompt is the recipe instruction plus the look sentence', () => {
   assert.ok(prompt.length > 400, 'the prompt is a full sentence, not a word')
 })
 
+test('the fixed instruction is neutral: it names no person, face or identity', () => {
+  assert.doesNotMatch(RELIGHT_PROMPT_PREFIX, /\b(person|face|identity|hair|skin|eyes?)\b/i)
+  assert.match(RELIGHT_PROMPT_PREFIX, /\bsubject\b/)
+  // The look's own sentence is still openjutsu's light; that is not the fixed part.
+  for (const look of RELIGHT_LOOKS) assert.ok(relightPromptOf(look).startsWith(RELIGHT_PROMPT_PREFIX))
+})
+
 test('relight has its own recipe: an image, the relight tool', () => {
   // A missing ACTION_RUNS entry is no compile error: the runner would fall
   // back to upscale.

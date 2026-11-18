@@ -208,10 +208,19 @@ export function HostSettings({ sections = 'all', onPending }: {
     }
   }
 
+  /*
+   * The provider the config defines for this gateway (`gatewayProvider`, a
+   * baseURL match done by the server): the catalog writes that name, not a
+   * hard-coded one the config may not have.
+   */
+  const gatewayProvider = view?.gatewayProvider
   const toggleModel = (id: string, on: boolean): void => {
+    if (gatewayProvider === undefined) return
+    const picked = models.some(entry => entry.provider === gatewayProvider && entry.id === id)
+    if (on === picked) return
     const next = on
-      ? [...models, { provider: 'omniroute', id, name: id.replace(/^[^/]+\//, '') }]
-      : models.filter(entry => !(entry.provider === 'omniroute' && entry.id === id))
+      ? [...models, { provider: gatewayProvider, id, name: id.replace(/^[^/]+\//, '') }]
+      : models.filter(entry => !(entry.provider === gatewayProvider && entry.id === id))
     set({ models: next })
   }
 
@@ -416,7 +425,7 @@ export function HostSettings({ sections = 'all', onPending }: {
                 <label key={id} className={own.catalogItem}>
                   <input
                     type="checkbox"
-                    checked={models.some(entry => entry.provider === 'omniroute' && entry.id === id)}
+                    checked={gatewayProvider !== undefined && models.some(entry => entry.provider === gatewayProvider && entry.id === id)}
                     onChange={(event) => { toggleModel(id, event.target.checked) }}
                   />
                   <span>{id}</span>
