@@ -38,7 +38,7 @@ import { createPlugins, createPluginsRoute } from './plugins.ts'
 import { message, withLanguage } from './messages.ts'
 import { allowOnly, HttpError, languageOf, methods, readBody, readObject, restOf, sendJson } from './route-kit.ts'
 import { createLocalePacks, createLocalePacksRoutes } from './locales.ts'
-import { createHostSettings } from './settings.ts'
+import { createHostSettings, providerOfGateway } from './settings.ts'
 import { createAccessBanner, forgetDismissalWhenLoginMoves } from './access-banner.ts'
 import { createAccessRoutes } from './access-routes.ts'
 import { liveSetupStatus } from './setup-status.ts'
@@ -168,6 +168,8 @@ const settings = await createHostSettings({
   file: config.settingsFile ?? dataPath('host-settings.json'),
   passwordFile: config.passwordFile,
   envKey: gateway?.apiKeyEnv === undefined ? undefined : process.env[gateway.apiKeyEnv],
+  providers: Object.keys(config.providers),
+  providerFor: url => providerOfGateway(config.providers, config.defaultModel.provider, url),
   base: {
     gatewayURL: gateway?.baseURL ?? 'http://127.0.0.1:11434/v1',
     apiKey: '',
