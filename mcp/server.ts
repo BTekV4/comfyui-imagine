@@ -31,7 +31,7 @@ import {
 import { segmentFileUrl, type ImagineSegmentsIndex, type ImagineSegmentsStatus } from '../shared/imagine-segments.ts'
 import { HISTORY_PROJECT_ID, type ImagineProject } from '../shared/imagine-projects.ts'
 import type { Template, TemplateField } from '../shared/imagine-templates.ts'
-import { checkedZone, growMask, joinMasks, maskDataUrl, readMask, rectangleMask, type Fractions } from './masks.ts'
+import { checkedZone, growMask, joinMasks, maskDataUrl, readMask, rectangleMask, type Fractions } from '../shared/masks.ts'
 
 const IMAGINE = (process.env.IMAGINE_URL ?? 'http://127.0.0.1:3090').replace(/\/+$/, '')
 /** Where the links handed to the model point: set it to an address the model's client can reach (defaults to IMAGINE_URL). */

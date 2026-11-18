@@ -25,6 +25,7 @@ import { createFrameRoute } from './frames.ts'
 import { createMediaSearchRoute } from './media-search.ts'
 import * as toolComfy from '../vendor/tool-comfy/index.ts'
 import { setImagineModels } from '../vendor/tool-comfy/imagine-models.ts'
+import { AGENT_LIMITS_DEFAULT, type AgentChatMode } from '../../shared/agent-chat.ts'
 import { COVER_MAX_BYTES } from '../../shared/cover-kinds.ts'
 import { createAuth } from './auth.ts'
 import { applySecurityHeaders, stateChangeAllowed } from './security.ts'
@@ -183,6 +184,11 @@ const settings = await createHostSettings({
     requireLogin: false,
     hfToken: '',
     autoSetup: false,
+    agentChat: 'auto',
+    agentMaxSteps: AGENT_LIMITS_DEFAULT.maxSteps,
+    agentMaxJobs: AGENT_LIMITS_DEFAULT.maxJobs,
+    agentWaitSeconds: AGENT_LIMITS_DEFAULT.waitSeconds,
+    agentTurnSeconds: AGENT_LIMITS_DEFAULT.turnSeconds,
   },
 })
 
@@ -192,6 +198,11 @@ configureComfySetup(() => {
   return { hfToken, autoSetup }
 })
 const now = (): HostSettingsValues => settings.current()
+
+/* The address the studio listens on: the warning about an open, non-loopback
+ * studio and the desktop app's loopback-only window both read it — and the
+ * agent's eraser tool calls the plugin route over loopback. */
+const listenOn = { port: listenPort(config.port), host: listenHost(config.host) }
 
 /*
  * The warning about an open studio can be hidden for the whole studio: one
@@ -219,7 +230,7 @@ const providers = (): Readonly<Record<string, ProviderConfig>> => {
 // The eyes are the chat model: since 2026-10-31 the page names only one.
 // The thinking level is read on every request: a save from the page applies
 // from the next pass, without restarting the process.
-const { llm, auxiliary, listModels, thinkingLevels } = createLlm(providers, () => now().defaultModel, () => now().thinking)
+const { llm, auxiliary, listModels, thinkingLevels, modelCapabilities } = createLlm(providers, () => now().defaultModel, () => now().thinking)
 const comfy = new ComfyUi(ComfyUi.Config(config.comfy))
 // Without this the progress socket's reconnect loop outlives the server.
 disposers.push(() => { comfy.dispose() })
@@ -265,6 +276,17 @@ const { outputDir } = toolComfy.apply(ctx, toolComfy.Config(config.toolComfy), {
   // Read when the sweep would run, so the settings page's switch counts.
   resumeSweep: () => now().resumeSweep,
   exampleWorkflows,
+  agent: {
+    mode: (): AgentChatMode => now().agentChat,
+    limits: () => ({
+      maxSteps: now().agentMaxSteps,
+      maxJobs: now().agentMaxJobs,
+      waitSeconds: now().agentWaitSeconds,
+      turnSeconds: now().agentTurnSeconds,
+    }),
+    capabilities: route => modelCapabilities(route),
+    selfURL: `http://127.0.0.1:${String(listenOn.port)}`,
+  },
 })
 
 /*
@@ -380,9 +402,6 @@ async function coverUploadRoute(req: IncomingMessage, res: ServerResponse): Prom
   })
 }
 
-/* The address the studio listens on: the warning about an open, non-loopback
- * studio and the desktop app's loopback-only window both read it. */
-const listenOn = { port: listenPort(config.port), host: listenHost(config.host) }
 
 const exposedToNetwork = listensBeyondLoopback(listenOn.host)
 

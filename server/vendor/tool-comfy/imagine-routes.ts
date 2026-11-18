@@ -15,6 +15,8 @@ import { expandTemplate, TEMPLATES, templateById, templateProblems } from '../..
 import { kindOf, safeBasename } from './gallery.ts'
 import { isPlainObject } from './guards.ts'
 import { readImagineChat, type ImagineChatRequest, type WorkflowInventory } from './imagine-chat.ts'
+import { readAgentChat, type AgentSurface, type AgentTurnDeps } from './agent-loop.ts'
+import { AGENT_LIMITS_DEFAULT, type AgentChatAnswer, type AgentChatAsk, type AgentModelCapable } from '../../../shared/agent-chat.ts'
 import { cancelImagineJob, getImagineJob, listImagineJobs, pruneOldJobs, type ImagineJob } from './imagine-jobs.ts'
 import { approveSetup } from './job-queue.ts'
 import { projectIdOf, routeOf, startFromBody, type JobBody, type JobStartContext } from './job-start.ts'
@@ -24,7 +26,7 @@ import {
   applyOverrideOps, imagineSettingsPath, readImagineOverrides, saveImagineOverrides, workflowConfigKey, type WorkflowMap,
 } from './imagine-settings.ts'
 import { lookSoon } from './imagine-sight.ts'
-import { loadImagineStoreJson, saveImagineStore } from './imagine-store.ts'
+import { adoptJobsInto, loadImagineStoreJson, saveImagineStore } from './imagine-store.ts'
 import { startMusicClip } from './music-clip.ts'
 import type { LoraInGraph } from './lora.ts'
 import { loraRoute } from './custom-workflow-routes.ts'
@@ -65,6 +67,8 @@ export interface ImagineRoutes extends JobStartContext {
   readonly restoreWorkflow: (key: string) => Promise<{ restored: boolean }>
   /** The configuration layers this entry booted with. */
   readonly settings: ImagineSettingsSurface
+  /** The agent's switch, budgets and declarations, when the host wired one. */
+  readonly agent?: AgentSurface
 }
 
 /** One named route: the request, the response and what the routes were handed. */
@@ -345,6 +349,115 @@ const chatRoute: Route = async (req, res, { ctx, inventory, workflows, outputDir
 }
 
 /**
+ * The agent lane: the line read by a model that calls tools, or the classic
+ * reading when the switch (or the model) says no.
+ *
+ * One route for both lanes so the page does not have to know which one is on:
+ * the answer says it, and carries either the runs the agent queued (`jobIds`)
+ * or the intents the classic reading proposed, which the page runs as it
+ * always did. The switch lives in the host's settings and is read per turn, so
+ * saving it applies without a restart.
+ */
+const agentRoute: Route = async (req, res, routes) => {
+  if (!allowOnly(req, res, 'POST')) return
+  let asked = await readObject<AgentChatAsk & { stream?: unknown }>(req, CHAT_BODY_BYTES)
+  asked = { ...asked, language: languageOf(req) }
+  if (typeof asked.text !== 'string' || asked.text.trim().length === 0) {
+    sendJson(res, 400, { error: message('request.textRequired') })
+    return
+  }
+  if (routes.workflows.changeVoice?.voices !== undefined) {
+    asked = { ...asked, voices: routes.workflows.changeVoice.voices }
+  }
+  const project = projectIdOf(asked.projectId)
+  const deps: AgentTurnDeps = {
+    ctx: routes.ctx,
+    request: asked,
+    inventory: routes.inventory,
+    outputDir: routes.outputDir,
+    ...project === undefined ? {} : { projectId: project },
+    eraseTool: asked.eraseTool === true,
+    ...asked.language === undefined ? {} : { language: asked.language },
+    modelClient: routes.ctx.llm as unknown as AgentModelCapable,
+    surface: routes.agent ?? CLASSIC_ONLY,
+    start: async (body) => {
+      const first = await startFromBody(routes, body)
+      return first.batchId === undefined
+        ? [first]
+        : listImagineJobs().filter(seen => seen.batchId === first.batchId)
+    },
+    jobView: job => jobWithProgress(routes.ctx, job),
+    listJobs: () => listImagineJobs(),
+    getJob: id => getImagineJob(id),
+    adoptFiles: async (names) => {
+      if (project !== undefined) await adoptJobsInto([project], names)
+    },
+    say: () => undefined,
+  }
+  if (asked.stream === true) {
+    await streamAgentChat(res, deps)
+    return
+  }
+  sendJson(res, 200, await readAgentChat(deps))
+}
+
+/** The lane a host without an agent surface gets: the classic one, always. */
+const CLASSIC_ONLY: AgentSurface = {
+  mode: () => 'off',
+  limits: () => AGENT_LIMITS_DEFAULT,
+  capabilities: async () => ({}),
+}
+
+/**
+ * The agent's answer as server-sent events, like the classic reading: a step
+ * per frame as it happens, then one `done` frame with the whole answer.
+ * @param res - the open response; this function ends it.
+ * @param deps - the turn.
+ * @returns nothing; a failure of the plumbing is sent as an answer, not as a
+ *   status code, because the page is already reading a stream.
+ */
+async function streamAgentChat(res: ServerResponse, deps: AgentTurnDeps): Promise<void> {
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-store',
+    connection: 'keep-alive',
+    'x-accel-buffering': 'no',
+  })
+  const send = (frame: unknown): void => {
+    if (!res.writableEnded) res.write(`data: ${JSON.stringify(frame)}\n\n`)
+  }
+  const stopped = new AbortController()
+  res.on('close', () => { if (!res.writableEnded) stopped.abort() })
+  const beat = setInterval(() => { if (!res.writableEnded) res.write(': keep-alive\n\n') }, CHAT_KEEPALIVE_MS)
+  beat.unref()
+  const turn: AgentTurnDeps = {
+    ...deps,
+    say: event => { send(event) },
+    // The stop button aborts the model call and the wait, never the queued runs.
+    signal: stopped.signal,
+  }
+  try {
+    send({ kind: 'done', answer: await readAgentChat(turn) })
+  } catch (error: unknown) {
+    send({
+      kind: 'done',
+      answer: {
+        mode: 'classic',
+        reply: error instanceof Error ? error.message : message('chat.readFailed'),
+        jobIds: [],
+        files: [],
+        intents: [],
+        read: false,
+        failed: true,
+      } satisfies AgentChatAnswer,
+    })
+  } finally {
+    clearInterval(beat)
+  }
+  res.end()
+}
+
+/**
  * The catalog of the home page's ready-made models, for the callers that only
  * speak HTTP.
  *
@@ -498,6 +611,7 @@ const ROUTES: Readonly<Record<string, Route>> = {
   sight: sightRoute,
   title: titleRoute,
   chat: chatRoute,
+  agent: agentRoute,
   templates: templatesRoute,
   template: templateRoute,
 }

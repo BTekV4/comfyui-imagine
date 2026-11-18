@@ -6,6 +6,7 @@
  * Types only, read by both sides (until 2026-10-25 the page kept its own copy).
  */
 
+import type { AgentChatMode } from './agent-chat.ts'
 import type { ModelEntry, ModelRoute } from './imagine-types.ts'
 
 /**
@@ -64,6 +65,20 @@ export interface HostSettingsValues {
    * (comfyui-imagine's setup). Off: the chat asks once per request.
    */
   readonly autoSetup: boolean
+  /**
+   * Which lane reads a written line: the agent when the model calls tools
+   * (`auto`), the classic one-call reading (`off`), or the agent whatever the
+   * model declares (`on`). See `docs/agent-chat.md`.
+   */
+  readonly agentChat: AgentChatMode
+  /**
+   * The agent's ceilings: model calls, runs a turn may queue, the wait for a
+   * run, and the turn itself. A normal user never has to touch them.
+   */
+  readonly agentMaxSteps: number
+  readonly agentMaxJobs: number
+  readonly agentWaitSeconds: number
+  readonly agentTurnSeconds: number
 }
 
 /** What the page is shown: the key is never sent back, only whether it is set. */

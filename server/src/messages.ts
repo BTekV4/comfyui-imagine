@@ -218,6 +218,18 @@ export const MESSAGES = {
   'lora.notChanged': { it: 'LoRA non modificata', en: 'the LoRA was not changed' },
   'route.notFound': { it: 'rotta sconosciuta', en: 'unknown route' },
   'chat.readFailed': { it: 'La lettura non è riuscita.', en: 'the reading did not work.' },
+  'chat.agentEmpty': {
+    it: 'Non ho completato il lavoro: il modello non ha scritto una risposta. Dimmi di nuovo cosa vuoi, o riprova.',
+    en: 'I did not finish the work: the model wrote no reply. Tell me again what you want, or try once more.',
+  },
+  'chat.agentFailed': {
+    it: 'Il lavoro si è interrotto prima della risposta. I risultati che vedi qui sotto sono quelli che erano già partiti.',
+    en: 'The work stopped before the reply. The results below are the ones that had already started.',
+  },
+  'chat.agentStillRunning': {
+    it: 'Sta ancora girando: il risultato comparirà qui appena è pronto.',
+    en: 'It is still running: the result will appear here as soon as it is ready.',
+  },
   'chat.modelSilent': {
     it: 'Non sono riuscito a leggere la frase: il modello non ha risposto, o ha risposto qualcosa che non so leggere. Non ho generato niente. Riprova, o dimmi in breve cosa vuoi.',
     en: 'I could not read the sentence: the model did not answer, or it answered something I cannot read. Nothing was generated. Try again, or tell me briefly what you want.',

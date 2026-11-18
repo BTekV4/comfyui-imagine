@@ -131,6 +131,11 @@ test('the field is saved and read back, and a value that is not a tier means the
     requireLogin: false,
     hfToken: '',
     autoSetup: false,
+    agentChat: 'auto' as const,
+    agentMaxSteps: 8,
+    agentMaxJobs: 6,
+    agentWaitSeconds: 300,
+    agentTurnSeconds: 900,
   }
   const settings = await createHostSettings({ file, passwordFile: join(root, 'password'), base, envKey: undefined })
   assert.equal(settings.current().thinking, 'low')

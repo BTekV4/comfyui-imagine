@@ -1199,6 +1199,11 @@ interface ApplyOptions {
    * is reported as missing.
    */
   readonly exampleWorkflows?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
+  /**
+   * The agent chat's switch, budgets and model declarations. Absent, the chat
+   * stays on the classic lane.
+   */
+  readonly agent?: import('./agent-loop.ts').AgentSurface
 }
 
 /**
@@ -1347,6 +1352,7 @@ export function apply(ctx: ImagineHost, config: Config, host: ApplyOptions = {})
       ctx, inventory, applyWorkflow: applyKeyed, addLora, removeLora: removeLoraOf, lorasOf, tuneLora,
       restoreWorkflow: async key => ({ restored: (await restoreDefault(key)).restored }),
       workflows: imagineWorkflows, outputDir, settings: settingsSurface, speak: config.tts,
+      ...host.agent === undefined ? {} : { agent: host.agent },
     }),
   })
 

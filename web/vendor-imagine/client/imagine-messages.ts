@@ -216,6 +216,15 @@ export function thoughtOf(event: ImagineChatEvent): ImagineThought | undefined {
     case 'writing': return step(translate('imagine.thoughtWriting'))
     case 'workflow': return step(translate('imagine.thoughtWorkflow', { name: event.detail ?? '' }))
     case 'fallback': return step(translate('imagine.thoughtFallback'), true)
+    /*
+     * The agent's steps. The tool line keeps its text after the turn: it is
+     * the prompt actually sent, which is how a rewrite by the model is seen
+     * rather than discovered in the result.
+     */
+    case 'tool': return step(translate('imagine.thoughtTool', { name: event.name ?? '', detail: event.detail ?? '' }), true)
+    case 'queued': return step(translate('imagine.thoughtQueued', { action: event.detail ?? '' }))
+    case 'waiting': return step(translate('imagine.thoughtWaiting', { percent: event.percent === undefined ? '…' : `${String(event.percent)}%` }))
+    case 'looked': return step(translate('imagine.thoughtLooked', { file: event.detail ?? '' }))
     default: return undefined
   }
 }

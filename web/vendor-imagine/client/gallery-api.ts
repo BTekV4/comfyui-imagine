@@ -14,6 +14,7 @@ import type {
 import type {
   ImagineChatAsk, ImagineChatEvent, ImagineChatReply, WorkflowDiff, WorkflowPlan, WorkflowValueChange,
 } from '../../../shared/imagine-chat.ts'
+import type { AgentChatAnswer, AgentChatAsk } from '../../../shared/agent-chat.ts'
 import type { CanvasRect, ImagineProject, ImagineRemovals } from '../../../shared/imagine-projects.ts'
 import type { SocialComment, SocialCommentPass, SocialPost, SocialPostKind, SocialStory } from '../../../shared/social-types.ts'
 
@@ -253,11 +254,52 @@ async function readChatStream(
   response: Response,
   watch: (event: ImagineChatEvent) => void,
 ): Promise<ImagineChatReply> {
-  if (!response.ok || response.body === null) return await readJson<ImagineChatReply>(response, 'chat')
+  return await readEventStream<ImagineChatReply>(response, watch)
+}
+
+/**
+ * Read one written line through the agent lane (POST /comfy-imagine/agent).
+ *
+ * The server decides which lane reads the line — the agent when the switch and
+ * the model allow it, the classic reading otherwise — and the answer says
+ * which one did. The classic lane's intents travel as they always did, so the
+ * page runs them itself; the agent lane has already queued its runs and names
+ * them in `jobIds`.
+ * @param asked - the line, the project, the files and the model.
+ * @param signal - aborts a turn the user gave up on.
+ * @param watch - told about each step (and the reasoning) as it happens.
+ * @returns what the studio did, in the lane that did it.
+ */
+export async function readAgentChat(
+  asked: AgentChatAsk,
+  signal?: AbortSignal,
+  watch?: (event: ImagineChatEvent) => void,
+): Promise<AgentChatAnswer> {
+  const streaming = watch !== undefined
+  const response = await request('/comfy-imagine/agent', 'POST', streaming ? { ...asked, stream: true } : asked,
+    signal === undefined ? {} : { signal })
+  if (!streaming) return await readJson<AgentChatAnswer>(response, 'chat')
+  return await readEventStream<AgentChatAnswer>(response, watch)
+}
+
+/**
+ * Read the event stream a reading or an agent turn produces, up to its
+ * finished answer. The two answers have different shapes, the frames do not:
+ * a `done` frame carries whichever the caller asked for.
+ * @param response - the open `text/event-stream` response.
+ * @param watch - told about each step as it happens.
+ * @returns the finished answer.
+ * @throws {Error} when the stream ends without one.
+ */
+async function readEventStream<T>(
+  response: Response,
+  watch: (event: ImagineChatEvent) => void,
+): Promise<T> {
+  if (!response.ok || response.body === null) return await readJson<T>(response, 'chat')
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
-  let answer: ImagineChatReply | undefined
+  let answer: T | undefined
   /** One `data:` frame: a step for the caller, or the answer to return. */
   const take = (frame: string): void => {
     const payload = frame.split('\n')
@@ -265,7 +307,7 @@ async function readChatStream(
       .map(line => line.slice('data:'.length).trim())
       .join('')
     if (payload.length === 0) return
-    let event: { kind?: string; answer?: ImagineChatReply }
+    let event: { kind?: string; answer?: T }
     try {
       event = JSON.parse(payload) as typeof event
     } catch {
