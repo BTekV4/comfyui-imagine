@@ -47,7 +47,7 @@ const PIN = { kind: 'object', members: { nodeId: TEXT, field: TEXT } } as const 
 /** The fields every workflow entry accepts. */
 export const BASE_FIELDS: Readonly<Record<string, FieldSpec>> = {
   ...Object.fromEntries([
-    'path', 'pathHigh', 'promptNodeId', 'promptField', 'seedNodeId', 'seedField', 'imageNodeId', 'imageField',
+    'path', 'pathHigh', 'description', 'promptNodeId', 'promptField', 'seedNodeId', 'seedField', 'imageNodeId', 'imageField',
     'lastImageNodeId', 'lastFrameNodeId', 'refImageNodeId', 'refEncodeNodeId', 'videoNodeId', 'videoField', 'audioNodeId', 'audioField',
     'sizeNodeId', 'upscaleNodeId', 'outputExt',
   ].map(name => [name, TEXT])),

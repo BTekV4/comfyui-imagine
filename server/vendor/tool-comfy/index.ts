@@ -37,7 +37,8 @@ import { GUIDE_FRAMES } from './extend-video.ts'
 import { FPS } from './media-tools.ts'
 import { loadImagineOverrides, mergeWorkflowMaps } from './imagine-settings.ts'
 import { loadPersona, setPersona } from './persona.ts'
-import { customGraphFile, customKey, loadCustomWorkflow, loadCustomWorkflowsSync } from './custom-workflows.ts'
+import { customGraphFile, customKey, listCustomWorkflowsSync, loadCustomWorkflow, loadCustomWorkflowsSync } from './custom-workflows.ts'
+import type { CustomWorkflowMeta } from '../../../shared/custom-workflows.ts'
 import { imagineHandler, type ImagineSettingsSurface } from './imagine-routes.ts'
 import { parseSize } from './snap-size.ts'
 import { applyHighInputs, type HighInput } from './high-inputs.ts'
@@ -93,8 +94,16 @@ interface ComfyRealismInput extends ComfyExtraInput {
 
 /** One workflow's file and optional node/field pins. */
 export interface WorkflowConfig {
-  /** Absolute path of the API-format workflow JSON. */
+  /** Absolute path of the API-format workflow JSON, or `custom:<id>` for a card. */
   path: string
+  /**
+   * When to use this workflow, in one short line.
+   *
+   * The label says what the graph is; this says what it is for. The settings
+   * page shows it, and the written lane is given it: a reading choosing a
+   * graph from a list of titles picks by name, which is not the same thing.
+   */
+  description?: string
   /**
    * The graph of the «Quality: High» recipe, with the same pins as `path`.
    * When present, Veloce and Qualita pick the graph instead of raising the steps.
@@ -1256,9 +1265,17 @@ export function apply(ctx: ImagineHost, config: Config, host: ApplyOptions = {})
       if (file !== undefined && loaded !== undefined) yield { file, loaded: loaded as LoadedWorkflow }
     }
   }, overlay)
+  /*
+   * The cards the written lane may run as `action: custom`, read from disk at
+   * each turn so one uploaded while the studio is open is offered without a
+   * restart. Only the ones whose graph loaded: a folder with a broken
+   * `graph.json` is not something a sentence can run.
+   */
+  const cardsOf = (): readonly CustomWorkflowMeta[] => listCustomWorkflowsSync()
+    .filter(meta => (imagineWorkflows as Record<string, unknown>)[customKey(meta.id)] !== undefined)
   const {
     inventory, applyKeyed, addLora, removeLora: removeLoraOf, lorasOf, tuneLora, restoreDefault,
-  } = workflowInventory(ctx, rows, editor, overlay)
+  } = workflowInventory(ctx, rows, editor, overlay, cardsOf)
   /*
    * What the settings page reads of the layers this entry booted with. The
    * composed values come from `config.yaml`, the applied ones from the settings

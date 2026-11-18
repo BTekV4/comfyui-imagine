@@ -220,6 +220,18 @@ export const MESSAGES = {
     it: 'Non sono riuscito a leggere la frase. Riprova, o dimmi cosa generare.',
     en: 'I could not read the sentence. Try again, or tell me what to generate.',
   },
+  'chat.realDuration': {
+    it: 'Durata reale: {seconds} s (la scala dello studio).',
+    en: 'Real length: {seconds} s (the studio’s ladder).',
+  },
+  'chat.notConfigured': {
+    it: '«{action}» non è configurato in questa installazione: niente da mettere in coda.',
+    en: '“{action}” is not configured in this installation: there is nothing to queue.',
+  },
+  'chat.cardNotConfigured': {
+    it: 'il workflow personale {id} non c’è (o il suo grafo non si carica): niente da mettere in coda.',
+    en: 'the personal workflow {id} is not there (or its graph does not load): there is nothing to queue.',
+  },
   'chat.workflowUnreadable': {
     it: 'Non sono riuscito a leggere {label}. Riprova a dirmelo.',
     en: 'I could not read {label}. Try telling me again.',
@@ -251,6 +263,14 @@ export const MESSAGES = {
   'workflow.nodeNoField': { it: 'il nodo {node} ({class}) non ha un campo {field}', en: 'node {node} ({class}) has no field {field}' },
   'workflow.fieldIsLink': { it: '{path} è un collegamento fra nodi, non un valore', en: '{path} is a link between nodes, not a value' },
   'workflow.fieldType': { it: '{path} vuole un {wanted}, non un {given}', en: '{path} wants a {wanted}, not a {given}' },
+  'workflow.valueNotListed': {
+    it: 'il valore «{value}» non è fra quelli che {path} accetta: {values}',
+    en: 'the value “{value}” is not one {path} accepts: {values}',
+  },
+  'workflow.valueRange': {
+    it: '{path} accetta da {min} a {max}: {value} è fuori',
+    en: '{path} accepts {min} to {max}: {value} is outside',
+  },
   'workflow.danglingPin': { it: "il pin {pin} punta al nodo {node}, che non c'è", en: 'the pin {pin} points at node {node}, which is not there' },
   'cover.none': { it: 'nessuna copertina', en: 'no cover' },
   'crop.tooLarge': { it: 'Ritaglio troppo grande: il massimo è {max} MB. Ritaglia una porzione più piccola.', en: 'the crop is too large: the maximum is {max} MB. Crop a smaller area.' },

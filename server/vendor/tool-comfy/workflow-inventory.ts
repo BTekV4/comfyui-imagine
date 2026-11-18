@@ -14,13 +14,16 @@ import { message } from '../../src/messages.ts'
 import type { ComfyGraph } from '../comfyui/index.ts'
 import { isPlainObject } from './guards.ts'
 import { isComfyLink } from './high-inputs.ts'
-import type { WorkflowInventory } from './imagine-chat.ts'
+import { isCustomPath } from './custom-workflows.ts'
+import type { WorkflowCard, WorkflowInventory, WorkflowSummary } from './imagine-chat.ts'
 import type { LoadedWorkflow } from './index.ts'
 import { insertLora, listLoras, removeLora, setLoraStrength, type LoraInGraph, type LoraRequest } from './lora.ts'
 import {
   editWorkflowFile, listWorkflowFields, patchWorkflow, planWorkflowPatch, replaceGraphInPlace, stalePins,
   summariseWorkflow, type WorkflowChange,
 } from './workflow-edit.ts'
+import type { WorkflowField, WorkflowFieldFact } from '../../../shared/imagine-chat.ts'
+import type { CustomWorkflowMeta } from '../../../shared/custom-workflows.ts'
 import { readGraphFile, workflowFile, type GraphHolder, type LoadedRow } from './workflow-load.ts'
 import { writableOverlay, type WorkflowOverlay } from './workflow-overlay.ts'
 
@@ -142,6 +145,30 @@ export function graphEditor(holders: () => Iterable<GraphHolder>, overlay: Workf
 /** A LoRA edit's answer: the backup and the LoRAs the graph now carries. */
 type LoraEdit = Promise<{ backup: string; loras: readonly LoraInGraph[] }>
 
+/** The personal card a configured entry points at, by its `custom:<id>` path. */
+function cardOfPath(path: string, cards: readonly CustomWorkflowMeta[]): CustomWorkflowMeta | undefined {
+  if (!isCustomPath(path)) return undefined
+  const id = path.slice('custom:'.length)
+  return cards.find(card => card.id === id)
+}
+
+/**
+ * When to use one workflow: the card's own description for a personal graph,
+ * the configured entry's for a shipped one.
+ *
+ * The graphs are the deployment's own files and nothing in them says what they
+ * are for; the reading that has to choose one was told only a title.
+ */
+function descriptionOf(entry: { readonly card: CustomWorkflowMeta | undefined; readonly loaded: LoadedWorkflow }): string | undefined {
+  const description = entry.card?.description ?? entry.loaded.description
+  return description === undefined || description.trim().length === 0 ? undefined : description.trim()
+}
+
+/** The facts by `${node}.${field}`, as a plan looks them up. */
+function factsMap(facts: readonly WorkflowFieldFact[]): ReadonlyMap<string, WorkflowFieldFact> {
+  return new Map(facts.map(fact => [`${fact.node}.${fact.field}`, fact]))
+}
+
 /**
  * The workflows the studio may talk about, and how a confirmed change reaches
  * one: one entry per configured graph, carrying the file it came from and the
@@ -160,6 +187,7 @@ export function workflowInventory(
   rows: readonly LoadedRow[],
   editor: GraphEditor,
   overlay: WorkflowOverlay = writableOverlay,
+  cards: () => readonly CustomWorkflowMeta[] = () => [],
 ): {
   readonly inventory: WorkflowInventory
   readonly applyKeyed: (key: string, changes: readonly WorkflowChange[]) => Promise<{ backup: string; applied: number }>
@@ -179,16 +207,60 @@ export function workflowInventory(
   const editable: {
     key: string
     label: string
+    /** The name the job runner knows its graph by. */
+    run: string
     path: string
     /** The file the graph is read from and written to (`custom:` resolved). */
     file: string
     loaded: LoadedWorkflow
     pins: Record<string, string | undefined>
-  }[] = rows.flatMap(row => row.key === undefined || row.label === undefined
-    || row.path === undefined || row.loaded === undefined
-    ? []
-    : [{ key: row.key, label: row.label, path: row.path, file: workflowFile(row.path), loaded: row.loaded, pins: pinsOf(row.loaded) }])
+    /** The personal card behind this entry, when it points at one. */
+    card: CustomWorkflowMeta | undefined
+  }[] = (() => {
+    // The cards are read once for the whole list: one directory read per row
+    // was two dozen reads of the same folder at boot.
+    const cardList = cards()
+    return rows.flatMap(row => row.key === undefined || row.label === undefined
+      || row.path === undefined || row.loaded === undefined
+      ? []
+      : [{
+        key: row.key, label: row.label, run: row.run, path: row.path, file: workflowFile(row.path),
+        loaded: row.loaded, pins: pinsOf(row.loaded), card: cardOfPath(row.path, cardList),
+      }])
+  })()
   const workflowOfKey = (key: string) => editable.find(entry => entry.key === key)
+  /**
+   * What one node input accepts, read from ComfyUI.
+   *
+   * One read per node class, because `/object_info` answers per class and the
+   * client keeps the class for a few seconds: a graph with forty inputs has a
+   * dozen classes. A class ComfyUI cannot describe leaves no facts for its
+   * fields, and a change is then checked on the graph alone.
+   */
+  const factsOf = async (entry: (typeof editable)[number], signal?: AbortSignal): Promise<readonly WorkflowFieldFact[]> => {
+    const facts: WorkflowFieldFact[] = []
+    // Grouped by node class: `/object_info` answers per class, so one question
+    // covers every field of that class. A class that does not answer is not
+    // asked again field by field: ComfyUI is down, and thirty timeouts would
+    // hold the sentence for nothing.
+    const byClass = new Map<string, WorkflowField[]>()
+    for (const field of listWorkflowFields(entry.loaded.graph)) {
+      byClass.set(field.classType, [...byClass.get(field.classType) ?? [], field])
+    }
+    for (const [classType, fields] of byClass) {
+      for (const field of fields) {
+        let spec: Awaited<ReturnType<typeof ctx.comfy.inputSpec>>
+        try {
+          spec = await ctx.comfy.inputSpec(classType, field.field, signal)
+        } catch {
+          // This class is not answering: its inputs are checked on the graph alone.
+          break
+        }
+        if (spec !== undefined) facts.push({ node: field.node, field: field.field, ...spec })
+      }
+    }
+    return facts
+  }
   const entryOf = (key: string) => {
     const entry = workflowOfKey(key)
     if (entry === undefined) throw new Error(message('workflow.notConfigured', { key }))
@@ -206,7 +278,9 @@ export function workflowInventory(
     changes: readonly WorkflowChange[],
   ): Promise<{ backup: string; applied: number }> => {
     const entry = entryOf(key)
-    const planned = planWorkflowPatch(entry.loaded.graph, changes)
+    // The facts are read again here, like the plan: the endpoint is what
+    // writes, and it cannot trust the copy a page sent back.
+    const planned = planWorkflowPatch(entry.loaded.graph, changes, factsMap(await factsOf(entry)))
     if (planned.diff.length === 0) {
       throw new Error(planned.errors[0] ?? message('change.nothing'))
     }
@@ -244,7 +318,25 @@ export function workflowInventory(
     return entry === undefined ? undefined : listLoras(entry.loaded.graph)
   }
   const inventory: WorkflowInventory = {
-    list: editable.map(entry => ({ key: entry.key, label: entry.label, file: basename(entry.path) })),
+    list: editable.map((entry): WorkflowSummary => ({
+      key: entry.key,
+      label: entry.label,
+      // A card says who it is by its title: `custom:<id>` names nothing, and
+      // the id was shown to the reading as if it were a file name.
+      file: entry.card?.title ?? basename(entry.path),
+      ...entry.card === undefined ? {} : {
+        card: { id: entry.card.id, title: entry.card.title, description: entry.card.description },
+      },
+      ...descriptionOf(entry) === undefined ? {} : { description: descriptionOf(entry) },
+      run: entry.run,
+    })),
+    get cards() {
+      // Read per turn: a card uploaded while the studio is open is runnable
+      // from the chat without a restart.
+      return cards().map((card): WorkflowCard => ({
+        id: card.id, title: card.title, description: card.description, inputs: card.inputs,
+      }))
+    },
     summarise: (key) => {
       const entry = workflowOfKey(key)
       return entry === undefined ? undefined : summariseWorkflow(entry.loaded.graph)
@@ -258,14 +350,18 @@ export function workflowInventory(
       return entry === undefined ? undefined : stalePins(entry.loaded.graph, entry.pins)
     },
     overridden: overriddenOf,
+    facts: async (key, signal) => {
+      const entry = workflowOfKey(key)
+      return entry === undefined ? undefined : await factsOf(entry, signal)
+    },
     options: async (key, node, field) => {
       const classType = workflowOfKey(key)?.loaded.graph[node]?.class_type
       return classType === undefined ? undefined : await ctx.comfy.nodeOptions(classType, field)
     },
-    plan: (key, changes) => {
+    plan: (key, changes, facts) => {
       const entry = workflowOfKey(key)
       if (entry === undefined) return undefined
-      const planned = planWorkflowPatch(entry.loaded.graph, changes)
+      const planned = planWorkflowPatch(entry.loaded.graph, changes, factsMap(facts ?? []))
       return {
         file: basename(entry.path),
         diff: planned.diff,

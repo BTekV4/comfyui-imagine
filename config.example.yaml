@@ -93,6 +93,7 @@ toolComfy:
     # sampler step count used for "Quality: high" (the graph is saved at 8).
     generateImage:
       path: ./workflows/comfyui_generazione_krea2_API.json
+      description: "When to use it: draw a new photo from a sentence."
       outputExt: png
       promptNodeId: "73"
       seedNodeId: "53"
@@ -106,6 +107,7 @@ toolComfy:
     # description. Any text-to-image graph works; here the same Krea 2 graph.
     recreateFrame:
       path: ./workflows/comfyui_generazione_krea2_API.json
+      description: "When to use it: the opening frame a “recreate video” redraws before it shoots the scene again."
       outputExt: png
       promptNodeId: "73"
       seedNodeId: "53"
@@ -118,6 +120,7 @@ toolComfy:
     # Image to image (the "remix" action): an anchored Krea 2 edit.
     editImage:
       path: ./workflows/comfyui_edit_krea2_API.json
+      description: "When to use it: change a photo from an instruction; the whole picture is redrawn."
       # The «+» reference photo: a second image Krea 2 reads; without one these two nodes are taken out.
       refImageNodeId: "77"
       refEncodeNodeId: "78"
@@ -132,6 +135,7 @@ toolComfy:
     # `lastImageNodeId` node, and pixels outside it stay the source's own.
     editImageRegion:
       path: ./workflows/comfyui_edit_krea2_region_API.json
+      description: "When to use it: change only a marked zone of a photo and leave the rest untouched."
       # The «+» reference photo: a second image Krea 2 reads; without one these two nodes are taken out.
       refImageNodeId: "77"
       refEncodeNodeId: "78"
@@ -149,6 +153,7 @@ toolComfy:
     # reference (outfit, setting), into one. The prompt node is the encoder.
     composeRefs:
       path: ./workflows/qwen_compose_refs_API.json
+      description: "When to use it: put a person or an object into another photo’s outfit, pose or setting."
       outputExt: png
       promptNodeId: "6"
       imageNodeId: "4"
@@ -158,6 +163,7 @@ toolComfy:
     # The graph derives its canvas from the photo, so there is no sizeNodeId.
     relight:
       path: ./workflows/comfyui_edit_flux3_relight_API.json
+      description: "When to use it: light a photo with one of the studio’s light looks."
       outputExt: png
       promptNodeId: "500"
       promptField: text
@@ -168,6 +174,7 @@ toolComfy:
     # Image upscale (SeedVR2, 4K).
     upscaleImage:
       path: ./workflows/SeedVR2_4K_image_upscale.json
+      description: "When to use it: raise a still to a larger size without redrawing it."
       outputExt: png
       imageNodeId: "16"
       seedNodeId: "10"
@@ -175,6 +182,7 @@ toolComfy:
     # Background removal (BiRefNet), the "bg" action.
     removeBackground:
       path: ./workflows/utility_birefnet_remove_background.json
+      description: "When to use it: cut a subject out of a photo."
       outputExt: png
       imageNodeId: "22"
 
@@ -194,6 +202,7 @@ toolComfy:
     # the studio unlinks it.
     createVideo:
       path: ./workflows/comfyui_video_i2v_pika_API.json
+      description: "When to use it: animate one photo as a single take of a few seconds."
       highInputs:
         - { nodeId: "pika:lora", field: lora_name, value: pika_h3_flex_fl2va_v1_bf16.safetensors }
         - { nodeId: "105:17", field: sampler_name, value: lcm }
@@ -228,6 +237,7 @@ toolComfy:
     # and LoRAs as the Pika fast graph.
     createVideoChain:
       path: ./workflows/comfyui_video_i2v_chain_API.json
+      description: "When to use it: animate one photo past six seconds, scene after scene."
       outputExt: mp4
       imageNodeId: "27"
       promptNodeId: ip
@@ -251,6 +261,7 @@ toolComfy:
     # recreate uses createVideo; here it is the same graph, spelt out.
     recreateVideo:
       path: ./workflows/comfyui_video_i2v_pika_API.json
+      description: "When to use it: shoot an existing clip again from a redrawn first frame."
       highInputs:
         - { nodeId: "pika:lora", field: lora_name, value: pika_h3_flex_fl2va_v1_bf16.safetensors }
         - { nodeId: "105:17", field: sampler_name, value: lcm }
@@ -282,6 +293,7 @@ toolComfy:
     # reference, not a pinned first frame.
     loopVideo:
       path: ./workflows/comfyui_video_loop_pika_API.json
+      description: "When to use it: make a short seamless animated background from one photo."
       highInputs:
         - { nodeId: "pika:lora", field: lora_name, value: pika_h3_flex_ref2va_v1_bf16.safetensors }
         - { nodeId: "105:17", field: sampler_name, value: lcm }
@@ -309,6 +321,7 @@ toolComfy:
     # and the studio then dissolves the tail over the head like the old chain.
     loopVideoChain:
       path: ./workflows/comfyui_video_loop_chain_API.json
+      description: "When to use it: the same background past six seconds, joined into a loop."
       outputExt: mp4
       imageNodeId: "27"
       promptNodeId: ip
@@ -332,6 +345,7 @@ toolComfy:
     # goes into the video node.
     extendVideo:
       path: ./workflows/comfyui_video_extend_pika_API.json
+      description: "When to use it: continue an existing clip for a few seconds."
       highInputs:
         - { nodeId: "pika:lora", field: lora_name, value: pika_h3_flex_fl2va_v1_bf16.safetensors }
         - { nodeId: "1682:135", field: sampler_name, value: lcm }
@@ -364,6 +378,7 @@ toolComfy:
     # scene is at most 6 s and continues the one before, with a checkpoint each.
     extendVideoChain:
       path: ./workflows/comfyui_video_extend_chain_API.json
+      description: "When to use it: continue an existing clip past six seconds."
       outputExt: mp4
       videoNodeId: src
       videoField: file
@@ -391,6 +406,7 @@ toolComfy:
     # follow the song; it needs a probe script of your own, so it is left out.
     videoOnSong:
       path: ./workflows/comfyui_video_song_pika_API.json
+      description: "When to use it: sing a track it is given, for a video cut to a song."
       highInputs:
         - { nodeId: "pika:lora", field: lora_name, value: pika_h3_flex_ref2va_v1_bf16.safetensors }
         - { nodeId: "1682:135", field: sampler_name, value: lcm }
@@ -445,6 +461,7 @@ toolComfy:
     # Mode "change": the tracked object is replaced (optionally from a photo).
     objectSwap:
       path: ./workflows/comfyui_video_object_swap_API.json
+      description: "When to use it: replace an object in a clip with the object of a photo."
       outputExt: mp4
       imageNodeId: "2"
       videoNodeId: "5"
@@ -466,6 +483,7 @@ toolComfy:
     # Mode "remove": the masked area is regenerated as the surrounding scene.
     objectSwapRemove:
       path: ./workflows/comfyui_video_object_swap_remove_API.json
+      description: "When to use it: take an object out of a clip."
       outputExt: mp4
       videoNodeId: "5"
       videoField: video
@@ -487,6 +505,7 @@ toolComfy:
     # and the tracked subject stays. Takes no photo.
     objectSwapBackground:
       path: ./workflows/comfyui_video_object_swap_background_API.json
+      description: "When to use it: replace the setting around the tracked subject of a clip."
       outputExt: mp4
       videoNodeId: "5"
       videoField: video
@@ -508,6 +527,7 @@ toolComfy:
     # user placed, written as JSON keyframes into the placement node.
     objectSwapAdd:
       path: ./workflows/comfyui_video_object_swap_add_API.json
+      description: "When to use it: put a new object into a clip, from a sentence."
       outputExt: mp4
       videoNodeId: "5"
       videoField: video
@@ -529,6 +549,7 @@ toolComfy:
     # when the request carries a photo.
     objectSwapAddPhoto:
       path: ./workflows/comfyui_video_object_swap_add_photo_API.json
+      description: "When to use it: put the object of a photo into a clip."
       outputExt: mp4
       imageNodeId: "2"
       videoNodeId: "5"
@@ -556,6 +577,7 @@ toolComfy:
     # chat lands on `ip`, which the graph does not read.
     swapPerson:
       path: ./workflows/comfyui_video_character_swap_API.json
+      description: "When to use it: put the person of a photo in place of the main person of a clip, with lip-sync."
       outputExt: mp4
       imageNodeId: "2"
       videoNodeId: "5"
@@ -575,6 +597,7 @@ toolComfy:
     # sings. The lip-sync graph above has none of those nodes.
     swapPersonNoLipSync:
       path: ./workflows/comfyui_video_character_swap_nolipsync_API.json
+      description: "When to use it: the same character swap on a clip whose people do not sing or talk."
       outputExt: mp4
       imageNodeId: "2"
       videoNodeId: "5"
@@ -593,6 +616,7 @@ toolComfy:
     # Video upscale (SeedVR2, HD) for clips up to `shortSeconds` long.
     upscaleVideo:
       path: ./workflows/SeedVR2_HD_video_upscale_native.json
+      description: "When to use it: raise a short clip to a larger size in one pass."
       outputExt: mp4
       videoNodeId: "1"
       seedNodeId: "10"
@@ -602,6 +626,7 @@ toolComfy:
     # once per block of frames.
     upscaleVideoLong:
       path: ./workflows/SeedVR2_HD_video_upscale_native_batched.json
+      description: "When to use it: raise a long clip block by block."
       outputExt: mp4
       videoNodeId: "1"
       videoField: video
@@ -613,6 +638,7 @@ toolComfy:
     # format to the sampler; `upscaleNodeId` receives it as mode.width/height.
     regenerateDetail:
       path: ./workflows/comfyui_video_regenerate_detail_API.json
+      description: "When to use it: redraw a clip’s detail at 1.5× without changing the scene."
       outputExt: mp4
       promptNodeId: "10"
       promptField: value
@@ -628,6 +654,7 @@ toolComfy:
     # Text to music (MiniMax Music 3): caption, lyrics and length pins.
     generateMusic:
       path: ./workflows/audio_minimax_music_3.json
+      description: "When to use it: make a song, with or without sung words."
       outputExt: mp3
       promptNodeId: "37:13"
       promptField: caption
@@ -645,6 +672,7 @@ toolComfy:
     # ComfyUI (the list below is a placeholder).
     changeVoice:
       path: ./workflows/audio_voice_rvc_parlato_API.json
+      description: "When to use it: sing or speak an existing track with another voice."
       outputExt: mp3
       audioNodeId: "1"
       audioField: audio
@@ -661,6 +689,7 @@ toolComfy:
     # to (the full mix still goes over the video).
     extractVocals:
       path: ./workflows/audio_vocals_API.json
+      description: "When to use it: separate a track’s vocal from its backing."
       outputExt: mp3
       audioNodeId: "1"
       audioField: audio

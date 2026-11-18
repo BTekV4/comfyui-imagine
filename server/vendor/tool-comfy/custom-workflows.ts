@@ -185,6 +185,34 @@ export function loadCustomWorkflowsSync(): Record<string, LoadedWorkflow> {
 }
 
 /**
+ * Every personal card on disk, read synchronously.
+ *
+ * The written lane offers the cards to a sentence and has to answer in the
+ * same turn, so the async list above cannot be awaited there. One read of a
+ * folder of small JSON files per chat turn is cheaper than the alternative —
+ * a cache nothing invalidates when a card is saved or removed.
+ * @returns the metas of the folders that describe a card.
+ */
+export function listCustomWorkflowsSync(): readonly CustomWorkflowMeta[] {
+  let ids: string[]
+  try {
+    ids = readdirSync(dataPath('custom-workflows'))
+  } catch {
+    return []
+  }
+  const out: CustomWorkflowMeta[] = []
+  for (const id of ids.filter(isCustomId)) {
+    try {
+      const meta = CARD.meta(id, readFileSync(join(customDir(id), 'meta.json'), 'utf8'))
+      if (meta !== undefined) out.push(meta)
+    } catch (error: unknown) {
+      CARD.failed(id, error, 'meta')
+    }
+  }
+  return out
+}
+
+/**
  * The clip-or-photo block of a card's meta, checked field by field.
  *
  * Two slots and one switch: anything else is a meta file that a hand edit or an

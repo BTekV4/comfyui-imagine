@@ -15,7 +15,7 @@ import { aspectFor, upscaleBlocked, type ImagineAspect, type ImagineResolution }
 import type { ImagineProject } from '../../../shared/imagine-projects.ts'
 import {
   type GalleryItem, type ImagineAction, type ImagineJobView as ImagineJob, type ImagineObjectMode,
-  type ImaginePlacement, type ImagineRegion,
+  type ImaginePlacement, type ImagineQuality, type ImagineRegion, type ImagineSpeed,
 } from '../../../shared/imagine-types.ts'
 import type { ComposerStore } from './composer-store.ts'
 import { applyWorkflowChanges, fetchImagineJobs, readImagineChat, runTemplate, startImagineJob } from './gallery-api.ts'
@@ -55,6 +55,10 @@ export interface RunOverride {
   customFiles?: Readonly<Record<string, string>>
   /** Upscale only: the short side the user picked in the upscale menu. */
   upscaleTo?: number
+  /** The «Quality» pill's photo half, when the written line chose it. */
+  quality?: ImagineQuality
+  /** The same pill's clip half (the slower, higher-quality recipe). */
+  speed?: ImagineSpeed
   /** Remix only: the zone "Precise edit" marked on the photo. */
   region?: ImagineRegion
   /** Video only: the photo the clip arrives at. */
@@ -262,10 +266,12 @@ export function useRunner(ctx: RunnerContext) {
      * "Speed" recipe offers fewer ratios than "Quality". What is sent is
      * always a ratio the graph accepts.
      */
+    const liveQuality = over?.quality ?? state.quality
+    const liveSpeed = over?.speed ?? state.speed
     const liveAspect = aspectFor(
       over?.aspect ?? state.aspect,
       traits.ladder,
-      state.quality,
+      liveQuality,
     )
     const liveSeconds = over?.seconds ?? state.seconds
     const written = over?.prompt ?? state.prompt
@@ -430,7 +436,7 @@ export function useRunner(ctx: RunnerContext) {
      * `speed` for the video ones. A workflow without the `steps` pin ignores
      * them.
      */
-    const recipe: JobExtras = { quality: state.quality, speed: state.speed }
+    const recipe: JobExtras = { quality: liveQuality, speed: liveSpeed }
     try {
       /*
        * A clip staged from several stills runs one job per file, each with the
@@ -760,6 +766,12 @@ export function useRunner(ctx: RunnerContext) {
       // not see (the line is written in the column; the composer is not involved).
       objectMode: intent.objectMode,
       light: intent.light,
+      quality: intent.quality,
+      speed: intent.speed,
+      upscaleTo: intent.upscaleTo,
+      region: intent.region,
+      customWorkflowId: intent.customWorkflowId,
+      customFields: intent.customFields,
     }
     return await run(chained ? 'story' : intent.action, undefined, over)
   }

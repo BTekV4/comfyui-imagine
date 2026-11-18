@@ -222,6 +222,16 @@ export const MIN_SHOT_SECONDS = 3
  */
 export const MAX_STORY_SECONDS = 300
 
+/**
+ * The short sides an upscale can reach, per kind of file (2026-11-18).
+ *
+ * The page's menu and the host's validation each carried their own copy of
+ * these two lists; a written line asking for a target had a third place to
+ * learn them, so they live here.
+ */
+export const UPSCALE_IMAGE_STEPS = [1080, 1440, 2160] as const
+export const UPSCALE_VIDEO_STEPS = [720, 1080] as const
+
 /** Short side from which a clip is not upscaled: it is already 1080p. */
 const UPSCALE_VIDEO_SHORT = 1080
 
