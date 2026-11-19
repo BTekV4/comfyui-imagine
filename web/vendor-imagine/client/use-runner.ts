@@ -66,6 +66,13 @@ export interface RunOverride {
   speed?: ImagineSpeed
   /** Remix only: the zone "Precise edit" marked on the photo. */
   region?: ImagineRegion
+  /**
+   * Remix only: the thing the zone was grounded on, when the reading found it.
+   *
+   * Set only with `grounded`: the server cuts the object's own outline with
+   * SAM 3 instead of regenerating the whole rectangle.
+   */
+  target?: string
   /** Video only: the photo the clip arrives at. */
   lastSource?: string
   /** The second photo (object swap, composition), when the caller named one rather than staging it. */
@@ -508,6 +515,7 @@ export function useRunner(ctx: RunnerContext) {
           ...over?.lane === true && over?.aspect !== undefined ? { canvasAsked: true } : {},
           upscaleTo: over?.upscaleTo,
           region: over?.region,
+          target: over?.target,
           lastSource: over?.lastSource,
           mask: over?.mask,
           customWorkflowId: over?.customWorkflowId,
@@ -875,6 +883,9 @@ export function useRunner(ctx: RunnerContext) {
       speed: intent.speed,
       upscaleTo: intent.upscaleTo,
       region: intent.region,
+      // Only a zone the host grounded keeps the name it was found by: a
+      // rectangle the user marked has no object to cut out.
+      target: intent.grounded === true ? intent.target : undefined,
       customWorkflowId: intent.customWorkflowId,
       customFields: intent.customFields,
     }

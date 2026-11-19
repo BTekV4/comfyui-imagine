@@ -477,6 +477,8 @@ export async function startImagineJob(
     upscaleTo?: number
     /** Remix only: the zone "Precise edit" confines the edit to. */
     region?: ImagineRegion
+    /** Remix only: the thing the zone was grounded on, so the server can cut its outline. */
+    target?: string
     /** Video only: the photo the clip arrives at. */
     lastSource?: string
     /** Remix only: a painted zone, as a PNG data URL. */

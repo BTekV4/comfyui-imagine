@@ -102,6 +102,8 @@ export interface JobBody {
   placement?: unknown
   upscaleTo?: number
   region?: unknown
+  /** Remix only: the thing the zone was grounded on, when the reading found it. */
+  target?: string
   lastSource?: string
   mask?: string
   sources?: unknown
@@ -247,7 +249,7 @@ const JOB_FIELDS = {
   lyrics: 'string', voice: 'string', pitch: 'number', count: 'number', candidates: 'number', song: 'string', reference: 'string',
   frame: 'string', upscaleTo: 'number',
   lastSource: 'string', mask: 'string', clipSeconds: 'number', customWorkflowId: 'string',
-  light: 'string',
+  light: 'string', target: 'string',
 } as const
 
 interface FieldTypes { string: string; number: number }

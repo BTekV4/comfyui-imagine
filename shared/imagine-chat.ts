@@ -216,6 +216,16 @@ export interface ImagineChatIntent {
    */
   readonly target?: string
   /**
+   * Whether {@link region} came from grounding {@link target} on the photo.
+   *
+   * True only when the host found the thing by name and drew its zone: the
+   * run may then cut the object's own outline out of the photo (SAM 3) instead
+   * of regenerating the whole rectangle, whose background would be invented.
+   * A rectangle the user marked, or one the reading worked out from words, is
+   * absent here and stays a rectangle.
+   */
+  readonly grounded?: boolean
+  /**
    * Custom only: which uploaded card to run, by id.
    *
    * The card's own controls travel beside it in `customFields`, exactly as the

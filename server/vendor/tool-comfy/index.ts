@@ -31,6 +31,7 @@ import { programDirFrom } from '../../src/boot-env.ts'
 import { list, number, object, oneOf, string, type Check } from '../../src/config-schema.ts'
 import { AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, kindOf, pixelsOfVideoBytes } from './gallery.ts'
 import { resumeUnfinishedStories } from './imagine-jobs.ts'
+import type { RegionEdges } from './region-mask.ts'
 import type { ImagineQuality, ImagineSpeed, MediaKind } from '../../../shared/imagine-types.ts'
 import { h3Frame, selectorFrame } from '../../../shared/imagine-sizing.ts'
 import { GUIDE_FRAMES } from './extend-video.ts'
@@ -461,6 +462,13 @@ export interface RunInputs {
   readonly inputAudio?: MediaBytes | undefined
   /** The frame the shot arrives at, or the zone edit's mask. */
   readonly lastImage?: MediaBytes | undefined
+  /**
+   * A zone edit's proportional grow and blur, for the graph's two grow nodes.
+   *
+   * Written on this run's clone of the graph: one graph serves every zone, and
+   * the 16 px that suits a cup eats a button.
+   */
+  readonly regionEdges?: RegionEdges | undefined
   /** An edit's reference photo (`refImageNodeId`). */
   readonly refImage?: MediaBytes | undefined
   /**
@@ -656,6 +664,34 @@ function enforceH3Frames(graph: ComfyGraph): void {
     }
     node.inputs.width = frame.width
     node.inputs.height = frame.height
+  }
+}
+
+/**
+ * Write the zone's proportional grow and blur on the graph's two mask nodes.
+ *
+ * Found by their wiring, never by node id: the node that grows the mask the
+ * loader gives it works in the photo's pixels, the one that grows the crop's
+ * own mask works in the crop's (the runs differ because the crop is resized to
+ * `target_size`). A graph without the zone's wiring is left as it is.
+ * @param graph - this run's clone.
+ * @param maskNodeId - the loader the zone mask goes into (`lastImageNodeId`).
+ * @param edges - the amounts to write.
+ */
+function applyRegionEdges(graph: ComfyGraph, maskNodeId: string | undefined, edges: RegionEdges): void {
+  if (maskNodeId === undefined) return
+  for (const node of Object.values(graph)) {
+    if (node.class_type !== 'ImagineGrowMask') continue
+    const link = node.inputs['mask']
+    if (!Array.isArray(link) || typeof link[0] !== 'string') continue
+    const source = graph[link[0]]
+    if (link[0] === maskNodeId) {
+      node.inputs['expand'] = edges.photo.expand
+      node.inputs['blur_radius'] = edges.photo.blur
+    } else if (source?.class_type === 'ImagineInpaintCrop') {
+      node.inputs['expand'] = edges.crop.expand
+      node.inputs['blur_radius'] = edges.crop.blur
+    }
   }
 }
 
@@ -937,6 +973,12 @@ function parameterize(
     if (node === undefined) throw new ComfyError(`no node at ${workflow.lastImageNodeId}`, 'COMFY_GRAPH_REJECTED')
     uploads.push({ file: lastImage, kind: 'image', write: (uploaded) => { (node.inputs)[workflow.imageField ?? 'image'] = uploaded } })
   }
+  /*
+   * A zone edit's two grow nodes take the amounts of this mask, not the
+   * fixed 8/16 and 16/24 the file was saved with: those are proportional to
+   * the thing's own size now, and written before the run is submitted.
+   */
+  if (inputs.regionEdges !== undefined) applyRegionEdges(graph, workflow.lastImageNodeId, inputs.regionEdges)
 
   if (refImage !== undefined && workflow.refImageNodeId !== undefined) {
     const node = graph[workflow.refImageNodeId]

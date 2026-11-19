@@ -256,6 +256,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       if (typeof item === 'string') return refused(item)
       const target = str(args['target'])
       let region = regionOf(args['region'])
+      let grounded = false
       if (region === undefined && target !== undefined) {
         const sight = (await recallNotes([item.name])).get(item.name)?.sight ?? sightInMemory(item.name)
         const box = await groundTarget(deps.ctx, deps.outputDir, item.name, {
@@ -266,6 +267,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
           return refused(`could not find "${target}" in ${item.name}: name it in the photo's own words, or pass a region`)
         }
         region = box
+        grounded = true
         deps.say({ kind: 'step', step: 'grounding', detail: target })
       }
       const reference = str(args['reference'])
@@ -280,6 +282,9 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         prompt,
         source: item.name,
         ...region === undefined ? {} : { region },
+        // The name the box was grounded on lets the run cut the object's own
+        // outline instead of regenerating the rectangle's background.
+        ...grounded && target !== undefined ? { target } : {},
         ...reference === undefined ? {} : { reference },
         ...deps.projectId === undefined ? {} : { projectId: deps.projectId },
         ...deps.model === undefined ? {} : { model: deps.model },
