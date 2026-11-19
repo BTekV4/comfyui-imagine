@@ -304,7 +304,7 @@ export interface WorkflowExtras {
   metaBatchNodeId?: string
   /** Lyrics → MiniMax Music `lyrics` input. */
   lyrics?: ComfyExtraInput
-  /** Seconds → MiniMax Music `max_duration` input. */
+  /** Seconds → MiniMax Music `max_duration` input (the run also pins the latent). */
   duration?: ComfyExtraInput
   /** The RVC model to sing with → `LoadRVCModelNode.model`. */
   voice?: ComfyExtraInput
@@ -914,6 +914,17 @@ function parameterize(
     const value = opts[option]
     const target = workflow[pin]
     if (value !== undefined && target !== undefined) setInput(graph, target, value)
+  }
+  /*
+   * MiniMax Music 3's `max_duration` is only a cap: the text encoder returns a
+   * length of its own choosing and the model may end the song earlier (a 30 s
+   * request came back 17.9 s and 21.9 s). The empty latent is what fixes the
+   * audio's length, so a requested length is written there too; a run that
+   * asks for none keeps the graph's own choice.
+   */
+  if (opts.seconds !== undefined && workflow.duration?.field === 'max_duration') {
+    const latent = Object.entries(graph).find(([, node]) => node.class_type === 'EmptyMiniMaxMusic3LatentAudio')
+    if (latent !== undefined) latent[1].inputs.seconds = opts.seconds
   }
   if (workflow.realism !== undefined) {
     // Always written, both ways: the node stays in the graph, so leaving the
