@@ -16,7 +16,9 @@
  * @module tool-comfy/segments
  */
 
+import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { renameWithRetry, rmWithRetry } from '../retry-fs/index.ts'
 import { extname, join } from 'node:path'
 import type { ImagineHost } from '../../src/host.ts'
@@ -191,6 +193,59 @@ async function analyzeSegments(ctx: ImagineHost, outputDir: string, photo: strin
     return index
   } catch (error: unknown) {
     await rmWithRetry(scratch, { recursive: true, force: true }).catch(() => undefined)
+    throw error
+  }
+}
+
+/**
+ * A SAM 3 pass over one photo for one named thing, without the vision step.
+ *
+ * The zone edit already knows what to cut out — the grounding pass found it —
+ * so asking the vision model to list everything again would cost a minute and
+ * a model call for a list nobody reads. The masks and the index land in a
+ * scratch folder the caller removes.
+ * @param ctx - the host: ComfyUI.
+ * @param outputDir - the gallery folder.
+ * @param photo - the photo's basename, already checked.
+ * @param target - the thing to cut, in the words the grounding found it by.
+ * @returns the index and the folder holding its masks.
+ * @throws when ComfyUI is missing the segments node, the photo cannot be read
+ *   or the run answers no index.
+ */
+export async function samRunForTarget(
+  ctx: ImagineHost,
+  outputDir: string,
+  photo: string,
+  target: string,
+): Promise<{ readonly index: ImagineSegmentsIndex; readonly dir: string }> {
+  const path = join(outputDir, photo)
+  const stem = photo.slice(0, photo.length - extname(photo).length).replace(/[^A-Za-z0-9_-]+/g, '-').slice(0, 60)
+  /*
+   * `ImagineSegments` reads one concept per line or comma, and strips the
+   * parentheses and colons its parser uses for the count: a name that came
+   * with a comma ("the cup, white") must not become two concepts.
+   */
+  const concept = target.replace(/[\n,]+/g, ' ').replace(/[():]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200)
+  if (concept.length === 0) throw new Error('the target is empty')
+  await ensureComfyReady(ctx, segmentsGraph('probe.png', 'object', '[]', 'imagine-region/probe'))
+  const upload = await ctx.comfy.uploadImage(`region-${stem}-${stamp()}${extname(photo)}`, await readFile(path))
+  const run = await ctx.comfy.run(segmentsGraph(upload.name, concept, '[]', `imagine-region/${stem}`))
+  const indexRef = run.media.find(ref => ref.filename.endsWith('_index.json'))
+  if (indexRef === undefined) throw new Error(message('segments.noIndex'))
+  const dir = join(tmpdir(), `imagine-sam-${stem}-${stamp()}-${randomUUID().slice(0, 8)}`)
+  await mkdir(dir, { recursive: true })
+  try {
+    const nodeIndex = join(dir, 'node-index.json')
+    await ctx.comfy.fetchMediaTo(indexRef, nodeIndex)
+    const index = parseNodeIndex(await readFile(nodeIndex, 'utf8'), photo)
+    if (index === undefined) throw new Error(message('segments.noIndex'))
+    await rmWithRetry(nodeIndex)
+    const wanted = new Set(index.segments.map(segment => segment.mask))
+    await eachLimited(run.media.filter(ref => wanted.has(ref.filename)), DOWNLOAD_PARALLEL,
+      async (ref) => { await ctx.comfy.fetchMediaTo(ref, join(dir, ref.filename)) })
+    return { index, dir }
+  } catch (error: unknown) {
+    await rmWithRetry(dir, { recursive: true, force: true }).catch(() => undefined)
     throw error
   }
 }

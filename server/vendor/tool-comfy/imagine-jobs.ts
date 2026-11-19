@@ -108,6 +108,7 @@ export async function startImagineJob(
       ...request.canvasAsked === true ? { canvasAsked: true } : {},
       ...action === 'upscale' && request.upscaleTo !== undefined ? { upscaleTo: request.upscaleTo } : {},
       ...plan.region === undefined ? {} : { region: plan.region },
+      ...plan.target === undefined ? {} : { target: plan.target },
       ...plan.painted === undefined ? {} : { painted: true },
       ...plan.lastSource === undefined ? {} : { lastSource: plan.lastSource },
       ...request.lyrics === undefined ? {} : { lyrics: request.lyrics },

@@ -21,6 +21,7 @@ import { FPS, dropScratch, ffmpegTo, frameAt, layPlateAudio, probeMedia, type Me
 import { resolveInputImage, resolveInputVideo, type ResolvedInputVideo } from './input-image.ts'
 import { kindOf, probePixels, safeBasename, upscaleLongFor, upscaleTargetFor } from './gallery.ts'
 import { writeEditPrompt } from './edit-prompt.ts'
+import { writeZoneMask, type RegionEdges } from './region-mask.ts'
 import { isLocalEdit, localEditPrompt } from '../../../shared/imagine-edit.ts'
 import { applyRealismToken, chainSceneSeconds, soundtrackOf, writeH3ChainPrompts, writeH3Prompt } from './video-prompt.ts'
 import { GUIDE_SECONDS, h3Canvas, videoTail } from './extend-video.ts'
@@ -37,7 +38,7 @@ import { writeObjectSwapTexts } from './object-swap-texts.ts'
 import { recreateBrief } from './recreate-video.ts'
 import { recallWrittenPrompt } from './written-prompts.ts'
 import {
-  DEFAULT_OBJECT_PLACEMENT, type ImagineAction, type ImagineRegion, type MediaKind,
+  DEFAULT_OBJECT_PLACEMENT, type ImagineAction, type MediaKind,
 } from '../../../shared/imagine-types.ts'
 import type { ImagineWorkflows } from './workflow-fields.ts'
 import { LIPSYNC_MIN, listeningPrompt, singingPrompt } from './story.ts'
@@ -213,6 +214,13 @@ interface RunInputs {
   readonly inputVideo?: ResolvedInputVideo
   /** The second image slot: a clip's last frame, or a zone edit's mask. */
   readonly lastImage?: { readonly bytes: Uint8Array; readonly name: string }
+  /**
+   * A zone edit's proportional grow and blur, for the graph's two mask nodes.
+   *
+   * Written on the run's clone of the graph, never in the file: the graph is
+   * shared by every job and the next zone may be a different size.
+   */
+  readonly regionEdges?: RegionEdges
   /** An edit's reference photo, for the graph's `refImageNodeId`. */
   readonly refImage?: { readonly bytes: Uint8Array; readonly name: string }
   /** The recreation's opening frame, which it animates. */
@@ -349,20 +357,6 @@ async function audioTrackOf(path: string): Promise<string> {
 }
 
 /**
- * The mask of a zone edit: white inside the rectangle, black elsewhere, at the
- * photo's own size, written as a scratch PNG.
- */
-async function writeRegionMask(region: ImagineRegion, width: number, height: number, path: string): Promise<void> {
-  const left = Math.round(region.x * width)
-  const top = Math.round(region.y * height)
-  const boxW = Math.max(1, Math.round(region.w * width))
-  const boxH = Math.max(1, Math.round(region.h * height))
-  await ffmpegTo(path, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `color=black:s=${String(width)}x${String(height)}`,
-    '-vf', `drawbox=x=${String(left)}:y=${String(top)}:w=${String(boxW)}:h=${String(boxH)}:color=white:t=fill`,
-    '-frames:v', '1', path], 60_000)
-}
-
-/**
  * A painted mask at the photo's own size: the page paints at a reduced size,
  * so it is scaled up here and written as RGB, which the mask loader reads by
  * its red channel.
@@ -451,7 +445,7 @@ async function runImagineJob(
       state.job = { ...state.job, prompt: resolved }
       patchJob(queuedJob.id, { prompt: resolved })
     }
-    const inputs = await readInputs(state, workflow, outputDir, sourceVideo, pixelsOf)
+    const inputs = await readInputs(ctx, state, workflow, outputDir, sourceVideo, pixelsOf)
     await writePrompts(ctx, state, workflow, outputDir, inputs)
     const audio = await readAudio(ctx, state, workflow, workflows, outputDir, inputs.sourceKind, controller.signal)
     await renderAndFinish(ctx, state, workflow, workflows, outputDir, inputs, audio, pixelsOf, controller)
@@ -565,6 +559,7 @@ async function takeTurn(state: RunState): Promise<boolean> {
  * target, the deadline of a run that chains its own clips.
  */
 async function readInputs(
+  ctx: ImagineHost,
   state: RunState,
   workflow: LoadedWorkflow,
   outputDir: string,
@@ -649,6 +644,7 @@ async function readInputs(
     ? undefined
     : ratioOf(imagePixels.width, imagePixels.height)
   let lastImage: RunInputs['lastImage'] = lastSourceImage
+  let regionEdges: RegionEdges | undefined
   if (job.action === 'remix' && (job.region !== undefined || job.painted === true) && job.source !== undefined) {
     const pixels = await pixelsOf(join(outputDir, job.source), 'image')
     if (!('width' in pixels)) throw new Error(message('still.sizeUnreadable'))
@@ -658,7 +654,16 @@ async function readInputs(
       if (bytes === undefined) throw new Error(message('job.maskLostOnRestart'))
       await writePaintedMask(bytes, pixels.width, pixels.height, maskPath)
     } else if (job.region !== undefined) {
-      await writeRegionMask(job.region, pixels.width, pixels.height, maskPath)
+      /*
+       * A grounded zone is the object's own outline, not the rectangle the
+       * vision model drew around it: the graph then redraws the cup and not
+       * the wood under it. The grow and softness of its two mask nodes are
+       * proportional to that outline, written on the run's clone of the graph.
+       * A painted mask keeps exactly the shape and the recipe it was given.
+       */
+      const mask = await writeZoneMask(ctx, workflow, outputDir, job.source, job.region, job.target,
+        pixels.width, pixels.height, maskPath)
+      regionEdges = mask.edges
     }
     state.scratch.push(maskPath)
     lastImage = { bytes: new Uint8Array(await readFile(maskPath)), name: `region-mask-${job.id}.png` }
@@ -734,6 +739,7 @@ async function readInputs(
     ...inputImage === undefined ? {} : { inputImage },
     ...inputVideo === undefined ? {} : { inputVideo },
     ...lastImage === undefined ? {} : { lastImage },
+    ...regionEdges === undefined ? {} : { regionEdges },
     ...refImage === undefined ? {} : { refImage },
     ...drawnFrame === undefined ? {} : { drawnFrame },
     ...imageRatio === undefined ? {} : { imageRatio },
@@ -1386,6 +1392,7 @@ function rendererFor(setup: RenderSetup): Render {
         inputVideo: renderVideo(over?.video),
         inputAudio: audio.bytes === undefined ? undefined : { bytes: audio.bytes, name: audio.name ?? job.source ?? '' },
         lastImage: lastImage === undefined ? undefined : { bytes: lastImage.bytes, name: lastImage.name },
+        ...inputs.regionEdges === undefined ? {} : { regionEdges: inputs.regionEdges },
         refImage: refImage === undefined ? undefined : { bytes: refImage.bytes, name: refImage.name },
         ...inputs.timeoutMs === undefined ? {} : { timeoutMs: inputs.timeoutMs },
         onPrompt: (promptId) => { setJobPromptId(ctx, job.id, promptId) },

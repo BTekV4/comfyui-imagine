@@ -112,6 +112,14 @@ export interface ImagineJob extends ImagineJobFields {
    * rest of the photo comes back as the source's own pixels.
    */
   readonly region?: ImagineRegion
+  /**
+   * The thing a zone edit was grounded on, when the reading found it by name.
+   *
+   * The run cuts that object's outline out of the photo (SAM 3) and grows and
+   * softens it in proportion to its size, so the rectangle's own background is
+   * not regenerated. Absent on a rectangle the user marked, which stays one.
+   */
+  readonly target?: string
   /** A zone edit whose zone was painted: the mask waits in {@link keepPaintedMask}. */
   readonly painted?: boolean
   /** What the tracker looks for in the clip; an `objectSwap` job. */

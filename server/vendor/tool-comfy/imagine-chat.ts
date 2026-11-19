@@ -1669,7 +1669,13 @@ async function groundAnswer(
         continue
       }
       grounded += 1
-      intents.push({ ...intent, region: grownRegion(found, 0.02) })
+      /*
+       * `grounded` marks the zone as the object's own box, not one the user
+       * marked: the run may then cut the object's outline with SAM 3 instead
+       * of regenerating the whole rectangle, whose background it would
+       * invent (the halo the zone edit shows on a textured table).
+       */
+      intents.push({ ...intent, region: grownRegion(found, 0.02), grounded: true })
       continue
     }
     intents.push(intent)

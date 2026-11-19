@@ -38,6 +38,12 @@ export const MAX_JOB_COUNT = 10
 export const MAX_SCAN_CANDIDATES = 20
 
 /**
+ * Longest name a grounded zone may carry: the phrase the vision pass matched
+ * on the photo, not a paragraph someone pasted into the field.
+ */
+const MAX_EDIT_TARGET = 200
+
+/**
  * The box a new object goes into, normalised and checked, or undefined when it
  * is not a box.
  *
@@ -209,6 +215,14 @@ export interface ImagineJobRequest {
   upscaleTo?: number
   /** Remix only: the zone the edit is confined to. */
   region?: ImagineRegion
+  /**
+   * Remix only: the thing the zone was grounded on ("the red handbag").
+   *
+   * The run cuts that object's own outline out of the photo with SAM 3, so
+   * the rectangle's background is not regenerated. Absent on a rectangle the
+   * user marked, which stays a rectangle.
+   */
+  target?: string
   /** Remix only: a painted zone, as a PNG data URL (white = change). */
   mask?: string
   /** Video only: the photo the clip has to arrive at (first and last frame). */
@@ -629,6 +643,8 @@ interface JobPlan {
   /** A recreation's length, measured on its clip. */
   readonly recreateSeconds?: number
   readonly region?: ImagineRegion
+  /** The thing the zone was grounded on, when it was found by name. */
+  readonly target?: string
   readonly painted?: Uint8Array
   readonly lastSource?: string
   readonly workflow: LoadedWorkflow
@@ -720,6 +736,7 @@ export async function readJobRequest(
     ...canvas.size === undefined ? {} : { size: canvas.size },
     ...canvas.recreateSeconds === undefined ? {} : { recreateSeconds: canvas.recreateSeconds },
     ...edit.region === undefined ? {} : { region: edit.region },
+    ...edit.target === undefined ? {} : { target: edit.target },
     ...edit.painted === undefined ? {} : { painted: edit.painted },
     ...edit.lastSource === undefined ? {} : { lastSource: edit.lastSource },
     workflow,
@@ -1014,6 +1031,8 @@ async function canvasOf(
 interface EditInputs {
   readonly lastSource?: string
   readonly region?: ImagineRegion
+  /** The thing the zone was grounded on, when it was found by name. */
+  readonly target?: string
   readonly painted?: Uint8Array
 }
 
@@ -1047,9 +1066,18 @@ function editInputsOf(workflows: WorkflowGraphs, request: ImagineJobRequest): Ed
   if ((region !== undefined || painted !== undefined) && workflows.editRegion === undefined) {
     throw new Error(message('job.preciseEditNotConfigured'))
   }
+  /*
+   * The name only means something with a zone that grounding filled in, and
+   * a painted mask is the user's own shape: neither a whole-photo edit nor a
+   * painted zone is cut out by name.
+   */
+  const named = action === 'remix' && region !== undefined && painted === undefined
+    && typeof request.target === 'string' ? request.target.trim().slice(0, MAX_EDIT_TARGET) : ''
+  const target = named.length > 0 ? named : undefined
   return {
     ...lastSource === undefined ? {} : { lastSource },
     ...region === undefined ? {} : { region },
+    ...target === undefined ? {} : { target },
     ...painted === undefined ? {} : { painted },
   }
 }
