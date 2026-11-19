@@ -20,7 +20,7 @@ import { languageName } from '../../../shared/locale-names.ts'
 export type ReplyLanguage = 'it' | 'en' | 'unknown'
 
 /** Italian function words and the studio's own nouns. */
-const ITALIAN = /\b(il|lo|la|i|gli|le|un|una|uno|di|del|della|dei|delle|che|per|con|non|sono|è|ecco|fatto|fatte|fatti|due|tre|quattro|varianti|versioni|questa|questo|queste|questi|foto|immagine|immagini|tazza|tavolo|luce|colore|sfondo|scuro|più|anche|come|prima|nella|sulla|dal|al|alle|agli|ora|nuova|nuovo|versione|risultato|file|video|secondi|formato|verticale|orizzontale|quadrata|quadrato|e|ma|se|quando|dove|cosa|chi|perché|senza|tra|fra|molto|poco|bene)\b/gi
+const ITALIAN = /\b(il|lo|la|i|gli|le|un|una|uno|di|del|della|dei|delle|che|per|con|non|sono|è|ecco|fatto|fatte|fatti|due|tre|quattro|varianti|versioni|questa|questo|queste|questi|foto|immagine|immagini|tazza|tavolo|luce|colore|sfondo|scuro|scura|scure|scuri|più|anche|come|prima|nella|sulla|dal|al|alle|agli|ora|nuova|nuovo|versione|risultato|file|video|secondi|formato|verticale|orizzontale|quadrata|quadrato|e|ma|se|quando|dove|cosa|chi|perché|senza|tra|fra|molto|poco|bene)\b/gi
 
 /** English function words and the studio's own nouns. */
 const ENGLISH = /\b(the|a|an|is|are|was|were|of|and|with|this|that|these|those|has|have|had|image|photo|picture|done|here|your|it|its|but|from|into|more|darker|background|light|colour|color|result|file|video|seconds|format|vertical|horizontal|square|now|new|version|the|as|at|by|for|on|in|to|or|if|when|where|what|who|why|without|between|very|little|well)\b/gi
@@ -43,6 +43,26 @@ export function languageOfReply(text: string): ReplyLanguage {
   const italian = (text.match(ITALIAN) ?? []).length + (text.match(/[àèéìòù]/gi) ?? []).length
   const english = (text.match(ENGLISH) ?? []).length
   if (italian + english < MIN_WORDS) return 'unknown'
+  if (italian >= english * 1.15) return 'it'
+  if (english >= italian * 1.15) return 'en'
+  return 'unknown'
+}
+
+/**
+ * The language of a prompt, which is often two words long.
+ *
+ * The reply check needs a full sentence's worth of evidence; a drawing prompt
+ * is an imperative ("make it darker", "add a hat") and two strong markers are
+ * enough to see it is not in the language the user wrote.
+ * @param text - the prompt sent to the drawing model.
+ * @returns `it`, `en`, or `unknown` when the evidence is too thin.
+ */
+export function languageOfPrompt(text: string): ReplyLanguage {
+  const words = text.trim().split(/\s+/).filter(word => word !== '')
+  if (words.length < 2) return 'unknown'
+  const italian = (text.match(ITALIAN) ?? []).length + (text.match(/[àèéìòù]/gi) ?? []).length
+  const english = (text.match(ENGLISH) ?? []).length
+  if (italian + english < 2) return 'unknown'
   if (italian >= english * 1.15) return 'it'
   if (english >= italian * 1.15) return 'en'
   return 'unknown'
