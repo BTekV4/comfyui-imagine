@@ -651,7 +651,9 @@ toolComfy:
 
     # ---------------------------------------------------------------- audio
 
-    # Text to music (MiniMax Music 3): caption, lyrics and length pins.
+    # Text to music (MiniMax Music 3): caption, lyrics and length pins. The
+    # encoder's `max_duration` is only a cap (the model may end the song
+    # earlier), so a run that asks a length writes it on the empty latent too.
     generateMusic:
       path: ./workflows/audio_minimax_music_3.json
       description: "When to use it: make a song, with or without sung words."

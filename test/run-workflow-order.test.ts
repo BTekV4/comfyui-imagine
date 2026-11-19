@@ -84,3 +84,37 @@ test('a pin that does not resolve fails before the check and the uploads', async
   await assert.rejects(runWorkflow(fake.host, broken, outputDir, {}, INPUTS), /no node at 99/)
   assert.deepEqual(fake.events, [])
 })
+
+/** A MiniMax Music 3 graph: the encoder caps the length, the latent sets it. */
+const MUSIC_GRAPH: ComfyGraph = {
+  '37:13': { class_type: 'MiniMaxMusic3TextEncode', inputs: { caption: '', lyrics: '', seed: ['37:38', 0], max_duration: 30 } },
+  '37:15': { class_type: 'EmptyMiniMaxMusic3LatentAudio', inputs: { seconds: ['37:13', 1], batch_size: 1 } },
+  '37:38': { class_type: 'SeedNode', inputs: { seed: 1 } },
+}
+
+const MUSIC_WORKFLOW = {
+  graph: MUSIC_GRAPH,
+  promptNodeId: '37:13',
+  promptField: 'caption',
+  lyrics: { nodeId: '37:13', field: 'lyrics' },
+  duration: { nodeId: '37:13', field: 'max_duration' },
+  seedNodeId: '37:38',
+  seedField: 'seed',
+} as unknown as LoadedWorkflow
+
+test('a requested music length is written on the latent, not only the cap', async () => {
+  configureComfySetup(() => ({ hfToken: '', autoSetup: false }), 5)
+  let submitted: ComfyGraph | undefined
+  const host = {
+    comfy: {
+      setupCall: async () => ({ ready: true, packs: [], models: [], bytes: 0, unknownClasses: [], unknownFiles: [], substitutions: {} }),
+      run: async (graph: ComfyGraph) => { submitted = graph; return { promptId: 'p', media: [] } },
+    },
+  } as unknown as ImagineHost
+  const outputDir = await mkdtemp(join(tmpdir(), 'imagine-music-'))
+  await runWorkflow(host, MUSIC_WORKFLOW, outputDir, { prompt: 'calm piano', lyrics: '', seconds: 30 }, {})
+  assert.equal(submitted?.['37:13']?.inputs.max_duration, 30)
+  assert.equal(submitted?.['37:15']?.inputs.seconds, 30)
+  // The loaded graph still carries the encoder link.
+  assert.deepEqual(MUSIC_GRAPH['37:15']?.inputs.seconds, ['37:13', 1])
+})
