@@ -20,7 +20,7 @@ import { languageName } from '../../../shared/locale-names.ts'
 export type ReplyLanguage = 'it' | 'en' | 'unknown'
 
 /** Italian function words and the studio's own nouns. */
-const ITALIAN = /\b(il|lo|la|i|gli|le|un|una|uno|di|del|della|dei|delle|che|per|con|non|sono|è|ecco|fatto|questa|questo|queste|questi|foto|immagine|immagini|tazza|tavolo|luce|colore|sfondo|scuro|più|anche|come|prima|nella|sulla|dal|al|alle|agli|ora|nuova|nuovo|versione|risultato|file|video|secondi|formato|verticale|orizzontale|quadrata|quadrato|e|ma|se|quando|dove|cosa|chi|perché|senza|tra|fra|molto|poco|bene)\b/gi
+const ITALIAN = /\b(il|lo|la|i|gli|le|un|una|uno|di|del|della|dei|delle|che|per|con|non|sono|è|ecco|fatto|fatte|fatti|due|tre|quattro|varianti|versioni|questa|questo|queste|questi|foto|immagine|immagini|tazza|tavolo|luce|colore|sfondo|scuro|più|anche|come|prima|nella|sulla|dal|al|alle|agli|ora|nuova|nuovo|versione|risultato|file|video|secondi|formato|verticale|orizzontale|quadrata|quadrato|e|ma|se|quando|dove|cosa|chi|perché|senza|tra|fra|molto|poco|bene)\b/gi
 
 /** English function words and the studio's own nouns. */
 const ENGLISH = /\b(the|a|an|is|are|was|were|of|and|with|this|that|these|those|has|have|had|image|photo|picture|done|here|your|it|its|but|from|into|more|darker|background|light|colour|color|result|file|video|seconds|format|vertical|horizontal|square|now|new|version|the|as|at|by|for|on|in|to|or|if|when|where|what|who|why|without|between|very|little|well)\b/gi
