@@ -362,11 +362,12 @@ export type ImagineChatEvent =
   | {
     readonly kind: 'step'
     /**
-     * The step. The first seven belong to the classic one-call lane; the last
-     * four are the agent's (a tool called, a run queued, a wait, a look).
+     * The step. The first seven belong to the classic one-call lane; the rest
+     * are the agent's (a tool called, a run queued, a wait, a look, a
+     * confirmation, a rewrite in the interface's language).
      */
     readonly step: 'sight' | 'route' | 'writing' | 'workflow' | 'retry' | 'fallback' | 'grounding'
-      | 'tool' | 'queued' | 'waiting' | 'looked' | 'confirm'
+      | 'tool' | 'queued' | 'waiting' | 'looked' | 'confirm' | 'rewrite'
     /** What the step is about: a model, a workflow label, a file name, a prompt. */
     readonly detail?: string
     /** How many things the step covered, when it covered things. */

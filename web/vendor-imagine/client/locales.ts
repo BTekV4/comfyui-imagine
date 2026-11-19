@@ -228,6 +228,7 @@ export const en = {
   "imagine.thoughtQueued": "Queued a run: {action}",
   "imagine.thoughtWaiting": "Rendering… {percent}",
   "imagine.thoughtLooked": "Looked at {file}",
+  "imagine.thoughtRewrite": "Writing the reply in the interface language",
   "imagine.thoughtDone": "Read: {count} runs queued.",
   "imagine.thoughtDoneUnread": "Finished without reading the sentence.",
   "imagine.hd": "720p",

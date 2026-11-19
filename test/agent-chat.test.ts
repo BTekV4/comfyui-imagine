@@ -16,6 +16,7 @@ import {
 } from '../server/vendor/tool-comfy/agent-loop.ts'
 import { putJob, type ImagineJob } from '../server/vendor/tool-comfy/job-queue.ts'
 import { asksOnlyForMusic, choicesInLine, numbersInLine } from '../server/vendor/tool-comfy/agent-tools.ts'
+import { languageOfReply, replyNeedsRewrite, rewriteAsk } from '../server/vendor/tool-comfy/reply-language.ts'
 import type { ImagineHost } from '../server/src/host.ts'
 import type {
   AgentChatAsk, AgentModelEvent, AgentModelRequest, AgentToolSchema,
@@ -107,6 +108,7 @@ function turn(
     existingJobs?: readonly ImagineJob[]
     selfURL?: string
     adopted?: string[]
+    language?: string
   } = {},
 ) {
   const model = scriptedModel(scripts)
@@ -129,6 +131,7 @@ function turn(
     outputDir: options.outputDir ?? '/nonexistent-imagine-agent-test',
     projectId: 'project-1',
     eraseTool: false,
+    ...options.language === undefined ? {} : { language: options.language },
     modelClient: model,
     surface: {
       mode: () => options.mode ?? 'on',
@@ -720,4 +723,39 @@ test('the instruction keeps the studio orders out of the drawn prompt', async ()
   assert.match(text, /draws every word it gets/)
   assert.match(text, /`edit_image` with `aspect`/)
   assert.match(text, /mismatch/)
+})
+
+
+test('every tool result carries the language the reply is written in', async () => {
+  const { deps, model } = turn([toolCall('generate_image', { prompt: 'una tazza bianca' }), text('Ecco la foto.')], {
+    text: 'una tazza bianca',
+    language: 'it',
+  })
+  await readAgentChat(deps)
+  const result = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as { reply_language?: string }
+  assert.equal(result.reply_language, 'it')
+})
+
+test('a reply written in English is asked for once more, in Italian', async () => {
+  const { deps, model } = turn([
+    toolCall('generate_image', { prompt: 'una tazza bianca' }),
+    text('Here is the photo you asked for, with the cup on the table and a warm light.'),
+    text('Ecco la foto che hai chiesto, con la tazza sul tavolo e una luce calda.'),
+  ], { text: 'una tazza bianca', language: 'it' })
+  const answer = await readAgentChat(deps)
+  assert.equal(answer.reply, 'Ecco la foto che hai chiesto, con la tazza sul tavolo e una luce calda.')
+  assert.equal(model.requests.length, 3)
+  const rewrite = model.requests[2]?.messages.at(-1)?.content ?? ''
+  assert.match(rewrite, /Rewrite your last reply in Italiano/)
+  // No tools on the rewrite: it is a sentence, not another turn.
+  assert.equal(model.requests[2]?.tools, undefined)
+})
+
+test('an Italian reply is not rewritten, and an unplaceable one is left alone', () => {
+  assert.equal(languageOfReply('Ecco la foto, la tazza è sul tavolo con una luce calda.'), 'it')
+  assert.equal(languageOfReply('Here is the photo, the cup is on the table with warm light.'), 'en')
+  assert.equal(replyNeedsRewrite('Ecco la foto, la tazza è sul tavolo con una luce calda.', 'it'), false)
+  assert.equal(replyNeedsRewrite('Here is the photo, the cup is on the table with warm light.', 'it'), true)
+  assert.equal(replyNeedsRewrite('Fatto.', 'it'), false)
+  assert.match(rewriteAsk('it'), /Italiano/)
 })

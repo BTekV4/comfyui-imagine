@@ -28,6 +28,7 @@ import { textRoutes } from './imagine-models.ts'
 import { whenJobsSettle, type ImagineJob } from './job-queue.ts'
 import type { JobBody } from './job-start.ts'
 import { agentInstruction, finalReplyAsk } from './agent-prompt.ts'
+import { replyNeedsRewrite, rewriteAsk } from './reply-language.ts'
 import { join } from 'node:path'
 import { probeMedia } from './media-tools.ts'
 import {
@@ -338,6 +339,14 @@ function toolDepsOf(deps: AgentTurnDeps, state: TurnState): AgentToolDeps {
   }
 }
 
+/** A tool result with the language the reply has to be written in. */
+function forModel(
+  result: Readonly<Record<string, unknown>>,
+  language: string | undefined,
+): Readonly<Record<string, unknown>> {
+  return language === undefined ? result : { ...result, reply_language: language }
+}
+
 /**
  * The agent's own turn.
  * @param deps - the turn.
@@ -417,7 +426,7 @@ async function resumeAgentChat(deps: AgentTurnDeps): Promise<AgentChatAnswer> {
       : await waitForJobs(queued, deps, state.deadline, limits.waitSeconds)
     const lived = queued.map(job => deps.getJob(job.id) ?? job)
     const result = await waitedResult(outcome, waited, lived, deps.outputDir)
-    state.messages.push({ role: 'tool', toolCallId: session.call.id, content: JSON.stringify(result) })
+    state.messages.push({ role: 'tool', toolCallId: session.call.id, content: JSON.stringify(forModel(result, state.language)) })
     if (waited.setup.length > 0) {
       state.setup = { what: setupWhat(waited.setup), jobIds: waited.setup.map(job => job.id) }
       state.gaveUpWaiting = true
@@ -437,11 +446,11 @@ async function resumeAgentChat(deps: AgentTurnDeps): Promise<AgentChatAnswer> {
     state.messages.push({
       role: 'tool',
       toolCallId: session.call.id,
-      content: JSON.stringify({
+      content: JSON.stringify(forModel({
         ok: false,
         error: 'the user declined this action. Do not run it again in this turn; ask what to change if it is still what they want.',
         ...live === undefined ? {} : { job: { id: live.id, action: live.action, state: live.status } },
-      }),
+      }, state.language)),
     })
     state.cursor = { calls: session.calls, index: session.index + 1 }
   }
@@ -517,7 +526,7 @@ async function driveTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentCh
       const call = calls[index] as AgentToolCall
       const parsed = parseArguments(call.arguments)
       if (typeof parsed === 'string') {
-        state.messages.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify({ ok: false, error: parsed }) })
+        state.messages.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify(forModel({ ok: false, error: parsed }, state.language)) })
         nextIndex = index + 1
         continue
       }
@@ -570,7 +579,7 @@ async function driveTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentCh
       // queued, and only the map knows what each of them made.
       const lived = queued.map(job => deps.getJob(job.id) ?? job)
       const result = await waitedResult(outcome, waited, lived, deps.outputDir)
-      state.messages.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify(result) })
+      state.messages.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify(forModel(result, state.language)) })
       // The wait is the turn's whole patience with a run: past it the reply
       // says "still running" and the result appears in the chat by itself.
       // Polling the model further would only keep the spinner alive.
@@ -632,6 +641,16 @@ async function finishTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentC
       // The reply below still says something true about the runs.
     }
   }
+  /*
+   * A reply written in another language is asked for once more, with the
+   * reply itself and no tools: the trace the model read is English JSON, and
+   * a sentence in English is the one fault the instruction alone did not
+   * always prevent. One rewrite, never a loop.
+   */
+  if (state.reply.length > 0 && replyNeedsRewrite(state.reply, state.language)) {
+    const rewritten = await rewriteReply(deps, state)
+    if (rewritten !== undefined) state.reply = rewritten
+  }
   // The queue's live copy, not the snapshot the start returned: it was queued
   // when the array was built and only the map knows it finished. A run waiting
   // for its install is not "running" here: its own sentence says that.
@@ -656,11 +675,38 @@ async function finishTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentC
   }
 }
 
+/**
+ * Ask the model to write its reply again, in the interface's language.
+ * @param deps - the turn.
+ * @param state - the turn's state, with the reply to rewrite.
+ * @returns the rewritten text, or undefined when the call failed or was empty.
+ */
+async function rewriteReply(deps: AgentTurnDeps, state: TurnState): Promise<string | undefined> {
+  try {
+    const last = await collect(deps.modelClient.chat({
+      provider: state.route.provider,
+      model: state.route.model,
+      messages: [
+        ...state.messages,
+        { role: 'assistant', content: state.reply },
+        { role: 'user', content: rewriteAsk(state.language) },
+      ],
+      ...deps.signal === undefined ? {} : { signal: deps.signal },
+    }), () => undefined)
+    const text = last.text.trim()
+    if (text.length === 0) return undefined
+    deps.say({ kind: 'step', step: 'rewrite', detail: state.language ?? '?' })
+    return text
+  } catch {
+    return undefined
+  }
+}
+
 /** Answer the calls of a message the turn will not run, so the wire stays valid. */
 function closeRemainingCalls(state: TurnState, calls: readonly AgentToolCall[], from: number, why: string): void {
   for (let index = from; index < calls.length; index++) {
     const call = calls[index] as AgentToolCall
-    state.messages.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify({ ok: false, error: why }) })
+    state.messages.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify(forModel({ ok: false, error: why }, state.language)) })
   }
 }
 
