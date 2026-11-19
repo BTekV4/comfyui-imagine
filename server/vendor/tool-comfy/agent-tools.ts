@@ -33,6 +33,7 @@ import {
 } from '../../../shared/imagine-types.ts'
 import type { AgentToolSchema } from '../../../shared/agent-chat.ts'
 import { languageName } from '../../../shared/locale-names.ts'
+import { languageOfPrompt } from './reply-language.ts'
 import { featherMask, maskDataUrl, rectangleMask } from '../../../shared/masks.ts'
 import { frameAt } from './media-tools.ts'
 import { galleryItemOf, kindOf, listGallery, safeBasename } from './gallery.ts'
@@ -119,6 +120,28 @@ function refused(error: string): AgentToolOutcome {
   return { result: { ok: false, error }, jobs: [], files: [] }
 }
 
+/**
+ * A prompt that was translated instead of copied, when it clearly was.
+ *
+ * The instruction says the prompt is the user's words and not to translate
+ * them; a model still wrote "Make the light darker." for "come prima ma più
+ * scuro" (2026-11-19). A prompt the user themselves wrote in the other
+ * language is left alone: only a language that appears nowhere in their line
+ * is refused, so the model can write it again in their words.
+ * @param prompt - the prompt the model wrote.
+ * @param asked - the user's line.
+ * @returns the refusal, or undefined when the prompt may run.
+ */
+function translatedPrompt(prompt: string, asked: string): string | undefined {
+  const user = languageOfPrompt(asked)
+  const drawn = languageOfPrompt(prompt)
+  if (user === 'unknown' || drawn === 'unknown' || user === drawn) return undefined
+  if (asked.toLowerCase().includes(prompt.toLowerCase())) return undefined
+  const userName = user === 'it' ? 'Italian' : 'English'
+  const drawnName = drawn === 'it' ? 'Italian' : 'English'
+  return `the prompt is in ${drawnName} but the user wrote in ${userName}: copy their words into the prompt, do not translate it`
+}
+
 /** The gallery image a tool names, or a refusal. */
 async function galleryImage(deps: AgentToolDeps, name: string): Promise<GalleryItem | string> {
   const safe = safeBasename(name)
@@ -170,6 +193,8 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       const prompt = str(args['prompt'])
       if (prompt === undefined) return refused('prompt is required and cannot be empty')
       if (prompt.length > MAX_PROMPT) return refused(`prompt is longer than ${String(MAX_PROMPT)} characters`)
+      const translated = translatedPrompt(prompt, deps.asked)
+      if (translated !== undefined) return refused(translated)
       /*
        * A closed choice the user named (a ratio, a resolution) is recovered
        * from their line when the model leaves the argument out: measured on
@@ -253,6 +278,8 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       const prompt = str(args['prompt'])
       if (prompt === undefined) return refused('prompt is required and cannot be empty')
       if (prompt.length > MAX_PROMPT) return refused(`prompt is longer than ${String(MAX_PROMPT)} characters`)
+      const translated = translatedPrompt(prompt, deps.asked)
+      if (translated !== undefined) return refused(translated)
       const source = str(args['source'])
       if (source === undefined) return refused('source is required: the picture to edit, by gallery name')
       const item = await galleryImage(deps, source)

@@ -15,8 +15,8 @@ import {
   probeTools, readAgentChat, type AgentTurnDeps,
 } from '../server/vendor/tool-comfy/agent-loop.ts'
 import { putJob, type ImagineJob } from '../server/vendor/tool-comfy/job-queue.ts'
-import { asksOnlyForMusic, choicesInLine, numbersInLine } from '../server/vendor/tool-comfy/agent-tools.ts'
-import { languageOfReply, replyNeedsRewrite, rewriteAsk } from '../server/vendor/tool-comfy/reply-language.ts'
+import { asksOnlyForMusic, choicesInLine, numbersInLine, runAgentTool } from '../server/vendor/tool-comfy/agent-tools.ts'
+import { languageOfPrompt, languageOfReply, replyNeedsRewrite, rewriteAsk } from '../server/vendor/tool-comfy/reply-language.ts'
 import type { ImagineHost } from '../server/src/host.ts'
 import type {
   AgentChatAsk, AgentModelEvent, AgentModelRequest, AgentToolSchema,
@@ -689,7 +689,7 @@ test('an edit can change the frame shape the user named, and a wrong shape is re
   await writeFile(join(dir, 'photo.png'), ONE_PIXEL_PNG)
   await writeFile(join(dir, 'job-1.webp'), ONE_PIXEL_PNG)
   const { deps, started, model } = turn([
-    toolCall('edit_image', { source: 'photo.png', prompt: 'more warmth in the light', target: 'the sky' }),
+    toolCall('edit_image', { source: 'photo.png', prompt: 'una luce più calda', target: 'the sky' }),
     text('Il formato non è 9:16.'),
   ], { text: 'modifica questa foto con una luce più calda e falla in 9:16', outputDir: dir })
   await readAgentChat(deps)
@@ -758,4 +758,34 @@ test('an Italian reply is not rewritten, and an unplaceable one is left alone', 
   assert.equal(replyNeedsRewrite('Here is the photo, the cup is on the table with warm light.', 'it'), true)
   assert.equal(replyNeedsRewrite('Fatto.', 'it'), false)
   assert.match(rewriteAsk('it'), /Italiano/)
+})
+
+
+test('a prompt translated away from the user\'s language is refused', async () => {
+  const outcome = await runAgentTool('edit_image', {
+    source: 'photo.png',
+    prompt: 'Make the light darker.',
+  }, {
+    ctx: classicHost('{}'),
+    outputDir: '/nonexistent-imagine-agent-test',
+    language: 'it',
+    asked: 'come prima ma più scuro',
+    eraseTool: false,
+    known: [],
+    canQueue: () => 1,
+    say: () => undefined,
+    start: async () => [],
+    jobView: job => job,
+    listJobs: () => [],
+    getJob: () => undefined,
+    adoptFiles: async () => undefined,
+    cancelJob: async () => true,
+  })
+  assert.equal(outcome.result['ok'], false)
+  assert.match(String(outcome.result['error'] ?? ''), /do not translate/)
+})
+
+test('a prompt in the user\'s own language is left alone', async () => {
+  assert.equal(languageOfPrompt('rendi la luce più scura'), 'it')
+  assert.equal(languageOfPrompt('Make the light darker.'), 'en')
 })
