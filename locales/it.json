@@ -1551,5 +1551,6 @@
   "imagine.settings.overridden": "Questo grafo è stato modificato qui: vale la copia nella tua cartella dati, non quella arrivata col programma, e gli aggiornamenti di quella non gli arrivano.",
   "imagine.settings.restoreDefault": "Ripristina l'originale",
   "imagine.settings.restored": "Ripristinato: questo grafo è di nuovo quello del programma e seguirà i suoi aggiornamenti.",
-  "imagine.settings.modified": "Modificato"
+  "imagine.settings.modified": "Modificato",
+  "imagine.thoughtRewrite": "Riscrivo la risposta nella lingua dell'interfaccia"
 }
