@@ -900,7 +900,7 @@ function casesOf(fixtures) {
       expectedTools: ['make_music'],
       body: { ...base, recent: [] },
       confirm: true,
-      check: ({ tools, files, confirmations, jobs }) => {
+      check: ({ tools, files, confirmations, jobs, reply }) => {
         const call = tools.find(tool => tool.name === 'make_music')
         const args = call?.args ?? {}
         const track = files.find(file => file.kind === 'audio')
