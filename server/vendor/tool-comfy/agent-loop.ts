@@ -28,6 +28,8 @@ import { textRoutes } from './imagine-models.ts'
 import { whenJobsSettle, type ImagineJob } from './job-queue.ts'
 import type { JobBody } from './job-start.ts'
 import { agentInstruction, finalReplyAsk } from './agent-prompt.ts'
+import { join } from 'node:path'
+import { probeMedia } from './media-tools.ts'
 import {
   agentToolSchemas, confirmationFor, runAgentTool, type AgentPendingOffer, type AgentToolDeps,
   type AgentToolOutcome,
@@ -414,7 +416,7 @@ async function resumeAgentChat(deps: AgentTurnDeps): Promise<AgentChatAnswer> {
       ? { all: true, anyRunning: false, setup: [] as readonly ImagineJob[] }
       : await waitForJobs(queued, deps, state.deadline, limits.waitSeconds)
     const lived = queued.map(job => deps.getJob(job.id) ?? job)
-    const result = waitedResult(outcome, waited, lived)
+    const result = await waitedResult(outcome, waited, lived, deps.outputDir)
     state.messages.push({ role: 'tool', toolCallId: session.call.id, content: JSON.stringify(result) })
     if (waited.setup.length > 0) {
       state.setup = { what: setupWhat(waited.setup), jobIds: waited.setup.map(job => job.id) }
@@ -567,7 +569,7 @@ async function driveTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentCh
       // The queue's live copies: the start returned the jobs as they were
       // queued, and only the map knows what each of them made.
       const lived = queued.map(job => deps.getJob(job.id) ?? job)
-      const result = waitedResult(outcome, waited, lived)
+      const result = await waitedResult(outcome, waited, lived, deps.outputDir)
       state.messages.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify(result) })
       // The wait is the turn's whole patience with a run: past it the reply
       // says "still running" and the result appears in the chat by itself.
@@ -737,11 +739,12 @@ async function waitForJobs(
  * @param lived - the runs as the queue has them now.
  * @returns the object the model reads.
  */
-function waitedResult(
+async function waitedResult(
   outcome: AgentToolOutcome,
   waited: { readonly all: boolean; readonly anyRunning: boolean; readonly setup: readonly ImagineJob[] },
   lived: readonly ImagineJob[],
-): Readonly<Record<string, unknown>> {
+  outputDir: string,
+): Promise<Readonly<Record<string, unknown>>> {
   if (waited.setup.length > 0) {
     return {
       ...outcome.result,
@@ -751,12 +754,60 @@ function waitedResult(
     }
   }
   if (waited.all && lived.length > 0) {
-    return { ...outcome.result, state: finalState(lived), files: lived.flatMap(job => job.files?.map(file => file.name) ?? []) }
+    /*
+     * The files with their real measures: the model used to get bare names,
+     * so it could not see that a "9:16" edit came back 3:4 and said it was
+     * done (2026-11-19). An error carries its reason for the same cause.
+     */
+    const names = lived.flatMap(job => job.files?.map(file => file.name) ?? [])
+    const made = await Promise.all(names.map(async name => await measured(join(outputDir, name), name)))
+    const asked = typeof outcome.result['aspect'] === 'string' ? outcome.result['aspect'] : undefined
+    const off = asked === undefined ? [] : made.filter(file => file.ratio !== undefined && !sameShape(file.width, file.height, asked))
+    const errors = lived.filter(job => job.status === 'error').map(job => job.error ?? 'the run failed without a reason')
+    return {
+      ...outcome.result,
+      state: finalState(lived),
+      files: made,
+      ...errors.length === 0 ? {} : { errors },
+      ...off.length === 0 ? {} : { mismatch: `asked ${asked ?? ''}, made ${off.map(file => `${file.name} ${file.ratio ?? '?'}`).join(', ')}` },
+    }
   }
   if (waited.anyRunning && lived.length > 0) {
     return { ...outcome.result, state: 'running', waiting: 'the run is still going; the result appears in the chat when it is done' }
   }
   return outcome.result
+}
+
+/** One made file with its real measures, when ffprobe can read them. */
+async function measured(path: string, name: string): Promise<{ name: string; width?: number; height?: number; ratio?: string }> {
+  const probe = await probeMedia(path).catch(() => undefined)
+  const width = probe?.width
+  const height = probe?.height
+  if (width === undefined || height === undefined || width <= 0 || height <= 0) return { name }
+  return { name, width, height, ratio: ratioName(width, height) }
+}
+
+/** The nearest common ratio, as the studio spells it. */
+function ratioName(width: number, height: number): string {
+  const shapes = ['1:1', '9:16', '16:9', '3:4', '4:3', '2:3', '3:2', '4:5', '5:4', '21:9']
+  const value = width / height
+  let best = shapes[0] ?? '1:1'
+  for (const shape of shapes) {
+    if (Math.abs(Math.log(value / shapeValue(shape))) < Math.abs(Math.log(value / shapeValue(best)))) best = shape
+  }
+  return best
+}
+
+/** A ratio's value, width over height. */
+function shapeValue(shape: string): number {
+  const [w, h] = shape.split(':').map(Number)
+  return w !== undefined && h !== undefined && h > 0 ? w / h : 1
+}
+
+/** Whether a file has the asked shape, within 3%. */
+function sameShape(width: number | undefined, height: number | undefined, asked: string): boolean {
+  if (width === undefined || height === undefined || height <= 0) return true
+  return Math.abs(Math.log((width / height) / shapeValue(asked))) < 0.03
 }
 
 /** What a run's setup plan is missing, as the model should say it. */

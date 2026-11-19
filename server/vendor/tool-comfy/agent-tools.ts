@@ -240,6 +240,9 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
               additionalProperties: false,
             },
             reference: { type: 'string', description: 'A second picture to take something from (a garment, a style).' },
+            aspect: { type: 'string', enum: [...IMAGINE_ASPECTS], description: 'A new frame shape the user asked for ("falla 9:16"); omit to keep the photo\'s own shape. A new shape redraws the whole photo, so it cannot go with `target` or `region`.' },
+            resolution: { type: 'string', enum: [...IMAGE_RESOLUTIONS], description: 'Short side of the new frame; only with `aspect`.' },
+            count: { type: 'integer', minimum: 1, maximum: MAX_COUNT, description: 'How many variants of the edit, when the user asked for more than one.' },
           },
           required: ['prompt', 'source'],
           additionalProperties: false,
@@ -257,7 +260,9 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       const target = str(args['target'])
       let region = regionOf(args['region'])
       let grounded = false
-      if (region === undefined && target !== undefined) {
+      // A new frame shape redraws the whole photo, so no zone is looked for.
+      const shapeAsked = str(args['aspect']) ?? choicesInLine(deps.asked).aspect
+      if (region === undefined && target !== undefined && shapeAsked === undefined) {
         const sight = (await recallNotes([item.name])).get(item.name)?.sight ?? sightInMemory(item.name)
         const box = await groundTarget(deps.ctx, deps.outputDir, item.name, {
           target,
@@ -275,12 +280,41 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         const other = await galleryImage(deps, reference)
         if (typeof other === 'string') return refused(other)
       }
-      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
-      deps.say({ kind: 'step', step: 'tool', name: 'edit_image', detail: prompt })
+      /*
+       * A new frame shape: the agent had no way to ask for one (2026-11-19, a
+       * "falla 9:16" edit came back 3:4 twice while the reply said it was
+       * done). As in generate_image, a ratio the user named is recovered from
+       * the line when the model leaves it out. A new shape redraws the whole
+       * frame, so it wins over a zone.
+       */
+      const named = choicesInLine(deps.asked)
+      const aspect = str(args['aspect']) ?? named.aspect
+      if (aspect !== undefined && !(IMAGINE_ASPECTS as readonly string[]).includes(aspect)) {
+        return refused(`aspect must be one of ${IMAGINE_ASPECTS.join(', ')}`)
+      }
+      const resolution = str(args['resolution']) ?? named.resolution
+      if (resolution !== undefined && !(IMAGE_RESOLUTIONS as readonly string[]).includes(resolution)) {
+        return refused(`resolution must be one of ${IMAGE_RESOLUTIONS.join(', ')}`)
+      }
+      const count = args['count'] === undefined ? numbersInLine(deps.asked).count ?? 1 : Number(args['count'])
+      if (!Number.isInteger(count) || count < 1 || count > MAX_COUNT) {
+        return refused(`count must be an integer from 1 to ${String(MAX_COUNT)}`)
+      }
+      const reshaped = aspect !== undefined
+      if (reshaped) {
+        region = undefined
+        grounded = false
+      }
+      const size = aspect === undefined ? undefined : sizeFor(aspect as ImagineAspect, (resolution ?? '1080p') as ImagineResolution)
+      if (deps.canQueue() < count) return refused('this turn has already queued all the runs it may')
+      deps.say({ kind: 'step', step: 'tool', name: 'edit_image', detail: prompt, ...count > 1 ? { count } : {} })
       const jobs = await deps.start({
         action: 'remix',
         prompt,
         source: item.name,
+        ...size === undefined ? {} : { size },
+        ...aspect === undefined ? {} : { aspectRatio: aspect, canvasAsked: true },
+        ...count > 1 ? { count } : {},
         ...region === undefined ? {} : { region },
         // The name the box was grounded on lets the run cut the object's own
         // outline instead of regenerating the rectangle's background.
@@ -291,7 +325,15 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       })
       for (const job of jobs) deps.say({ kind: 'step', step: 'queued', jobId: job.id, detail: job.action })
       return {
-        result: { ok: true, queued: jobs.map(job => job.id), state: 'queued', source: item.name },
+        result: {
+          ok: true,
+          queued: jobs.map(job => job.id),
+          state: 'queued',
+          source: item.name,
+          ...aspect === undefined ? {} : { aspect },
+          ...size === undefined ? {} : { size },
+          ...reshaped && target !== undefined ? { note: 'a new frame shape redraws the whole photo: the target was not used as a zone' } : {},
+        },
         jobs,
         files: [],
       }
