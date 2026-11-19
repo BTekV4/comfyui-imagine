@@ -156,6 +156,15 @@ const MAX_PROMPT = 4_000
 /** The batch ceiling the job route itself accepts. */
 const MAX_COUNT = 8
 
+/**
+ * The shape the studio draws when neither the line nor the arguments name one.
+ *
+ * The composer opens on the vertical frame and a run that sends no size comes
+ * back 9:16 (measured 2026-11-19); naming a resolution without a shape has to
+ * keep that shape, not silently drop the size as the tool used to.
+ */
+const DEFAULT_IMAGE_SHAPE: ImagineAspect = '9:16'
+
 /** How many files `project_files` returns when the model names no limit. */
 const FILES_DEFAULT = 40
 
@@ -181,7 +190,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
           properties: {
             prompt: { type: 'string', description: 'What to draw, in the user\'s words.' },
             aspect: { type: 'string', enum: [...IMAGINE_ASPECTS], description: 'Frame shape; omit for the studio default.' },
-            resolution: { type: 'string', enum: [...IMAGE_RESOLUTIONS], description: 'Short side; 1080p when an aspect is named.' },
+            resolution: { type: 'string', enum: [...IMAGE_RESOLUTIONS], description: 'Short side; the studio\'s default shape (9:16) when no aspect is named.' },
             count: { type: 'integer', minimum: 1, maximum: MAX_COUNT, description: 'How many variants.' },
           },
           required: ['prompt'],
@@ -218,7 +227,10 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         return refused(`count must be an integer from 1 to ${String(MAX_COUNT)}`)
       }
       if (deps.canQueue() < count) return refused('this turn has already queued all the runs it may')
-      const size = aspect === undefined ? undefined : sizeFor(aspect as ImagineAspect, (resolution ?? '1080p') as ImagineResolution)
+      const shape: ImagineAspect | undefined = aspect === undefined
+        ? (resolution === undefined ? undefined : DEFAULT_IMAGE_SHAPE)
+        : aspect as ImagineAspect
+      const size = shape === undefined ? undefined : sizeFor(shape, (resolution ?? '1080p') as ImagineResolution)
       deps.say({ kind: 'step', step: 'tool', name: 'generate_image', detail: prompt, count })
       const jobs = await deps.start({
         action: 'generate',
@@ -237,6 +249,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
           state: 'queued',
           ...size === undefined ? {} : { size },
           ...aspect === undefined ? {} : { aspect },
+          ...aspect === undefined && resolution !== undefined ? { resolution } : {},
         },
         jobs,
         files: [],
@@ -266,7 +279,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
             },
             reference: { type: 'string', description: 'A second picture to take something from (a garment, a style).' },
             aspect: { type: 'string', enum: [...IMAGINE_ASPECTS], description: 'A new frame shape the user asked for ("falla 9:16"); omit to keep the photo\'s own shape. A new shape redraws the whole photo, so it cannot go with `target` or `region`.' },
-            resolution: { type: 'string', enum: [...IMAGE_RESOLUTIONS], description: 'Short side of the new frame; only with `aspect`.' },
+            resolution: { type: 'string', enum: [...IMAGE_RESOLUTIONS], description: 'Short side; with `aspect` it sets the new frame, alone it resizes the photo in its own shape.' },
             count: { type: 'integer', minimum: 1, maximum: MAX_COUNT, description: 'How many variants of the edit, when the user asked for more than one.' },
           },
           required: ['prompt', 'source'],
@@ -332,7 +345,16 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         region = undefined
         grounded = false
       }
-      const size = aspect === undefined ? undefined : sizeFor(aspect as ImagineAspect, (resolution ?? '1080p') as ImagineResolution)
+      // A resolution alone keeps the photo's own shape: the edit graph reads
+      // the pixels it is given, so a size without the shape the user did not
+      // ask to change has to be the source's.
+      const sourceShape = item.width === undefined || item.height === undefined
+        ? undefined
+        : ratioName(item.width, item.height) as ImagineAspect
+      const shape: ImagineAspect | undefined = aspect === undefined
+        ? (resolution === undefined ? undefined : sourceShape)
+        : aspect as ImagineAspect
+      const size = shape === undefined ? undefined : sizeFor(shape, (resolution ?? '1080p') as ImagineResolution)
       if (deps.canQueue() < count) return refused('this turn has already queued all the runs it may')
       deps.say({ kind: 'step', step: 'tool', name: 'edit_image', detail: prompt, ...count > 1 ? { count } : {} })
       const jobs = await deps.start({
@@ -454,13 +476,13 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       type: 'function',
       function: {
         name: 'look',
-        description: 'Look at one file and describe what is in it, through the studio\'s vision pass. Use it after a run to check the result against the request, and before claiming what a photo contains.',
+        description: 'Look at one file for one specific question, through the studio\'s vision pass. Pass `question` naming the thing to check, not "describe everything": the pass answers only that. The result also carries the file\'s measured width, height, ratio and duration, which are the truth about its shape.',
         parameters: {
           type: 'object',
           properties: {
             file: { type: 'string', description: 'The gallery file to look at.' },
             frame: { type: 'number', description: 'For a clip: the second to take a frame at. Default 0.' },
-            question: { type: 'string', description: 'What to ask about the file; omit for a plain description.' },
+            question: { type: 'string', description: 'The one thing to check, in the user\'s terms; omit to check the line itself.' },
           },
           required: ['file'],
           additionalProperties: false,
@@ -479,12 +501,25 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       const eyes = eyesOf(deps.ctx, deps.model)
       if (eyes === undefined) return refused('no vision model is configured on this studio')
       const asked = str(args['question'])
-      const instruction = asked ?? `Describe what is visible in this file, in ${languageName(deps.language)} and in 2-3 sentences. Name the subject, the setting, the dominant colours and any written text. Describe only what you see.`
+      /*
+       * A look is a check, not an essay. The old instruction asked for "what
+       * is visible" even when the turn only needed to know whether the change
+       * landed, and the vision pass answered with details nobody asked for
+       * ("dark bands", a saucer, coffee in the cup) that reached the reply as
+       * facts (2026-11-19). A question, when the model wrote one, is answered
+       * alone; without one the look is anchored on the user's own line.
+       */
+      const language = languageName(deps.language)
+      const subject = deps.asked.trim().length === 0 ? 'the file' : `"${deps.asked.trim()}"`
+      const instruction = asked === undefined
+        ? `The user asked: ${subject}. Look at this file only to answer that, in ${language}, in two or three sentences: say what is clearly visible and needed to check the request, and nothing else. Do not add objects, written text, marks, bands or colours that are not plainly visible, and do not guess.`
+        : `Answer only this question about the file, in ${language}, in one or two sentences: "${asked}". Say only what is clearly visible; do not add other observations, and do not guess at details (objects, written text, marks, bands, colours).`
       let target = join(deps.outputDir, safe)
       let scratch: string | undefined
       try {
+        let at = 0
         if (kind === 'video') {
-          const at = Number(args['frame'] ?? 0)
+          at = Number(args['frame'] ?? 0)
           if (!Number.isFinite(at) || at < 0) return refused('frame must be a non-negative number of seconds')
           scratch = await mkdtemp(join(tmpdir(), 'imagine-agent-look-'))
           target = await frameAt(join(deps.outputDir, safe), join(scratch, 'frame.jpg'), { at, maxSide: 1024, quality: 3, timeoutMs: 20_000 })
@@ -494,9 +529,21 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         })
         if (seen === undefined) return refused(`the vision model did not answer for ${safe}`)
         const text = seen.text.replace(/\s+/g, ' ').trim()
-        await rememberSight(safe, text).catch(() => undefined)
+        // A pointed answer is not a description: filing it as the file's sight
+        // would make the next turn believe the photo is whatever was asked.
+        if (asked === undefined) await rememberSight(safe, text).catch(() => undefined)
         deps.say({ kind: 'step', step: 'looked', detail: safe })
-        return done({ ok: true, file: safe, seen: text })
+        return done({
+          ok: true,
+          file: safe,
+          kind,
+          ...item.width === undefined ? {} : { width: item.width },
+          ...item.height === undefined ? {} : { height: item.height },
+          ...item.width === undefined || item.height === undefined ? {} : { ratio: ratioName(item.width, item.height) },
+          ...item.duration === undefined ? {} : { duration: item.duration },
+          ...kind === 'video' ? { frame: at } : {},
+          seen: text,
+        })
       } finally {
         if (scratch !== undefined) await rm(scratch, { recursive: true, force: true }).catch(() => undefined)
       }
@@ -1666,6 +1713,20 @@ export function choicesInLine(asked: string): { aspect?: ImagineAspect; resoluti
       ? {}
       : { resolution: resolutionWord as ImagineResolution },
   }
+}
+
+/** The nearest common ratio, as the studio spells it. */
+function ratioName(width: number, height: number): string {
+  const shapes = ['1:1', '9:16', '16:9', '3:4', '4:3', '2:3', '3:2', '4:5', '5:4', '21:9']
+  const value = width / height
+  let best = shapes[0] ?? '1:1'
+  for (const shape of shapes) {
+    const [w, h] = shape.split(':').map(Number)
+    const wanted = (w ?? 1) / (h ?? 1)
+    const [bw, bh] = best.split(':').map(Number)
+    if (Math.abs(Math.log(value / wanted)) < Math.abs(Math.log(value / ((bw ?? 1) / (bh ?? 1))))) best = shape
+  }
+  return best
 }
 
 /**

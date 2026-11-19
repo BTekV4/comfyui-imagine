@@ -789,3 +789,69 @@ test('a prompt in the user\'s own language is left alone', async () => {
   assert.equal(languageOfPrompt('rendi la luce più scura'), 'it')
   assert.equal(languageOfPrompt('Make the light darker.'), 'en')
 })
+
+test('a look answers one targeted question and carries the real measures', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'imagine-agent-look-'))
+  await writeFile(join(dir, 'photo.png'), ONE_PIXEL_PNG)
+  const asked: string[] = []
+  const host = {
+    auxiliary: {
+      async analyzeImage(_path: string, instruction: string) {
+        asked.push(instruction)
+        return { text: 'La tazza è bianca e il tavolo è di legno.' }
+      },
+    },
+  } as unknown as ImagineHost
+  const outcome = await runAgentTool('look', { file: 'photo.png', question: 'la tazza è blu?' }, {
+    ctx: host,
+    outputDir: dir,
+    model: MODEL,
+    language: 'it',
+    asked: 'la tazza è blu?',
+    eraseTool: false,
+    known: [],
+    canQueue: () => 1,
+    say: () => undefined,
+    start: async () => [],
+    jobView: job => job,
+    listJobs: () => [],
+    getJob: () => undefined,
+    adoptFiles: async () => undefined,
+    cancelJob: async () => true,
+  })
+  assert.equal(outcome.result['ok'], true)
+  assert.equal(outcome.result['width'], 1)
+  assert.equal(outcome.result['height'], 1)
+  assert.equal(outcome.result['ratio'], '1:1')
+  assert.equal(outcome.result['seen'], 'La tazza è bianca e il tavolo è di legno.')
+  assert.equal(asked.length, 1)
+  assert.match(asked[0] ?? '', /Answer only this question/)
+  assert.match(asked[0] ?? '', /la tazza è blu\?/)
+  assert.doesNotMatch(asked[0] ?? '', /Describe what is visible/)
+})
+
+test('the instruction makes the measures win and asks before guessing a change', async () => {
+  const { agentInstruction } = await import('../server/vendor/tool-comfy/agent-prompt.ts')
+  const text = await agentInstruction({
+    request: { text: 'x', history: [], staged: [], recent: [], model: MODEL },
+    known: [],
+    eraseTool: false,
+    working: [],
+    maxSteps: 8,
+    maxJobs: 6,
+  })
+  assert.match(text, /are measured from the file/)
+  assert.match(text, /not an instruction until the user says/)
+})
+
+
+test('a resolution without a shape is not dropped: it keeps the studio shape', async () => {
+  const { deps, started } = turn([
+    toolCall('generate_image', { prompt: 'un vaso di fiori', resolution: '720p' }),
+    text('Fatto.'),
+  ], { text: 'genera un vaso di fiori a 720p' })
+  await readAgentChat(deps)
+  assert.equal(started.length, 1)
+  assert.equal(started[0]?.size, sizeFor('9:16', '720p'))
+  assert.equal(started[0]?.aspectRatio, undefined, 'no shape the user did not ask for')
+})
