@@ -925,7 +925,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         ...deps.model === undefined ? {} : { model: deps.model },
       })
       for (const job of jobs) deps.say({ kind: 'step', step: 'queued', jobId: job.id, detail: job.action })
-      return { result: { ok: true, queued: jobs.map(job => job.id), state: 'queued' }, jobs, files: [] }
+      return { result: { ok: true, queued: jobs.map(job => job.id), state: 'queued', ...seconds === undefined ? {} : { seconds } }, jobs, files: [] }
     },
   },
   {

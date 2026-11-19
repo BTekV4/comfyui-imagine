@@ -809,13 +809,21 @@ async function waitedResult(
     const made = await Promise.all(names.map(async name => await measured(join(outputDir, name), name)))
     const asked = typeof outcome.result['aspect'] === 'string' ? outcome.result['aspect'] : undefined
     const off = asked === undefined ? [] : made.filter(file => file.ratio !== undefined && !sameShape(file.width, file.height, asked))
+    const askedSeconds = typeof outcome.result['seconds'] === 'number' ? outcome.result['seconds'] : undefined
+    const short = askedSeconds === undefined
+      ? []
+      : made.filter(file => file.duration !== undefined && Math.abs(file.duration - askedSeconds) > 2)
     const errors = lived.filter(job => job.status === 'error').map(job => job.error ?? 'the run failed without a reason')
+    const mismatch = [
+      ...off.length === 0 ? [] : [`asked ${asked ?? ''}, made ${off.map(file => `${file.name} ${file.ratio ?? '?'}`).join(', ')}`],
+      ...short.length === 0 ? [] : [`asked ${String(askedSeconds)} s, made ${short.map(file => `${file.name} ${file.duration?.toFixed(1) ?? '?'} s`).join(', ')}`],
+    ]
     return {
       ...outcome.result,
       state: finalState(lived),
       files: made,
       ...errors.length === 0 ? {} : { errors },
-      ...off.length === 0 ? {} : { mismatch: `asked ${asked ?? ''}, made ${off.map(file => `${file.name} ${file.ratio ?? '?'}`).join(', ')}` },
+      ...mismatch.length === 0 ? {} : { mismatch: mismatch.join('; ') },
     }
   }
   if (waited.anyRunning && lived.length > 0) {
@@ -825,12 +833,19 @@ async function waitedResult(
 }
 
 /** One made file with its real measures, when ffprobe can read them. */
-async function measured(path: string, name: string): Promise<{ name: string; width?: number; height?: number; ratio?: string }> {
+async function measured(
+  path: string,
+  name: string,
+): Promise<{ name: string; width?: number; height?: number; ratio?: string; duration?: number }> {
   const probe = await probeMedia(path).catch(() => undefined)
   const width = probe?.width
   const height = probe?.height
-  if (width === undefined || height === undefined || width <= 0 || height <= 0) return { name }
-  return { name, width, height, ratio: ratioName(width, height) }
+  const duration = probe?.duration
+  return {
+    name,
+    ...width === undefined || height === undefined || width <= 0 || height <= 0 ? {} : { width, height, ratio: ratioName(width, height) },
+    ...duration === undefined || duration <= 0 ? {} : { duration },
+  }
 }
 
 /** The nearest common ratio, as the studio spells it. */
