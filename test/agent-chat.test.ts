@@ -181,9 +181,10 @@ test('a tool result is handed back with the run it queued, and the model stops',
   const toolMessage = model.requests[1]?.messages.at(-1)
   assert.equal(toolMessage?.role, 'tool')
   assert.equal(toolMessage?.toolCallId, 'call_1')
-  const result = JSON.parse(toolMessage?.content ?? '{}') as { state?: string; files?: string[] }
+  const result = JSON.parse(toolMessage?.content ?? '{}') as { state?: string; files?: { name: string }[] }
   assert.equal(result.state, 'done')
-  assert.deepEqual(result.files, ['job-1.webp'])
+  // No such file in this test's folder, so no measures: only the name.
+  assert.deepEqual(result.files, [{ name: 'job-1.webp' }])
   assert.equal(answer.reply, 'Ecco la foto.')
 })
 
@@ -677,4 +678,46 @@ test('a model that writes nothing still leaves something to read', async () => {
   const { deps } = turn([[], []])
   const answer = await readAgentChat(deps)
   assert.ok(answer.reply.trim().length > 0)
+})
+
+test('an edit can change the frame shape the user named, and a wrong shape is reported back', async () => {
+  // The run "makes" a 1x1 picture: the model must read that it is not 9:16.
+  const dir = await mkdtemp(join(tmpdir(), 'imagine-agent-shape-'))
+  await writeFile(join(dir, 'photo.png'), ONE_PIXEL_PNG)
+  await writeFile(join(dir, 'job-1.webp'), ONE_PIXEL_PNG)
+  const { deps, started, model } = turn([
+    toolCall('edit_image', { source: 'photo.png', prompt: 'more warmth in the light', target: 'the sky' }),
+    text('Il formato non è 9:16.'),
+  ], { text: 'modifica questa foto con una luce più calda e falla in 9:16', outputDir: dir })
+  await readAgentChat(deps)
+  assert.equal(started.length, 1)
+  assert.equal(started[0]?.action, 'remix')
+  assert.equal(started[0]?.aspectRatio, '9:16')
+  assert.equal(started[0]?.canvasAsked, true)
+  assert.deepEqual(started[0]?.size, sizeFor('9:16', '1080p'))
+  // A new shape redraws the whole frame: the zone is dropped.
+  assert.equal(started[0]?.region, undefined)
+  const result = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as {
+    files?: { name: string; width?: number; height?: number; ratio?: string }[]
+    mismatch?: string
+    aspect?: string
+  }
+  assert.equal(result.aspect, '9:16')
+  assert.deepEqual(result.files, [{ name: 'job-1.webp', width: 1, height: 1, ratio: '1:1' }])
+  assert.match(result.mismatch ?? '', /asked 9:16, made job-1\.webp 1:1/)
+})
+
+test('the instruction keeps the studio orders out of the drawn prompt', async () => {
+  const { agentInstruction } = await import('../server/vendor/tool-comfy/agent-prompt.ts')
+  const text = await agentInstruction({
+    request: { text: 'x', history: [], staged: [], recent: [], model: MODEL },
+    known: [],
+    eraseTool: false,
+    working: [],
+    maxSteps: 8,
+    maxJobs: 6,
+  })
+  assert.match(text, /draws every word it gets/)
+  assert.match(text, /`edit_image` with `aspect`/)
+  assert.match(text, /mismatch/)
 })
