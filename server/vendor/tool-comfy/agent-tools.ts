@@ -288,11 +288,23 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       },
     },
     async run(args, deps) {
-      const prompt = str(args['prompt'])
+      let prompt = str(args['prompt'])
       if (prompt === undefined) return refused('prompt is required and cannot be empty')
       if (prompt.length > MAX_PROMPT) return refused(`prompt is longer than ${String(MAX_PROMPT)} characters`)
+      /*
+       * A model that translated the line has done the one thing the rule
+       * forbids. The line itself is the prompt the rule asks for, so it is
+       * used instead of failing the request (measured: an Italian edit was
+       * sent as "Change the colour of the mug…" and the model then stopped to
+       * ask whether to try again).
+       */
       const translated = translatedPrompt(prompt, deps.asked)
-      if (translated !== undefined) return refused(translated)
+      if (translated !== undefined) {
+        const line = deps.asked.trim()
+        if (line.length === 0) return refused(translated)
+        prompt = line
+        deps.say({ kind: 'step', step: 'tool', name: 'edit_image', detail: 'prompt-from-line' })
+      }
       const source = str(args['source'])
       if (source === undefined) return refused('source is required: the picture to edit, by gallery name')
       const item = await galleryImage(deps, source)
@@ -511,9 +523,24 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
        */
       const language = languageName(deps.language)
       const subject = deps.asked.trim().length === 0 ? 'the file' : `"${deps.asked.trim()}"`
+      /*
+       * The file's own header is the only authority on its size and length:
+       * the vision pass estimated 1600x1200 on a 1080x720 picture (2026-11-19)
+       * while the tool result carried the real numbers, so the exact facts go
+       * into the instruction and the pass is told not to estimate them.
+       */
+      const measured: string[] = []
+      if (item.width !== undefined && item.height !== undefined && item.width > 0 && item.height > 0) {
+        measured.push(`${String(item.width)}x${String(item.height)} pixels`, `ratio ${ratioName(item.width, item.height)}`)
+      }
+      if (item.duration !== undefined && item.duration > 0) measured.push(`${item.duration.toFixed(1)} seconds long`)
+      const facts = measured.length === 0
+        ? 'The file carries no measured size in its header: do not estimate one.'
+        : `Measured facts from the file's header, exact: ${measured.join(', ')}. Use these numbers whenever size, shape or length is asked, and never state a different one.`
+      const sobriety = 'Describe only what is clearly visible: the subject, the setting, the main colours and how the frame is composed. Do not estimate dimensions, counts, colours, written text, marks or objects that are not plainly visible; when something is not clear, say it is not clearly visible. Read written text only when it is legible, and quote it exactly.'
       const instruction = asked === undefined
-        ? `The user asked: ${subject}. Look at this file only to answer that, in ${language}, in two or three sentences: say what is clearly visible and needed to check the request, and nothing else. Do not add objects, written text, marks, bands or colours that are not plainly visible, and do not guess.`
-        : `Answer only this question about the file, in ${language}, in one or two sentences: "${asked}". Say only what is clearly visible; do not add other observations, and do not guess at details (objects, written text, marks, bands, colours).`
+        ? `${facts}\nThe user asked: ${subject}. Look at this file only to answer that, in ${language}, in two or three sentences. ${sobriety}`
+        : `${facts}\nAnswer only this question about the file, in ${language}, in one or two sentences: "${asked}". ${sobriety}`
       let target = join(deps.outputDir, safe)
       let scratch: string | undefined
       try {
@@ -1182,8 +1209,15 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       if (action === undefined || !(IMAGINE_ACTIONS as readonly string[]).includes(action)) {
         return refused(`action must be one of ${IMAGINE_ACTIONS.join(', ')}`)
       }
-      const prompt = str(args['prompt']) ?? ''
+      let prompt = str(args['prompt']) ?? ''
       if (prompt.length > MAX_PROMPT) return refused(`prompt is longer than ${String(MAX_PROMPT)} characters`)
+      const translated = translatedPrompt(prompt, deps.asked)
+      if (translated !== undefined) {
+        const line = deps.asked.trim()
+        if (line.length === 0) return refused(translated)
+        prompt = line
+        deps.say({ kind: 'step', step: 'tool', name: 'run_action', detail: 'prompt-from-line' })
+      }
       const source = str(args['source'])
       if (source !== undefined) {
         const item = await galleryKind(deps, source, ['image', 'video', 'audio'])

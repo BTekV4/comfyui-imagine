@@ -29,6 +29,15 @@ const ENGLISH = /\b(the|a|an|is|are|was|were|of|and|with|this|that|these|those|h
 const MIN_WORDS = 4
 
 /**
+ * A script the studio's own languages never use.
+ *
+ * The word score sees an Italian sentence around one Chinese adverb and calls
+ * it Italian (measured: "la scena è现在 più scura"). A reply carrying a
+ * foreign script is not in the interface's language whatever the rest says.
+ */
+const FOREIGN_SCRIPT = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\u0400-\u04ff\u0600-\u06ff]/
+
+/**
  * The language of one written reply, from the words it uses.
  *
  * Italian accents are counted too: a short Italian sentence ("È più scuro")
@@ -86,6 +95,7 @@ function wantedLanguage(language: string | undefined): ReplyLanguage | undefined
 export function replyNeedsRewrite(reply: string, language: string | undefined): boolean {
   const wanted = wantedLanguage(language)
   if (wanted === undefined) return false
+  if (FOREIGN_SCRIPT.test(reply)) return true
   const seen = languageOfReply(reply)
   return seen !== 'unknown' && seen !== wanted
 }

@@ -757,32 +757,35 @@ test('an Italian reply is not rewritten, and an unplaceable one is left alone', 
   assert.equal(replyNeedsRewrite('Ecco la foto, la tazza è sul tavolo con una luce calda.', 'it'), false)
   assert.equal(replyNeedsRewrite('Here is the photo, the cup is on the table with warm light.', 'it'), true)
   assert.equal(replyNeedsRewrite('Fatto.', 'it'), false)
+  // A stray foreign script is caught even when the rest of the sentence is Italian.
+  assert.equal(replyNeedsRewrite('La scena è现在 più scura, con ombre profonde.', 'it'), true)
   assert.match(rewriteAsk('it'), /Italiano/)
 })
 
 
-test('a prompt translated away from the user\'s language is refused', async () => {
+test('a translated edit prompt is replaced by the user\'s own line', async () => {
+  const started: JobBody[] = []
   const outcome = await runAgentTool('edit_image', {
     source: 'photo.png',
     prompt: 'Make the light darker.',
   }, {
     ctx: classicHost('{}'),
-    outputDir: '/nonexistent-imagine-agent-test',
+    outputDir: mediaDir,
     language: 'it',
     asked: 'come prima ma più scuro',
     eraseTool: false,
     known: [],
     canQueue: () => 1,
     say: () => undefined,
-    start: async () => [],
+    start: async (body) => { started.push(body); return [] },
     jobView: job => job,
     listJobs: () => [],
     getJob: () => undefined,
     adoptFiles: async () => undefined,
     cancelJob: async () => true,
   })
-  assert.equal(outcome.result['ok'], false)
-  assert.match(String(outcome.result['error'] ?? ''), /do not translate/)
+  assert.equal(outcome.result['ok'], true)
+  assert.equal(started[0]?.prompt, 'come prima ma più scuro')
 })
 
 test('a prompt in the user\'s own language is left alone', async () => {
@@ -828,6 +831,10 @@ test('a look answers one targeted question and carries the real measures', async
   assert.match(asked[0] ?? '', /Answer only this question/)
   assert.match(asked[0] ?? '', /la tazza è blu\?/)
   assert.doesNotMatch(asked[0] ?? '', /Describe what is visible/)
+  // The header's numbers are in the instruction, and estimating is forbidden.
+  assert.match(asked[0] ?? '', /1x1 pixels/)
+  assert.match(asked[0] ?? '', /ratio 1:1/)
+  assert.match(asked[0] ?? '', /Do not estimate dimensions/)
 })
 
 test('the instruction makes the measures win and asks before guessing a change', async () => {
@@ -854,4 +861,32 @@ test('a resolution without a shape is not dropped: it keeps the studio shape', a
   assert.equal(started.length, 1)
   assert.equal(started[0]?.size, sizeFor('9:16', '720p'))
   assert.equal(started[0]?.aspectRatio, undefined, 'no shape the user did not ask for')
+})
+
+
+test('a translated run_action prompt is replaced by the user\'s line too', async () => {
+  const started: JobBody[] = []
+  const outcome = await runAgentTool('run_action', {
+    action: 'relight',
+    source: 'photo.png',
+    prompt: 'Make the light darker, keep the subject and the framing',
+    extras: { light: 'evening_lamp' },
+  }, {
+    ctx: classicHost('{}'),
+    outputDir: mediaDir,
+    language: 'it',
+    asked: 'come prima ma più scuro',
+    eraseTool: false,
+    known: [],
+    canQueue: () => 1,
+    say: () => undefined,
+    start: async (body) => { started.push(body); return [] },
+    jobView: job => job,
+    listJobs: () => [],
+    getJob: () => undefined,
+    adoptFiles: async () => undefined,
+    cancelJob: async () => true,
+  })
+  assert.equal(outcome.result['ok'], true)
+  assert.equal(started[0]?.prompt, 'come prima ma più scuro')
 })

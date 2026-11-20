@@ -816,7 +816,10 @@ function casesOf(fixtures) {
           check('tool is edit_image', call !== undefined),
           check('source is the staged photo', args.source === fixtures.still, String(args.source ?? '')),
           check('the change is the background', /sfondo|parete|background/i.test(String(args.prompt ?? '')), String(args.prompt ?? '')),
-          check('the result exists', made.length === 1 && made[0].name !== fixtures.still, JSON.stringify(made)),
+          // The agent may try again when the vision pass finds a change it did
+          // not ask for (a person added by a background edit): the case is a
+          // result that landed, not one attempt.
+          check('a result exists', made.length >= 1 && made.every(file => file.name !== fixtures.still), JSON.stringify(made)),
         ].flat()
       },
     },
@@ -845,11 +848,14 @@ function casesOf(fixtures) {
       check: ({ tools, files, jobs }) => {
         const call = tools.find(tool => tool.name === 'erase')
         const args = call?.args ?? {}
+        const erased = files.find(file => file.name.startsWith('erase_image-'))
         return [
           check('tool is erase', call !== undefined),
           check('source is the staged photo', args.source === fixtures.sign, String(args.source ?? '')),
-          check('the eraser made a file', jobs.length === 0 && files.length === 1, `${String(jobs.length)} runs, ${String(files.length)} files`),
-          check('the result is not the source', files.every(file => file.name !== fixtures.sign)),
+          // The eraser may leave an artefact, and the agent then fixes it with
+          // an edit: the case is the word gone, not "erase and nothing else".
+          check('the eraser made a file', erased !== undefined, `${String(jobs.length)} runs, ${String(files.length)} files`),
+          check('the eraser result is not the source', erased !== undefined && erased.name !== fixtures.sign),
         ].flat()
       },
     },
@@ -924,16 +930,22 @@ function casesOf(fixtures) {
     {
       id: 'memory-darker',
       text: 'come prima ma più scuro',
-      expectedTools: ['edit_image'],
+      expectedTools: ['edit_image', 'relight'],
       body: null,
       check: ({ tools, files }) => {
-        const call = tools.find(tool => tool.name === 'edit_image')
+        // The line asks for the same picture, darker. The whole-photo edit and
+        // the studio's relight are both valid; the relight is the better one
+        // when the subject has to stay exactly the same.
+        const edit = tools.find(tool => tool.name === 'edit_image')
+        const relight = tools.find(tool => tool.name === 'run_action' && String(tool.args.action ?? '') === 'relight')
+        const call = edit ?? relight
         const args = call?.args ?? {}
         const made = files.filter(file => file.kind === 'image')
+        const said = `${String(args.prompt ?? '')} ${JSON.stringify(args.extras ?? {})}`
         return [
-          check('tool is edit_image', call !== undefined),
+          check('tool is edit_image or relight', call !== undefined, JSON.stringify(tools.map(tool => tool.name))),
           check('it edits the previous result', args.source === previousResult('edit-global'), `${String(args.source ?? '')} vs ${String(previousResult('edit-global'))}`),
-          check('the change is darker', /scur/i.test(String(args.prompt ?? '')), String(args.prompt ?? '')),
+          check('the change is darker', /scur|dark|evening/i.test(said), said),
           check('a result exists', made.length === 1, JSON.stringify(made)),
         ].flat()
       },
