@@ -636,7 +636,7 @@ async function readInputs(
     job.lastSource === undefined
       ? undefined
       : resolveInputImage({ path: join(outputDir, job.lastSource) }, outputDir).catch(() => undefined),
-    job.action === 'remix' && job.reference !== undefined
+    (job.action === 'remix' || job.action === 'generate') && job.reference !== undefined
       ? resolveInputImage({ path: join(outputDir, job.reference) }, outputDir)
       : undefined,
   ])

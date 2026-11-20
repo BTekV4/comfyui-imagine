@@ -979,3 +979,41 @@ test('the reply that queued work is never followed by "no work started"', () => 
   assert.equal(answerStartedWork({ ...empty, files: [{ name: 'erase.png', kind: 'image' }] }), true)
   assert.equal(answerStartedWork({ ...empty, pending: { token: 't' } }), true)
 })
+
+test('a new picture carries one style reference to the run', async () => {
+  const { deps, started } = turn([
+    toolCall('generate_image', { prompt: 'un faro in stile poster illustrato', aspect: '9:16', reference: 'photo.png' }),
+    text('Fatto.'),
+  ], { text: 'genera un faro nello stile di questa illustrazione, 9:16', outputDir: mediaDir })
+  await readAgentChat(deps)
+  assert.equal(started.length, 1)
+  assert.equal(started[0]?.reference, 'photo.png')
+})
+
+test('a reference name that is not in the gallery is refused', async () => {
+  const { deps, model } = turn([
+    toolCall('generate_image', { prompt: 'un faro', reference: 'missing.png' }),
+    text('Quella foto non c\'è.'),
+  ], { text: 'genera un faro nello stile di questa foto', outputDir: mediaDir })
+  await readAgentChat(deps)
+  const result = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as { ok?: boolean; error?: string }
+  assert.equal(result.ok, false)
+  assert.match(result.error ?? '', /not in the gallery/)
+})
+
+test('the instruction takes the style from the pictures and never invents photorealism from the word foto', async () => {
+  const { agentInstruction } = await import('../server/vendor/tool-comfy/agent-prompt.ts')
+  const text = await agentInstruction({
+    request: { text: 'x', history: [], staged: [], recent: [], model: MODEL },
+    known: [],
+    eraseTool: false,
+    working: [],
+    maxSteps: 8,
+    maxJobs: 6,
+  })
+  assert.match(text, /The word for the medium is not the style/)
+  assert.match(text, /never turn it photorealistic/)
+  assert.match(text, /not even as a question at the end/)
+  assert.match(text, /pass one of them in `reference`/)
+  assert.match(text, /Each file\'s `seen:` belongs to that file/)
+})

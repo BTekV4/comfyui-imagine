@@ -42,3 +42,23 @@ test('an object swap carries no canvas: its graph sizes the render from planReso
   })
   assert.equal(plan.size, undefined)
 })
+
+test('a new picture takes a style reference only when its graph has that input', async () => {
+  const { mkdtemp, writeFile } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const dir = await mkdtemp(join(tmpdir(), 'imagine-style-ref-'))
+  await writeFile(join(dir, 'ref.png'), Buffer.from('89504e470d0a1a0a', 'hex'))
+  // The graph that ships draws from text alone: a reference would be dropped.
+  await assert.rejects(
+    readJobRequest({ generate: { graph: { '1': { class_type: 'KSampler', inputs: {} } } } } as never, dir, {
+      action: 'generate', prompt: 'un faro in stile fumetto', reference: 'ref.png',
+    }),
+    /refImageNodeId/,
+  )
+  // A graph that declares the second image branch carries it to the run.
+  const plan = await readJobRequest({
+    generate: { graph: { '9': { class_type: 'LoadImage', inputs: {} } }, refImageNodeId: '9' },
+  } as never, dir, { action: 'generate', prompt: 'un faro in stile fumetto', reference: 'ref.png' })
+  assert.equal(plan.reference, 'ref.png')
+})

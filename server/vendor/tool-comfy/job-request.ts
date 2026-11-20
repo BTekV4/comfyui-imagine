@@ -725,6 +725,9 @@ export async function readJobRequest(
     // «Object swap»: the mode decides the graph, and so does the «High»
     // recipe when the entry declares a second one like all the others.
     : highObjectSwap(workflows, request.objectMode, request.reference !== undefined, request) ?? swapGraph
+  if (files.reference !== undefined && action === 'generate' && workflow.refImageNodeId === undefined) {
+    throw new Error(message('job.referenceNotConfigured'))
+  }
   return {
     prompt,
     ...source === undefined ? {} : { source },
@@ -957,6 +960,18 @@ function referencesOf(request: ImagineJobRequest): RequestFiles {
     throw new Error(message('job.referenceNotGallery'))
   }
   /*
+   * A new picture that takes a style reference: only a graph with a second
+   * image branch can read it. The `generateImage` graph is usually a plain
+   * text-to-image one (no `refImageNodeId`), and a reference accepted here
+   * would be dropped before the render — the same silent loss the chat had
+   * (2026-11-20: five cartoon references, a photoreal render, no style).
+   * The refusal names the reason; the style can still be described in words.
+   */
+  const generateReference = action === 'generate' && request.reference !== undefined ? safeBasename(request.reference) : undefined
+  if (action === 'generate' && request.reference !== undefined && (generateReference === undefined || kindOf(generateReference) !== 'image')) {
+    throw new Error(message('job.referenceNotGallery'))
+  }
+  /*
    * «Character swap» is nothing without the new character: the photo is
    * required, and it is the graph's picture of who plays the part.
    */
@@ -964,7 +979,7 @@ function referencesOf(request: ImagineJobRequest): RequestFiles {
   if (action === 'swapPerson' && (swapReference === undefined || kindOf(swapReference) !== 'image')) {
     throw new Error(message('job.characterPhotoRequired'))
   }
-  const reference = composeReference ?? objectReference ?? remixReference ?? swapReference
+  const reference = composeReference ?? objectReference ?? remixReference ?? swapReference ?? generateReference
   return {
     ...reference === undefined ? {} : { reference },
     ...objectMode === undefined ? {} : { objectMode },
