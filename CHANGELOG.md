@@ -4,47 +4,52 @@ Notable changes, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project's
 versions follow [semantic versioning](https://semver.org/).
 
-## Unreleased
+## 0.4.0 — 2026-11-20
+
+The release where the chat does the work itself: it calls the studio's tools,
+checks what they made against the request, and says what is still running. The
+vision pass stops guessing numbers the file already knows, and a requested
+length is the length that is rendered.
 
 ### Added
 
-- **The agent chat reaches every studio action.** A single `run_action` tool
-  carries the studio's own fields for object swap, character swap, recreate,
-  relight, compose, background removal, redo, resume and the rest: the files
-  are checked against the gallery, the closed lists against the studio's own,
-  and the same confirmation gate applies. A field the studio does not know is
-  refused, not dropped.
-- **The confirmation limit is on the settings page.** Settings → Assistant
-  shows, beside the chat switch, how long a clip may be before the agent
-  stops for a yes (`agentConfirmSeconds`, fifteen seconds by default; whole
-  seconds from 1 to 3600). Stories, music, montages, personal cards and a 4K
-  upscale always ask, whatever the number says. The field is translated into
-  Italian and English, and the value the server stores is what the page shows
-  again after a reload.
-- **The agent chat renders video, sound and cards, and asks before the
-  expensive work.** The agent lane of a project's chat now has tools for a
-  clip from a picture, a continuation, an animated loop, a story, a piece of
-  music, a track laid over a clip, speech, a voice change, an upscale and a
-  personal card. A clip longer than fifteen seconds, a story, music, a
-  montage, a personal card and a 4K upscale stop before they start: the turn
-  ends with a Yes/No card, nothing is queued and nothing is cancelled until
-  the answer, and the yes resumes the same turn. `cancel_job` only ever
-  proposes; the user's yes is what stops the run. The tools are the page's
-  own paths (`startFromBody`, the host's `/api/add-audio`), so an agent run
-  is an ordinary job on the board and can be cancelled from the gallery.
+- **An agent chat with tools, not one fixed reading.** A project's chat can
+  queue a still, edit one, remove a mark, look at a file, read the project and
+  check a run; it also renders a clip from a picture, a continuation, a loop, a
+  story, music, speech, a voice change, an upscale and a personal card. The
+  exact same paths the page uses are behind the tools, so an agent run is an
+  ordinary job on the board and can be cancelled from the gallery.
+- **The agent reaches every studio action.** `run_action` carries object swap,
+  character swap, recreate, relight, compose, background removal, redo, resume,
+  `scanFrame`, regenerate and personal cards, with the action's own fields as
+  the page sends them. Dedicated tools exist where one reads better.
+- **Expensive work asks first.** A clip longer than fifteen seconds, a story,
+  music, a montage, a personal card and a 4K upscale stop before they start:
+  the turn ends with a Yes/No card, nothing is queued and nothing is cancelled
+  until the answer, and the yes resumes the same turn. `cancel_job` only ever
+  proposes; the user's yes is what stops the run. The limit is shown in
+  Settings.
+- **The agent looks before it claims.** A finished run returns each file with
+  its real width, height, ratio and duration, and a `mismatch` when the shape
+  or the length is not what was asked. The `look` tool answers one targeted
+  question and carries the file's measured numbers.
+- **A repeatable bench for the agent chat.** `scripts/agent-bench.mjs` starts a
+  studio of its own (port 3091, its own data root, media folder, settings and
+  IOPaint plugin), records the model's tool calls through a small proxy, draws
+  neutral fixtures, runs fifteen Italian requests against a real model and
+  ComfyUI, and writes a Markdown and a JSON report with the real measurements,
+  the reply language, timings, errors and automatic checks.
 - **Writing, a logo and a watermark go straight to the masked eraser.** The
-  written lane recognises the request (from the sentence, not only from the
-  reading's choice) and runs «Remove object» (IOPaint's LaMa) instead of a
-  remix: nothing else redraws the photo around it. The zone is found by the
-  vision model, and the mask is grown and softened so the fill does not leave
-  the halo a hard edge leaves. It is a host edit, not a graph: no job is
-  queued.
+  written lane recognises the request and runs «Remove object» (IOPaint's LaMa)
+  instead of a remix: nothing else redraws the photo around it. The zone is
+  found by the vision model, and the mask is grown and softened so the fill does
+  not leave the halo a hard edge leaves. It is a host edit, not a graph: no job
+  is queued.
 - **A named thing becomes the zone.** "Make the leather bag dark" is grounded
   on the photo, with the file's own description, so the word the user used
   ("la borsa") is matched to what is really there ("the red handbag") before a
-  box is drawn. A box that is not found is said out loud: the precise edit
-  falls back to the whole photo, and the eraser asks the user to paint the
-  part instead.
+  box is drawn. When a SAM 3 mask is available the zone is cut along the
+  object's own outline, not the rectangle around it.
 - **A track can be laid over a clip** (`addAudio`, chat and MCP): the clip
   decides the length, the picture is copied and never re-rendered, and the
   original files stay.
@@ -54,19 +59,36 @@ versions follow [semantic versioning](https://semver.org/).
 
 ### Changed
 
-- **An image edit keeps the photo's own shape.** The Krea 2 edit graphs
-  measure the photo they are given; the written lane no longer sends a studio
-  canvas for a remix, so a 4:5 photo no longer comes back on a studio ratio
-  with its composition cropped. A ratio the user really names ("falla
-  quadrata") still travels.
-- **A closed list is filtered by the sentence.** The workflow second pass is
-  shown the combo values the user's words point at — and always the value the
-  input holds now — instead of the first forty, which could miss the one
-  LoRA the sentence named.
-- **An edit that changed nothing is reported.** When a remix delivers the
-  photo it started from, the job carries a notice saying so, instead of the
-  same picture landing on the board with no word.
-
+- **Zones follow the object, not its box.** A grounded edit or erasure cuts the
+  SAM 3 mask when the studio can segment the thing, so a rectangle's background
+  is no longer regenerated around it. A rectangle the user painted stays a
+  rectangle.
+- **Durations are real.** A length off the video ladder takes the next rung up,
+  a chained video renders at the frame its ladder step asks for, and one past
+  the longest single clip runs as a chain at the length asked for instead of
+  falling back to ten seconds. A music request keeps its length too: the graph's
+  `max_duration` is only a cap, so the requested length is written on the empty
+  latent that actually fixes the audio.
+- **The vision pass is sober.** Its instruction carries the file's measured
+  width, height, ratio and duration and says those are the only truth for size
+  and shape. It is told not to estimate dimensions, counts, colours, written
+  text, marks or objects it cannot see plainly, and to say when something is not
+  clearly visible. The description stays; the invented numbers go.
+- **An image edit keeps the photo's own shape.** The Krea 2 edit graphs measure
+  the photo they are given; the written lane no longer sends a studio canvas for
+  a remix, so a 4:5 photo no longer comes back on a studio ratio with its
+  composition cropped. A ratio the user really names ("falla quadrata") still
+  travels, and a resolution without a shape keeps the source's shape.
+- **The prompt is the user's words; the studio's orders are arguments.** The
+  drawn prompt keeps the subject, the adjectives and the language the user
+  wrote, and leaves out "modifica", "9:16", "1080p", "tre foto", "16 secondi"
+  and the talk around them. Those choices go in `aspect`, `resolution`, `count`
+  and `seconds`; one the user made and the model drops is recovered from the
+  line, and one the model invents is refused.
+- **The agent's reply is in the interface's language.** Every tool result says
+  which language the reply is written in; a reply in another language is sent
+  back once, with no tools, to be rewritten. A reply carrying a foreign script
+  is caught even when the rest of the sentence is Italian.
 - **The written lane carries the composer's controls.** A sentence can ask for
   the «Quality» pill (`quality: "high"` for a photo, `speed: "slow"` for a
   clip), an upscale target (`upscaleTo`, on the ladder of the file's kind), and
@@ -79,54 +101,51 @@ versions follow [semantic versioning](https://semver.org/).
   does. A configured entry that points at a card is shown by its title and
   description instead of the UUID.
 - **Every workflow entry accepts a `description`** — when to use it, in one
-  line — shown in Settings → Workflows and given to the written lane, which
-  had been choosing a graph from its title alone. `config.example.yaml`
-  describes all of them.
+  line — shown in Settings → Workflows and given to the written lane, which had
+  been choosing a graph from its title alone. `config.example.yaml` describes
+  all of them.
 - **The graph second pass is given the node facts**: a combo's closed list (the
   LoRAs, checkpoints and models this installation really has), a number's
-  bounds and step, and the pins that no longer resolve.
-
-### Changed
-
+  bounds and step, and the pins that no longer resolve. A closed list is
+  filtered by the sentence, and always keeps the value the input holds now.
 - **The workflow gateway opens only on an explicit request.** A model that
   names a graph behind an ordinary request ("fammi una foto") no longer turns
   the sentence into a graph question, and a sentence that asks for a run *and*
   about a graph keeps its intents beside the proposal instead of losing them.
-- **Durations are real.** A length off the duration ladder takes the next rung
-  up, and one past the longest single clip runs as a chain at the length asked
-  for (up to the chain's ceiling) instead of falling back to ten seconds. The
-  reply says the length the studio will really render.
-- **The chat's prompt draws its limits from the constants** — video and story to
-  300 s, music 30-300 — and has a line for every action it may queue, `compose`
-  and `custom` included, so the reading is no longer told about an action with
-  no description.
+- **An edit that changed nothing is reported.** When a remix delivers the photo
+  it started from, the job carries a notice saying so, instead of the same
+  picture landing on the board with no word.
 
 ### Fixed
 
-- **A long video asked at 480p renders at 480p.** The chained graphs plan
-  their own scenes and take the frame as two plain numbers on the Production
-  Plan, not as a `ResolutionSelector` label and budget, so the ladder step
-  never reached them: a twelve-second video asked at 480p came out at the
-  file's 720p frame (720x1280, then 736x1312 once the graph was put on the 32px
-  grid) while the still it grew from was 480x848. The host now writes the
-  frame the selector itself gives for the run's budget and aspect — measured on
-  the node, each side rounded on its own, so 0.4 MP at 9:16 is 480x864 — on
-  the plan node, before a size the job carries, which is how a continuation
-  keeps rendering on its source clip's canvas.
+- **A music request keeps the length it asked for.** MiniMax Music 3's
+  `max_duration` is a cap, not a fixed length, and the empty latent was linked
+  to the encoder's own choice: a 30 s request came back 17.9 s or 21.9 s. The
+  requested length is now written on the latent too; 15, 30 and 60 s render at
+  15.02, 30.01 and 60.03 s.
 - **The agent recovers a count and a length the model drops.** "Tre foto" and
   "un video di 16 secondi" were said in the reply and missing from the call;
   the studio now reads them from the user's line, as it already did for a
   ratio and a resolution. The length is also what drives the confirmation.
-- **The agent's reply stays in the interface's language.** A line written in
-  another language keeps its words in the prompt, but the instruction now says
-  explicitly that the reply is still written in the page's language, with no
-  word of the other one.
+- **A translated prompt is replaced, not accepted.** A model that writes the
+  drawing prompt in a language the user did not use gets the user's own line
+  instead: the work runs, in the right words, instead of stopping to ask.
+- **A run waiting for an install is never called "running".** The tool result
+  says `setup-needed`, names the missing packs or models, and the reply points
+  at the Install button. A run that ended in error says what failed, and an
+  empty reply is never saved.
 - **A graph this deployment does not configure is said in the chat**, before a
   job exists, instead of failing after the queue. A card whose graph does not
   load is reported the same way.
 - **A change the node would refuse is refused by the plan**: a combo value off
   its closed list and a number outside its bounds are reported with the values
   that would work, and a measure is snapped to the node's own multiple.
+- **The relight instruction is subject-neutral** and writes the provider the
+  config defines, so a photo's person is not described by the pass that only
+  has to change the light.
+- **The ffmpeg download is bounded and has a second source**, and the
+  production dependency tree is checked on every push, so a package cannot ship
+  a binary or a dependency nobody checked.
 
 ## 0.3.1 — 2026-11-18
 
