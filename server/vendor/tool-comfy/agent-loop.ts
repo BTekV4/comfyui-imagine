@@ -35,6 +35,7 @@ import { probeMedia } from './media-tools.ts'
 import {
   agentToolSchemas, confirmationFor, numbersInLine, runAgentTool, type AgentPendingOffer, type AgentToolDeps,
   type AgentToolOutcome,
+  graphNotes,
 } from './agent-tools.ts'
 
 /** What the host hands the loop: the switch, the limits and the declarations. */
@@ -403,6 +404,7 @@ async function runAgentTurn(deps: AgentTurnDeps, route: ModelRoute): Promise<Age
     maxJobs: jobBudgetFor(limits, deps.request.text, previousUserLine(deps.request.history)),
     ...deps.inventory?.cards === undefined ? {} : { cards: deps.inventory.cards },
     ...deps.request.voices === undefined ? {} : { voices: deps.request.voices },
+    graphs: await graphNotes({ ...deps.inventory === undefined ? {} : { inventory: deps.inventory } }).catch(() => []),
   })
   deps.say({ kind: 'step', step: 'route', detail: `${route.provider}/${route.model}` })
   const state: TurnState = {

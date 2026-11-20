@@ -366,6 +366,15 @@ export function workflowInventory(
       const classType = workflowOfKey(key)?.loaded.graph[node]?.class_type
       return classType === undefined ? undefined : await ctx.comfy.nodeOptions(classType, field)
     },
+    graphOf: (key) => {
+      const entry = workflowOfKey(key)
+      if (entry === undefined) return undefined
+      return {
+        graph: entry.loaded.graph,
+        ...entry.loaded.promptNodeId === undefined ? {} : { promptNodeId: entry.loaded.promptNodeId },
+        ...entry.loaded.seedNodeId === undefined ? {} : { seedNodeId: entry.loaded.seedNodeId },
+      }
+    },
     plan: (key, changes, facts) => {
       const entry = workflowOfKey(key)
       if (entry === undefined) return undefined

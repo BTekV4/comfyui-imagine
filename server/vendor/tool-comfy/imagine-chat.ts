@@ -17,6 +17,7 @@
 
 import { join } from 'node:path'
 import type { ImagineHost } from '../../src/host.ts'
+import type { ComfyGraph } from '../comfyui/index.ts'
 import {
   IMAGINE_OBJECT_MODES, IMAGINE_QUALITIES, IMAGINE_SPEEDS,
   type ImagineAction, type ImagineObjectMode, type ImagineQuality, type ImagineRegion, type ImagineSpeed,
@@ -384,6 +385,21 @@ export interface WorkflowInventory {
    * @returns the plan, or undefined when no such workflow is configured.
    */
   plan(key: string, changes: readonly WorkflowChange[], facts?: readonly WorkflowFieldFact[]): WorkflowPlan | undefined
+  /**
+   * One workflow's graph as it runs, with the nodes the studio writes itself,
+   * so the agent can read it (`graph-reading.ts`). Read-only: nothing here
+   * may be changed in place.
+   * @param key - the workflow's key.
+   * @returns the graph and its prompt and seed pins, or undefined when no such workflow is configured.
+   */
+  graphOf?(key: string): RunnableGraph | undefined
+}
+
+/** A graph the agent may read, and the nodes the studio writes on every run. */
+export interface RunnableGraph {
+  readonly graph: ComfyGraph
+  readonly promptNodeId?: string
+  readonly seedNodeId?: string
 }
 
 /** Told about each step of a reading as it happens; never throws. */
