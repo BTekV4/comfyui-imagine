@@ -42,6 +42,13 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DEFAULT_REPO = resolve(HERE, '..')
 
+/** The illustrated references the style cases take their look from. */
+const CARTOON_PROMPTS = [
+  'illustrazione a fumetto di un faro su una scogliera al tramonto, contorni neri marcati, colori piatti, cielo a strisce, stile poster',
+  'illustrazione a fumetto di colline verdi con un mulino a vento, contorni marcati, palette pastello, stile poster',
+  'illustrazione a fumetto di un ponte di legno su un fiume, colori piatti, cielo viola, inquadratura da poster',
+]
+
 /** The prompt fixtures are drawn with: neutral, owned by the bench. */
 const STILL_PROMPT = 'una tazza di ceramica bianca su un tavolo di legno chiaro, una parete grigia sullo sfondo, luce naturale del giorno'
 const STILL_SIZE = '1080x720'
@@ -589,7 +596,26 @@ async function makeFixtures(base) {
   await run(['ffmpeg', '-y', '-v', 'error', '-i', join(mediaDir, still), '-vf',
     `drawtext=fontfile=${font}:text='SALE':fontcolor=black:fontsize=72:box=1:boxcolor=white@0.92:boxborderw=22:x=60:y=60`,
     join(mediaDir, sign)])
-  return { still, sign }
+  /*
+   * Three illustrated references, drawn by the bench itself: a person's own
+   * pictures are never copied into a test, and the style the agent has to take
+   * is the one these carry (flat colours, bold outlines, poster framing).
+   */
+  const cartoon = []
+  for (const [index, line] of CARTOON_PROMPTS.entries()) {
+    log(`drawing illustrated reference ${String(index + 1)} of ${String(CARTOON_PROMPTS.length)}`)
+    const job = await directJob(base, {
+      action: 'generate',
+      prompt: line,
+      size: '1080x720',
+      aspectRatio: '3:2',
+      canvasAsked: true,
+    })
+    const name = fileOf(job)
+    if (job.status !== 'done' || name === undefined) throw new Error(`illustrated fixture ${String(index + 1)} ended ${job.status}: ${job.error ?? ''}`)
+    cartoon.push(name)
+  }
+  return { still, sign, cartoon }
 }
 
 /* --------------------------------------------------------------- cases ---- */
@@ -715,6 +741,8 @@ async function measurementsOf(base, jobs, extraFiles) {
 function casesOf(fixtures) {
   const still = { name: fixtures.still, kind: 'image' }
   const sign = { name: fixtures.sign, kind: 'image' }
+  // The three illustrated references the style cases take their look from.
+  const refs = fixtures.cartoon.map(name => ({ name, kind: 'image' }))
   const base = {
     eraseTool: true,
     history: [],
@@ -1017,6 +1045,70 @@ function casesOf(fixtures) {
         ]
       },
     },
+    {
+      id: 'ten-images-style',
+      text: 'genera 10 immagini di un gatto bianco su un tetto in stile fumetto, prendi ispirazione da queste 3 illustrazioni, 9:16, 1080p',
+      expectedTools: ['generate_image'],
+      body: { ...base, staged: refs, recent: [still, ...refs] },
+      check: ({ tools, jobs, files, reply, language }) => {
+        const calls = tools.filter(tool => tool.name === 'generate_image')
+        const asked = calls.reduce((total, tool) => total + (Number(tool.args.count) || 1), 0)
+        const made = files.filter(file => file.kind === 'image')
+        const prompt = calls.map(tool => String(tool.args.prompt ?? '')).join(' | ')
+        return [
+          check('tool is generate_image', calls.length >= 1, JSON.stringify(tools.map(tool => tool.name))),
+          // The production fault: a 10-picture line answered "no room" with
+          // nothing queued. Ten means ten, in one call or two.
+          check('ten runs were queued', jobs.length === 10, `${String(jobs.length)} runs (asked ${String(asked)})`),
+          check('all ten settled', jobs.length === 10 && jobs.every(job => job.status === 'done'), jobs.map(job => job.status).join(',')),
+          check('ten pictures exist', made.length === 10, `${String(made.length)} files`),
+          check('every picture is 9:16', made.length === 10 && made.every(file => shapeMatches(file.width, file.height, '9:16')), JSON.stringify(made.slice(0, 2))),
+          check('every picture is 1080p', made.length === 10 && made.every(file => Math.min(file.width ?? 0, file.height ?? 0) === 1080), JSON.stringify(made.slice(0, 2))),
+          check('the prompt carries the references\' style', /fumetto|illustr|poster|contorni/i.test(prompt), prompt),
+          check('the prompt keeps the subject', /gatto|tetto/i.test(prompt), prompt),
+          check('the prompt was not turned photorealistic', !/fotorealistic|photorealistic|realistic photo/i.test(prompt), prompt),
+          check('the reply says how many', /\b10\b|dieci/i.test(reply), reply),
+          check('the reply never says the queue was exhausted', !/esaurit|exhausted/i.test(reply), reply),
+          check('the reply is in Italian', language === 'it', language),
+        ]
+      },
+    },
+    {
+      id: 'retry-after-empty-turn',
+      text: 'riprova',
+      expectedTools: ['generate_image'],
+      body: {
+        ...base,
+        staged: refs,
+        recent: [still, ...refs],
+        history: [
+          { role: 'user', text: 'genera 10 immagini di un gatto bianco su un tetto in stile fumetto, 9:16, 1080p' },
+          { role: 'assistant', text: 'Nessuna generazione è partita: questo turno ha già esaurito i posti in coda. Riproponimelo con un "riprova".' },
+        ],
+      },
+      check: ({ jobs, files, reply }) => {
+        const made = files.filter(file => file.kind === 'image')
+        return [
+          check('the retry queues ten runs', jobs.length === 10, `${String(jobs.length)} runs`),
+          check('ten pictures exist', made.length === 10, `${String(made.length)} files`),
+          check('the reply says how many', /\b10\b|dieci/i.test(reply), reply),
+          check('the reply does not repeat "exhausted"', !/esaurit|exhausted/i.test(reply), reply),
+        ]
+      },
+    },
+    {
+      id: 'photo-word-is-medium',
+      text: 'hai guardato le immagini? non vedi che non sono foto realistiche?',
+      expectedTools: ['look'],
+      body: null,
+      check: ({ jobs, reply }) => [
+        // The style came from the line and the references, so the result is
+        // the illustration that was asked for; "foto" is just the word used.
+        check('nothing was re-run', jobs.length === 0, `${String(jobs.length)} runs`),
+        check('the reply names the illustrated style', /fumetto|illustr|poster/i.test(reply), reply),
+        check('the reply does not offer a photorealistic redo', !/(rigener|rifar|rifacc|faccio|posso|vuoi|redo).{0,80}(fotoreal|realistic|fotografic)|(fotoreal|realistic|fotografic).{0,80}(rigener|rifar|rifacc|faccio)/i.test(reply), reply),
+      ],
+    },
   ]
 
   /** The result file a previous case made, for "come prima". */
@@ -1032,6 +1124,13 @@ function casesOf(fixtures) {
   // results map exists.
   const extendCase = cases.find(c => c.id === 'extend')
   const memoryCase = cases.find(c => c.id === 'memory-darker')
+  const photoCase = cases.find(c => c.id === 'photo-word-is-medium')
+  if (photoCase !== undefined) {
+    photoCase.body = () => {
+      const made = results.get('ten-images-style')?.files ?? []
+      return { ...base, staged: made.slice(0, 1), recent: [still] }
+    }
+  }
   if (extendCase !== undefined) {
     extendCase.body = () => ({
       ...base,
