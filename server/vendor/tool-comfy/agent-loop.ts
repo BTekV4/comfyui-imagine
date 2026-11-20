@@ -29,6 +29,7 @@ import { textRoutes } from './imagine-models.ts'
 import { whenJobsSettle, type ImagineJob } from './job-queue.ts'
 import type { JobBody } from './job-start.ts'
 import { agentInstruction, finalReplyAsk } from './agent-prompt.ts'
+import type { LoraCard } from './lora-catalog.ts'
 import { replyNeedsRewrite, rewriteAsk } from './reply-language.ts'
 import { join } from 'node:path'
 import { probeMedia } from './media-tools.ts'
@@ -48,6 +49,11 @@ export interface AgentSurface {
   readonly capabilities: (route: ModelRoute) => Promise<AgentCapabilities>
   /** The studio's own address, for the plugin routes the tools call. */
   readonly selfURL?: string
+  /**
+   * The LoRA catalog the owner wrote in Settings, read per turn so a save
+   * applies at once. Absent when this deployment uses no LoRA of its own.
+   */
+  readonly loraCatalog?: () => readonly LoraCard[]
 }
 
 /** The studio's side of one agent turn. */
@@ -377,6 +383,20 @@ function previousUserLine(history: readonly { readonly role: 'user' | 'assistant
   return (history ?? []).filter(entry => entry.role === 'user').at(-1)?.text
 }
 
+/**
+ * The LoRA catalog the surface holds, when it holds one.
+ *
+ * Read through a function and never captured: the settings page saves while
+ * the studio is open, and the next turn has to see the new entry without a
+ * restart.
+ * @param surface - the declarations the host handed the loop.
+ * @returns the cards, or undefined when the host listed none.
+ */
+function surfaceLoras(surface: AgentSurface): readonly LoraCard[] | undefined {
+  const cards = surface.loraCatalog?.() ?? []
+  return cards.length === 0 ? undefined : cards
+}
+
 /** A tool result with the language the reply has to be written in. */
 function forModel(
   result: Readonly<Record<string, unknown>>,
@@ -405,6 +425,7 @@ async function runAgentTurn(deps: AgentTurnDeps, route: ModelRoute): Promise<Age
     ...deps.inventory?.cards === undefined ? {} : { cards: deps.inventory.cards },
     ...deps.request.voices === undefined ? {} : { voices: deps.request.voices },
     graphs: await graphNotes({ ...deps.inventory === undefined ? {} : { inventory: deps.inventory } }).catch(() => []),
+    ...surfaceLoras(deps.surface) === undefined ? {} : { loraCatalog: surfaceLoras(deps.surface) as readonly LoraCard[] },
   })
   deps.say({ kind: 'step', step: 'route', detail: `${route.provider}/${route.model}` })
   const state: TurnState = {
