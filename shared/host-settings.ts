@@ -40,6 +40,30 @@ export function isThinkingLevel(value: unknown): value is ThinkingLevel {
   return typeof value === 'string' && /^[a-z][a-z0-9_-]{0,15}$/.test(value)
 }
 
+/**
+ * One LoRA the owner listed in Settings → General: what it is for, the word
+ * that switches it on, and the weight they want.
+ *
+ * The studio does not read LoRA files (they live on the ComfyUI box, outside
+ * this repository) and it never guesses what one does from its name: the
+ * owner writes the purpose in their own words, and this is the only place it
+ * is kept. A catalog entry with no purpose is refused on save.
+ */
+export interface LoraEntry {
+  /** The LoRA tag as ComfyUI names it (the loader's own string). */
+  readonly file: string
+  /** What it does, in the owner's words: "il volto di <chi>", "luce da studio". */
+  readonly purpose: string
+  /**
+   * The word or phrase that switches it on inside the prompt, when the graph
+   * reads a word: it has to appear literally in the text for the branch to
+   * fire, so it is kept exactly as written.
+   */
+  readonly trigger?: string
+  /** The strength the owner recommends, when the graph writes one. */
+  readonly weight?: number
+}
+
 /** Every setting in force: `config.yaml` with the page's changes over it. */
 export interface HostSettingsValues {
   readonly gatewayURL: string
@@ -81,6 +105,11 @@ export interface HostSettingsValues {
   readonly agentTurnSeconds: number
   /** A clip longer than this is confirmed before it is queued. */
   readonly agentConfirmSeconds: number
+  /**
+   * The LoRA catalog the owner wrote, when they wrote one. Absent or empty is
+   * the normal case: a deployment that uses no LoRA of its own.
+   */
+  readonly loraCatalog?: readonly LoraEntry[]
 }
 
 /** What the page is shown: the key is never sent back, only whether it is set. */

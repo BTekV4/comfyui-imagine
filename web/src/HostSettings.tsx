@@ -17,7 +17,7 @@ import css from '../vendor-imagine/client/ImagineSettings.module.css'
 import own from './HostSettings.module.css'
 import { isThinkingLevel, THINKING_DEFAULT, THINKING_FALLBACK } from '../../shared/host-settings.ts'
 import { AGENT_LIMITS_DEFAULT, isAgentChatMode, type AgentChatMode } from '../../shared/agent-chat.ts'
-import type { HostSettingsPatch as Patch, HostSettingsView as View, ThinkingLevel } from '../../shared/host-settings.ts'
+import type { HostSettingsPatch as Patch, HostSettingsView as View, LoraEntry, ThinkingLevel } from '../../shared/host-settings.ts'
 import type { HostAccessView } from '../../shared/host-access.ts'
 import type { ModelEntry, ModelRoute as Route } from '../../shared/imagine-types.ts'
 import { presetFor, PROVIDER_PRESETS } from '../../shared/provider-presets.ts'
@@ -111,6 +111,23 @@ export function HostSettings({ sections = 'all', onPending }: {
    * is left, and then what the server would refuse is dropped instead of kept
    * on screen as if it had been taken.
    */
+  /** The LoRA catalog in force: the draft, else what is saved. */
+  const loras = (value('loraCatalog') ?? []) as readonly LoraEntry[]
+  /**
+   * Write one catalog row. An empty row is kept while the user types in it and
+   * dropped on save (`save` sends the rows that say something), so "Add" cannot
+   * make the save fail before a key is pressed.
+   */
+  const writeLora = (index: number, patch: Partial<LoraEntry>): void => {
+    const next = loras.map((entry, at) => at === index ? { ...entry, ...patch } : entry)
+    set({ loraCatalog: next })
+  }
+  const dropLora = (index: number): void => {
+    set({ loraCatalog: loras.filter((_entry, at) => at !== index) })
+  }
+  const addLora = (): void => {
+    set({ loraCatalog: [...loras, { file: '', purpose: '' }] })
+  }
   const [confirmTyped, setConfirmTyped] = useState<string>()
   const typeConfirm = (typed: string): void => {
     setConfirmTyped(typed)
@@ -159,7 +176,15 @@ export function HostSettings({ sections = 'all', onPending }: {
   const save = async (): Promise<void> => {
     setStatus(undefined)
     try {
-      setView(await send<View>('/api/host-settings', 'POST', draft, 'HTTP'))
+      // A row nobody filled in is not a LoRA: it is not sent, so an "Add" the
+      // user changed their mind about does not refuse the whole save.
+      const body = draft.loraCatalog === undefined
+        ? draft
+        : {
+          ...draft,
+          loraCatalog: draft.loraCatalog.filter(entry => entry.file.trim() !== '' || entry.purpose.trim() !== ''),
+        }
+      setView(await send<View>('/api/host-settings', 'POST', body, 'HTTP'))
       setDraft({})
       // The login switch and the password may have moved: the page's rail and
       // its warning read `/api/access` again.
@@ -338,6 +363,59 @@ export function HostSettings({ sections = 'all', onPending }: {
             onChange={(event) => { set({ apiKey: event.target.value }) }}
           />
         </label>
+      </section>
+
+      <section className={css.section}>
+        <h3 className={css.sectionTitle}>{translate('imagine.host.loraSection')}</h3>
+        <span className={css.hint}>{translate('imagine.host.loraHint')}</span>
+        {loras.map((entry, index) => (
+          <div className={own.row} key={`${entry.file}-${String(index)}`}>
+            <input
+              className={own.input}
+              aria-label={translate('imagine.host.loraFile')}
+              placeholder={translate('imagine.host.loraFile')}
+              value={entry.file}
+              onChange={(event) => { writeLora(index, { file: event.target.value }) }}
+            />
+            <input
+              className={own.input}
+              aria-label={translate('imagine.host.loraPurpose')}
+              placeholder={translate('imagine.host.loraPurpose')}
+              value={entry.purpose}
+              onChange={(event) => { writeLora(index, { purpose: event.target.value }) }}
+            />
+            <input
+              className={own.input}
+              aria-label={translate('imagine.host.loraTrigger')}
+              placeholder={translate('imagine.host.loraTrigger')}
+              value={entry.trigger ?? ''}
+              onChange={(event) => { writeLora(index, { trigger: event.target.value }) }}
+            />
+            <input
+              className={own.input}
+              type="number"
+              min="0"
+              max="2"
+              step="0.05"
+              aria-label={translate('imagine.host.loraWeight')}
+              placeholder={translate('imagine.host.loraWeight')}
+              value={entry.weight === undefined ? '' : String(entry.weight)}
+              onChange={(event) => {
+                const weight = Number(event.target.value)
+                writeLora(index, { weight: event.target.value === '' || !Number.isFinite(weight) ? undefined : weight })
+              }}
+            />
+            <button type="button" className={css.select} onClick={() => { dropLora(index) }}>
+              {translate('imagine.host.loraRemove')}
+            </button>
+          </div>
+        ))}
+        <div className={own.row}>
+          <button type="button" className={css.select} onClick={addLora}>
+            {translate('imagine.host.loraAdd')}
+          </button>
+          <span className={css.hint}>{translate('imagine.host.loraTriggerHint')}</span>
+        </div>
       </section>
 
       <section className={css.section}>

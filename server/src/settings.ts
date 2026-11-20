@@ -16,6 +16,7 @@ import type { ModelEntry, ModelRoute } from '../../shared/imagine-types.ts'
 import { isThinkingLevel, THINKING_DEFAULT } from '../../shared/host-settings.ts'
 import { AGENT_LIMITS_DEFAULT, isAgentChatMode } from '../../shared/agent-chat.ts'
 import type { HostSettingsPatch, HostSettingsValues, HostSettingsView } from '../../shared/host-settings.ts'
+import { loraCatalog, loraEntryOf } from '../vendor/tool-comfy/lora-catalog.ts'
 
 export interface HostSettings {
   current(): HostSettingsValues
@@ -97,6 +98,19 @@ export async function createHostSettings(options: {
       agentWaitSeconds: positiveInt(values.agentWaitSeconds, AGENT_LIMITS_DEFAULT.waitSeconds, 1, 3_600),
       agentTurnSeconds: positiveInt(values.agentTurnSeconds, AGENT_LIMITS_DEFAULT.turnSeconds, 1, 3_600),
       agentConfirmSeconds: positiveInt(values.agentConfirmSeconds, AGENT_LIMITS_DEFAULT.confirmSeconds, 1, 3_600),
+      /*
+       * The LoRA catalog is the owner's own data and lives only in this file:
+       * it is normalised on read, so an entry typed by hand with a stray space
+       * or a weight out of range reaches neither the page nor the chat.
+       */
+      ...loraCatalog(values).length === 0 ? { loraCatalog: [] } : {
+        loraCatalog: loraCatalog(values).map(card => ({
+          file: card.file,
+          purpose: card.purpose,
+          ...card.trigger === undefined ? {} : { trigger: card.trigger },
+          ...card.weight === undefined ? {} : { weight: card.weight },
+        })),
+      },
     }
   }
   const bootResumeSweep = merged().resumeSweep
@@ -175,6 +189,23 @@ export async function createHostSettings(options: {
       take('agentWaitSeconds', value => typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 3_600)
       take('agentTurnSeconds', value => typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 3_600)
       take('agentConfirmSeconds', value => typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 3_600)
+      /*
+       * The catalog: every entry needs a file and a purpose. A list that
+       * cannot be read is refused rather than saved empty, which would have
+       * wiped the owner's names at the first click.
+       */
+      if (patch.loraCatalog !== undefined) {
+        if (!Array.isArray(patch.loraCatalog)) throw new Error(message('settings.loraInvalid'))
+        const entries = patch.loraCatalog.map(loraEntryOf)
+        const bad = entries.findIndex(entry => entry === undefined)
+        if (bad !== -1) throw new Error(message('settings.loraInvalid', { index: String(bad + 1) }))
+        next['loraCatalog'] = entries.flatMap(entry => entry === undefined ? [] : [{
+          file: entry.file,
+          purpose: entry.purpose,
+          ...entry.trigger === undefined ? {} : { trigger: entry.trigger },
+          ...entry.weight === undefined ? {} : { weight: entry.weight },
+        }])
+      }
       // An empty token from the page means "keep the one saved"; a single space clears it.
       if (typeof patch.hfToken === 'string' && patch.hfToken !== '') next['hfToken'] = patch.hfToken.trim()
       if (typeof patch.password === 'string' && patch.password.length > 0) {

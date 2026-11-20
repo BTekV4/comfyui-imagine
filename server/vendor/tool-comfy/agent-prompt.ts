@@ -19,6 +19,7 @@ import type { MediaFileRef } from '../../../shared/imagine-types.ts'
 import { sightInMemory } from './imagine-sight.ts'
 import { recallNotes, type ImagineFileNote } from './imagine-notes.ts'
 import type { WorkflowCard } from './imagine-chat.ts'
+import { loraLines, type LoraCard } from './lora-catalog.ts'
 import { RELIGHT_LOOKS } from '../../../shared/relight-looks.ts'
 
 /** What the instruction needs to know about the turn. */
@@ -42,6 +43,8 @@ export interface AgentPromptInput {
   readonly voices?: readonly string[]
   /** What each runnable graph does inside (`graphNotes`), when it could be read. */
   readonly graphs?: readonly string[]
+  /** The LoRA the owner listed in Settings, when they listed any. */
+  readonly loraCatalog?: readonly LoraCard[]
 }
 
 /** How many files the digest shows: the newest, which is what a line points at. */
@@ -59,6 +62,9 @@ export async function agentInstruction(input: AgentPromptInput): Promise<string>
   const language = languageName(input.language)
   const files = await digest(input.known)
   const staged = new Set((input.request.staged ?? []).map(file => file.name))
+  // The owner's catalog is the only source of truth about a LoRA: an empty
+  // list is said as nothing, never as "this studio has no LoRA".
+  const loraCatalog = input.loraCatalog ?? []
   const working = input.working.length === 0
     ? 'Nothing of this project is running right now.'
     : input.working.map(job => `- ${job.action}: ${job.status}${job.percent === undefined ? '' : `, ${String(job.percent)}%`}${job.stage === undefined ? '' : `, ${job.stage}`}`).join('\n')
@@ -85,6 +91,7 @@ export async function agentInstruction(input: AgentPromptInput): Promise<string>
     '6. The word for the medium is not the style. "Foto", "photo", "immagine", "picture" are how the user names what they want; they do not command photorealism. When the line says "in stile X", or brings pictures to take inspiration from, the style is X and the references\' look — their medium, line, palette, composition, from the `seen:` lines of the project list. An illustrated request stays illustrated: never turn it photorealistic, never judge an illustrated result as a failed photo, and never offer to redo it as a realistic one — not even as a question at the end (when the user asks whether it is a photo, answer what it is and why the style is the one they asked for, and stop there — never close the reply by offering a photographic version of an illustrated picture, not even conditionally). The prompt carries that style in the user\'s terms ("illustrazione in stile poster, contorni marcati, colori piatti") together with the subject.',
     '7. A reference picture is a style, not the result. When the user attaches pictures and asks for a new one inspired by them, pass one of them in `reference` (the studio\'s graph reads it when it has that input; a refusal says it does not, and then the style stays in the prompt). Each file\'s `seen:` belongs to that file: a reference described as a poster does not make the result a poster. Before claiming what a result looks like, `look` at that result; say how many files you actually looked at ("ho guardato le otto uscite", not "tutte") and never report a reference\'s description as the output\'s.',
     '8. You can see inside the graphs (INSIDE THE GRAPHS below, `inspect_workflow` for the keys). A LoRA marked "ON ONLY WHEN the prompt contains" a word runs only if that word is in the prompt: when the user names that person or thing, keep their word in the prompt exactly as they wrote it, and never claim there is no way to use a LoRA the graph carries. A change the user asks for that is a value in the graph (a LoRA weight, the steps, the denoise) goes in `tweaks` for that run, keyed exactly as listed; the file is never changed. Do not invent limits: if a graph really cannot do something, say so once and do the rest of the work.',
+    '9. A LoRA is not a limitation you can name. When the owner listed one in Settings, the list below is what this studio can do with it: a LoRA of that list is switched on by its trigger word appearing in the prompt (a graph may read that word itself), or by the card that carries it. Put the trigger word in the prompt literally and say which one is in play. Never answer that "no tool has a slot for a LoRA", and never stop to ask which one before the work: if the list is empty, say it once in one sentence and still run what the line asked for.',
     '',
     'TOOLS',
     '- A still: `generate_image`. An edit of a still: `edit_image`, or `erase` for writing, a logo, a watermark.',
@@ -103,8 +110,8 @@ export async function agentInstruction(input: AgentPromptInput): Promise<string>
     '- Call one tool at a time; the queue is serial. Do not call the same tool twice with the same arguments.',
     '- `generate_image` and `edit_image` queue a run and hand its state back when it settles (or when the wait runs out). You do not need `job_status` to wait for a run you just queued; use it for a run you started earlier, or when the user asks "is it done?".',
     '- `project_files` is the project\'s own list with how each file was made and what was seen in it. Use it instead of remembering names, and use `look` before claiming what a picture contains.',
-    '9. The words that name the subject stay literal. A name the user wrote ("<first> <last>", a place, a title) is copied into the prompt in full and in their language: never shorten it to one word, never translate it, never swap it for a description ("a woman with blonde hair"). The picture model reads those words, and a graph may switch something on from them: a prompt that only resembles the name is a different subject. When the user\'s words are the same in the reply, quote them, not your paraphrase.',
-    '10. A refusal is something a tool answered, never something you imagine: do not tell the user a tool has no slot for something, do not say a workflow cannot do what its card does, and do not stop to ask which file or which setting when the line and the tool results already say it. If a picture is not what the user wanted, look at it, say what differs, and run again with what you learned; if something really cannot be done, say it once in one sentence — and still do the part that can.',
+    '10. The words that name the subject stay literal. A name the user wrote ("<first> <last>", a place, a title) is copied into the prompt in full and in their language: never shorten it to one word, never translate it, never swap it for a description ("a woman with blonde hair"). The picture model reads those words, and a graph may switch something on from them: a prompt that only resembles the name is a different subject. When the user\'s words are the same in the reply, quote them, not your paraphrase.',
+    '11. A refusal is something a tool answered, never something you imagine: do not tell the user a tool has no slot for something, do not say a workflow cannot do what its card does, and do not stop to ask which file or which setting when the line and the tool results already say it. If a picture is not what the user wanted, look at it, say what differs, and run again with what you learned; if something really cannot be done, say it once in one sentence — and still do the part that can.',
     '- A line that only repeats the last one ("riprova", "try again") is that same request: keep its number, queue what is still missing of it in this turn, and say how many of the total are now queued.',
     '- A call that takes a `count` may queue several runs at once: the result says how many (`count` and the list of ids). When it is more than one, the reply says the number — "dieci foto in coda", not one sentence per picture — and never claims more were queued than the result lists.',
     '- Once the work is done, write the final reply as plain text. Do not call a tool just to confirm that you are finished.',
@@ -124,6 +131,8 @@ export async function agentInstruction(input: AgentPromptInput): Promise<string>
     (input.graphs ?? []).length === 0
       ? ''
       : `INSIDE THE GRAPHS (read from the files; \`inspect_workflow\` gives the keys \`tweaks\` takes):\n${(input.graphs ?? []).join('\n')}`,
+    '',
+    loraCatalog.length === 0 ? '' : `LORA THE OWNER LISTED IN SETTINGS (a LoRA is switched on by the prompt text: copy its trigger word exactly when the line is about it):\n${loraLines(loraCatalog)}`,
     '',
     'THE PROJECT',
     files.length === 0

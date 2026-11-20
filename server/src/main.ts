@@ -39,6 +39,7 @@ import { message, withLanguage } from './messages.ts'
 import { allowOnly, HttpError, languageOf, methods, readBody, readObject, restOf, sendJson } from './route-kit.ts'
 import { createLocalePacks, createLocalePacksRoutes } from './locales.ts'
 import { createHostSettings, providerOfGateway } from './settings.ts'
+import { loraCatalog } from '../vendor/tool-comfy/lora-catalog.ts'
 import { createAccessBanner, forgetDismissalWhenLoginMoves } from './access-banner.ts'
 import { createAccessRoutes } from './access-routes.ts'
 import { liveSetupStatus } from './setup-status.ts'
@@ -306,6 +307,9 @@ const { outputDir } = toolComfy.apply(ctx, toolComfy.Config(config.toolComfy), {
     }),
     capabilities: route => modelCapabilities(route),
     selfURL: ownAddress(listenOn.host, listenOn.port),
+    // Read per turn: a catalog saved from the page applies to the next line,
+    // without a restart.
+    loraCatalog: () => loraCatalog(now()),
   },
 })
 
