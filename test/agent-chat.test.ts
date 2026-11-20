@@ -1017,3 +1017,73 @@ test('the instruction takes the style from the pictures and never invents photor
   assert.match(text, /pass one of them in `reference`/)
   assert.match(text, /Each file\'s `seen:` belongs to that file/)
 })
+
+/** A generation graph with a LoRA that only runs when the prompt says "lanterna". */
+function lanternInventory() {
+  const graph = {
+    '51': { class_type: 'CLIPTextEncode', inputs: { text: ['73', 0], clip: ['56', 0] } },
+    '53': { class_type: 'KSampler', inputs: { seed: 1, steps: 8, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1, model: ['k2', 0], positive: ['51', 0], negative: ['51', 0], latent_image: ['52', 0] } },
+    '52': { class_type: 'EmptyLatentImage', inputs: { width: 1080, height: 1920, batch_size: 1 } },
+    '55': { class_type: 'UNETLoader', inputs: { unet_name: 'base.safetensors', weight_dtype: 'default' } },
+    '73': { class_type: 'PrimitiveStringMultiline', inputs: { value: '' } },
+    '74': { class_type: 'StringContains', inputs: { string: ['73', 0], substring: 'lanterna', case_sensitive: false } },
+    '76': { class_type: 'LoraLoaderModelOnly', inputs: { lora_name: 'lantern-glow.safetensors', strength_model: 0.6, model: ['55', 0] } },
+    '78': { class_type: 'ComfySwitchNode', inputs: { switch: ['74', 0], on_false: ['55', 0], on_true: ['76', 0] } },
+    k2: { class_type: 'LoraLoaderModelOnly', inputs: { lora_name: 'film-look.safetensors', strength_model: 0.75, model: ['78', 0] } },
+  }
+  return {
+    list: [],
+    cards: [],
+    summarise: () => undefined,
+    fields: () => undefined,
+    facts: async () => undefined,
+    warnings: () => undefined,
+    overridden: () => false,
+    plan: () => undefined,
+    graphOf: (key: string) => key === 'generate' ? { graph, promptNodeId: '73', seedNodeId: '53' } : undefined,
+  } as unknown as import('../server/vendor/tool-comfy/imagine-chat.ts').WorkflowInventory
+}
+
+test('the instruction tells the agent which word switches a LoRA on, and inspect_workflow lists the keys', async () => {
+  const inventory = lanternInventory()
+  const { deps, model } = turn([toolCall('inspect_workflow', { workflow: 'generate' }), text('Ho letto il grafo.')], { inventory })
+  await readAgentChat(deps)
+  const system = model.requests[0]?.messages.find(message => message.role === 'system')?.content ?? ''
+  assert.match(system, /INSIDE THE GRAPHS/)
+  assert.match(system, /lantern-glow" weight 0\.6 \(76\.strength_model\), ON ONLY WHEN the prompt contains "lanterna"/)
+  const result = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as { ok?: boolean; loras?: { key: string; needsWord?: string }[] }
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.loras?.map(lora => [lora.key, lora.needsWord]), [['76.strength_model', 'lanterna'], ['k2.strength_model', undefined]])
+})
+
+test('a prompt that lost the word switching a LoRA on is sent back, and the run keeps it', async () => {
+  const inventory = lanternInventory()
+  const line = 'Genera una Lanterna in stile poster, 9:16'
+  const { deps, started, model } = turn([
+    toolCall('generate_image', { prompt: 'una luce in stile poster', aspect: '9:16' }),
+    toolCall('generate_image', { prompt: 'una Lanterna in stile poster', aspect: '9:16' }, 'call_2'),
+    text('Fatto.'),
+  ], { inventory, text: line })
+  await readAgentChat(deps)
+  const results = (model.requests.at(-1)?.messages ?? [])
+    .filter(message => message.role === 'tool')
+    .map(message => JSON.parse(message.content) as { ok?: boolean; error?: string })
+  assert.equal(results[0]?.ok, false)
+  assert.match(results[0]?.error ?? '', /"lanterna"/)
+  assert.equal(started.length, 1)
+  assert.equal(started[0]?.prompt, 'una Lanterna in stile poster')
+})
+
+test('tweaks change a LoRA weight for this run only, and never the prompt or the seed', async () => {
+  const inventory = lanternInventory()
+  const ok = turn([toolCall('generate_image', { prompt: 'un faro', tweaks: { 'k2.strength_model': 0.3, '53.steps': 12 } }), text('Fatto.')], { inventory, text: 'un faro, con meno effetto pellicola' })
+  await readAgentChat(ok.deps)
+  assert.deepEqual(ok.started[0]?.customFields, { 'k2.strength_model': 0.3, '53.steps': 12 })
+  const graph = inventory.graphOf?.('generate')?.graph as Record<string, { inputs: Record<string, unknown> }>
+  assert.equal(graph['k2']?.inputs['strength_model'], 0.75, 'the stored graph is untouched')
+  const bad = turn([toolCall('generate_image', { prompt: 'un faro', tweaks: { '53.seed': 7, '73.value': 'altro' } }), text('No.')], { inventory, text: 'un faro' })
+  await readAgentChat(bad.deps)
+  assert.equal(bad.started.length, 0)
+  const refusal = JSON.parse(bad.model.requests[1]?.messages.at(-1)?.content ?? '{}') as { error?: string }
+  assert.match(refusal.error ?? '', /tweaks refused/)
+})

@@ -40,6 +40,8 @@ export interface AgentPromptInput {
   readonly cards?: readonly WorkflowCard[]
   /** The voices this deployment installed, when it has any. */
   readonly voices?: readonly string[]
+  /** What each runnable graph does inside (`graphNotes`), when it could be read. */
+  readonly graphs?: readonly string[]
 }
 
 /** How many files the digest shows: the newest, which is what a line points at. */
@@ -82,6 +84,7 @@ export async function agentInstruction(input: AgentPromptInput): Promise<string>
     '5. If the line does not say what has to change, ask one short question and call no tool: "rendila più bella" is not an instruction until the user says what "better" means. The same when it could be two files or two different changes: ask which one, and do not guess a run.',
     '6. The word for the medium is not the style. "Foto", "photo", "immagine", "picture" are how the user names what they want; they do not command photorealism. When the line says "in stile X", or brings pictures to take inspiration from, the style is X and the references\' look — their medium, line, palette, composition, from the `seen:` lines of the project list. An illustrated request stays illustrated: never turn it photorealistic, never judge an illustrated result as a failed photo, and never offer to redo it as a realistic one — not even as a question at the end (when the user asks whether it is a photo, answer what it is and why the style is the one they asked for, and stop there — never close the reply by offering a photographic version of an illustrated picture, not even conditionally). The prompt carries that style in the user\'s terms ("illustrazione in stile poster, contorni marcati, colori piatti") together with the subject.',
     '7. A reference picture is a style, not the result. When the user attaches pictures and asks for a new one inspired by them, pass one of them in `reference` (the studio\'s graph reads it when it has that input; a refusal says it does not, and then the style stays in the prompt). Each file\'s `seen:` belongs to that file: a reference described as a poster does not make the result a poster. Before claiming what a result looks like, `look` at that result; say how many files you actually looked at ("ho guardato le otto uscite", not "tutte") and never report a reference\'s description as the output\'s.',
+    '8. You can see inside the graphs (INSIDE THE GRAPHS below, `inspect_workflow` for the keys). A LoRA marked "ON ONLY WHEN the prompt contains" a word runs only if that word is in the prompt: when the user names that person or thing, keep their word in the prompt exactly as they wrote it, and never claim there is no way to use a LoRA the graph carries. A change the user asks for that is a value in the graph (a LoRA weight, the steps, the denoise) goes in `tweaks` for that run, keyed exactly as listed; the file is never changed. Do not invent limits: if a graph really cannot do something, say so once and do the rest of the work.',
     '',
     'TOOLS',
     '- A still: `generate_image`. An edit of a still: `edit_image`, or `erase` for writing, a logo, a watermark.',
@@ -115,6 +118,10 @@ export async function agentInstruction(input: AgentPromptInput): Promise<string>
     eraser,
     '',
     cards.length === 0 ? '' : `PERSONAL CARDS (run one with \`run_card\`, its id copied exactly):\n${cards}`,
+    '',
+    (input.graphs ?? []).length === 0
+      ? ''
+      : `INSIDE THE GRAPHS (read from the files; \`inspect_workflow\` gives the keys \`tweaks\` takes):\n${(input.graphs ?? []).join('\n')}`,
     '',
     'THE PROJECT',
     files.length === 0

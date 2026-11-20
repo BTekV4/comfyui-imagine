@@ -47,6 +47,9 @@ import type { ImagineJob } from './job-queue.ts'
 import { jobBodyProblem, type JobBody } from './job-start.ts'
 import { customFieldsOf, type WorkflowInventory } from './imagine-chat.ts'
 import { MAX_JOB_COUNT } from './job-request.ts'
+import { loadCustomWorkflow } from './custom-workflows.ts'
+import type { RunnableGraph } from './imagine-chat.ts'
+import { droppedGateWords, planRunTweaks, readGraph, readingLines } from './graph-reading.ts'
 
 /** What one tool call produced: the result the model reads, and the runs to wait for. */
 export interface AgentToolOutcome {
@@ -173,6 +176,98 @@ async function galleryImage(deps: AgentToolDeps, name: string): Promise<GalleryI
   return item ?? `"${name}" is not in the gallery`
 }
 
+/** The inventory key of the graph `generate_image` runs. */
+const GENERATE_KEY = 'generate'
+
+/**
+ * The graph one tool would run: the configured generation graph, or a personal
+ * card by its id. Read fresh for a card, so a card uploaded again is read as it
+ * now is.
+ * @param deps - the turn.
+ * @param which - `generate`, another configured key, or a card id.
+ * @returns the graph and its pins, or undefined when there is no such graph.
+ */
+async function graphFor(deps: Pick<AgentToolDeps, 'inventory'>, which: string): Promise<RunnableGraph | undefined> {
+  const configured = deps.inventory?.graphOf?.(which)
+  if (configured !== undefined) return configured
+  if (!(deps.inventory?.cards ?? []).some(card => card.id === which)) return undefined
+  const loaded = await loadCustomWorkflow(which).catch(() => undefined)
+  if (loaded === undefined) return undefined
+  return {
+    graph: loaded.graph,
+    ...loaded.promptNodeId === undefined ? {} : { promptNodeId: loaded.promptNodeId },
+    ...loaded.seedNodeId === undefined ? {} : { seedNodeId: loaded.seedNodeId },
+  }
+}
+
+/**
+ * Check a prompt and the run's tweaks against the graph that will run them.
+ *
+ * Two faults this catches before a run is queued: a word that switches a
+ * branch on (a LoRA behind `StringContains`) that the user wrote and the
+ * prompt lost, and a tweak the graph or the node refuses.
+ * @param deps - the turn.
+ * @param which - the graph's key or card id.
+ * @param prompt - the prompt about to run.
+ * @param tweaks - the model's `tweaks`.
+ * @returns the values to write on the run's clone, or the refusal.
+ */
+async function checkedAgainstGraph(
+  deps: AgentToolDeps,
+  which: string,
+  prompt: string,
+  tweaks: unknown,
+): Promise<{ readonly fields: Readonly<Record<string, string | number | boolean>> } | { readonly error: string }> {
+  const runnable = await graphFor(deps, which)
+  if (runnable === undefined) {
+    return tweaks === undefined ? { fields: {} } : { error: 'this graph cannot be read, so it takes no tweaks: run it without them' }
+  }
+  const reading = readGraph(runnable.graph, runnable.promptNodeId)
+  const dropped = droppedGateWords(reading, prompt, deps.asked)
+  if (dropped.length > 0) {
+    return {
+      error: `the graph switches a branch on only when the prompt contains ${dropped.map(word => `"${word}"`).join(', ')}, the user wrote it, and your prompt lost it: write the prompt again keeping that word exactly as the user wrote it`,
+    }
+  }
+  if (tweaks === undefined) return { fields: {} }
+  const facts = deps.inventory?.graphOf?.(which) === undefined ? undefined : await deps.inventory?.facts(which, deps.signal).catch(() => undefined)
+  const planned = planRunTweaks(runnable.graph, tweaks, [
+    ...runnable.promptNodeId === undefined ? [] : [runnable.promptNodeId],
+    ...runnable.seedNodeId === undefined ? [] : [`${runnable.seedNodeId}.seed`, `${runnable.seedNodeId}.noise_seed`],
+  ], facts)
+  if (planned.errors.length > 0) return { error: `tweaks refused: ${planned.errors.join('; ')}` }
+  return { fields: planned.fields }
+}
+
+/**
+ * What the instruction says about each graph the agent can run: the generation
+ * graph and every personal card, one block each. The agent no longer meets a
+ * switched LoRA only after a run came out wrong.
+ * @param deps - the turn's inventory.
+ * @returns one block per readable graph.
+ */
+export async function graphNotes(deps: Pick<AgentToolDeps, 'inventory'>): Promise<readonly string[]> {
+  const notes: string[] = []
+  const targets = [
+    { which: GENERATE_KEY, label: 'generate_image' },
+    ...(deps.inventory?.cards ?? []).map(card => ({ which: card.id, label: `card ${card.id} (${card.title})` })),
+  ]
+  for (const target of targets) {
+    const runnable = await graphFor(deps, target.which)
+    if (runnable === undefined) continue
+    const lines = readingLines(readGraph(runnable.graph, runnable.promptNodeId))
+    notes.push(`- ${target.label}: ${lines.join('; ')}`)
+  }
+  return notes
+}
+
+/** The `tweaks` argument, the same on every tool that runs a graph. */
+const TWEAKS_SCHEMA = {
+  type: 'object',
+  description: 'Changes for THIS run only, keyed "<node>.<field>" exactly as `inspect_workflow` lists them: a LoRA weight, a sampler value. Never the prompt or the seed. Omit when the user asked for nothing the arguments do not already cover.',
+  additionalProperties: true,
+} as const
+
 /** The longest prompt a tool takes: longer than any line a person writes. */
 const MAX_PROMPT = 4_000
 
@@ -222,6 +317,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
             resolution: { type: 'string', enum: [...IMAGE_RESOLUTIONS], description: 'Short side; the studio\'s default shape (9:16) when no aspect is named.' },
             count: { type: 'integer', minimum: 1, maximum: MAX_COUNT, description: 'How many variants.' },
             reference: { type: 'string', description: 'A gallery picture whose style the user asked to take, when the studio\'s generate graph accepts one; the others\' look goes in the prompt.' },
+            tweaks: TWEAKS_SCHEMA,
           },
           required: ['prompt'],
           additionalProperties: false,
@@ -267,9 +363,13 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         const other = await galleryImage(deps, styleRef)
         if (typeof other === 'string') return refused(other)
       }
+      const checked = await checkedAgainstGraph(deps, GENERATE_KEY, prompt, args['tweaks'])
+      if ('error' in checked) return refused(checked.error)
+      const tweaked = Object.keys(checked.fields).length > 0
       const jobs = await deps.start({
         action: 'generate',
         prompt,
+        ...tweaked ? { customFields: checked.fields } : {},
         ...size === undefined ? {} : { size },
         ...aspect === undefined ? {} : { aspectRatio: aspect, canvasAsked: true },
         ...count > 1 ? { count } : {},
@@ -288,6 +388,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
           ...aspect === undefined ? {} : { aspect },
           ...aspect === undefined && resolution !== undefined ? { resolution } : {},
           ...styleRef === undefined ? {} : { reference: styleRef },
+          ...tweaked ? { tweaks: checked.fields } : {},
         },
         jobs,
         files: [],
@@ -1169,6 +1270,46 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
     schema: {
       type: 'function',
       function: {
+        name: 'inspect_workflow',
+        description: 'Read what a graph does inside before running it: its LoRAs with their weights, the words in the prompt that switch a LoRA or a branch on, the sampler values, whether it takes a picture in. `workflow` is "generate" (what generate_image runs) or a personal card id. Use it when the user names a LoRA, a person, a style the graph may carry, or asks why a result came out as it did. The keys it lists are the ones `tweaks` takes.',
+        parameters: {
+          type: 'object',
+          properties: {
+            workflow: { type: 'string', description: '"generate" or a personal card id, copied exactly.' },
+          },
+          required: ['workflow'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async run(args, deps) {
+      const which = str(args['workflow']) ?? GENERATE_KEY
+      const runnable = await graphFor(deps, which)
+      if (runnable === undefined) {
+        const cards = (deps.inventory?.cards ?? []).map(card => card.id).join(', ')
+        return refused(`no graph "${which}" to read; the graphs are: ${GENERATE_KEY}${cards === '' ? '' : `, ${cards}`}`)
+      }
+      deps.say({ kind: 'step', step: 'tool', name: 'inspect_workflow', detail: which })
+      const reading = readGraph(runnable.graph, runnable.promptNodeId)
+      return done({
+        ok: true,
+        workflow: which,
+        reading: readingLines(reading),
+        loras: reading.loras.map(lora => ({
+          name: lora.name,
+          weight: lora.strength,
+          key: lora.strengthKey,
+          ...lora.gate === undefined ? {} : { needsWord: lora.gate.word, when: lora.gate.when },
+        })),
+        sampler: reading.sampler,
+        takesImage: reading.takesImage,
+      })
+    },
+  },
+  {
+    schema: {
+      type: 'function',
+      function: {
         name: 'run_card',
         description: 'Run one of this studio\'s personal cards («Your workflows») with its own inputs. The id and the input keys are copied exactly from the personal cards in this instruction; never invent one. It always stops for the user\'s yes.',
         parameters: {
@@ -1178,6 +1319,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
             prompt: { type: 'string', description: 'What to draw, in the user\'s words.' },
             customFields: { type: 'object', description: 'The card\'s exposed inputs, keyed "<node>.<field>".', additionalProperties: true },
             customFiles: { type: 'object', description: 'The card\'s file slots: node id → gallery file name.', additionalProperties: { type: 'string' } },
+            tweaks: TWEAKS_SCHEMA,
           },
           required: ['customWorkflowId'],
           additionalProperties: false,
@@ -1204,13 +1346,18 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
           files[node] = item.name
         }
       }
+      const checked = await checkedAgainstGraph(deps, card.id, prompt, args['tweaks'])
+      if ('error' in checked) return refused(checked.error)
+      // The card's exposed inputs win over a tweak of the same input: they are
+      // the controls the user sees.
+      const runFields = { ...checked.fields, ...fields }
       if (deps.canQueue() < 1) return refused(queueRefusal(deps.canQueue()))
       deps.say({ kind: 'step', step: 'tool', name: 'run_card', detail: card.title })
       const jobs = await deps.start({
         action: 'custom',
         prompt,
         customWorkflowId: card.id,
-        ...fields === undefined ? {} : { customFields: fields },
+        ...Object.keys(runFields).length === 0 ? {} : { customFields: runFields },
         ...Object.keys(files).length === 0 ? {} : { customFiles: files },
         ...deps.projectId === undefined ? {} : { projectId: deps.projectId },
         ...deps.model === undefined ? {} : { model: deps.model },
