@@ -44,6 +44,12 @@ jobs:
         run: npm run typecheck
       - name: Tests
         run: npm test
+      # A release renames every package after package.json, and a README line
+      # that hard-codes a version points at a 404 the day the number changes
+      # (the tarball command kept 0.1.0 in its name through 0.3.1). One line a
+      # person is meant to copy is a defect; this fails the check.
+      - name: Docs carry the project version
+        run: node scripts/check-docs-versions.mjs
       - name: Build
         run: npm run build
       # The tests never boot the built server: this starts it for real and

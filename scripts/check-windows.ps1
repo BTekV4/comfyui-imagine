@@ -1,7 +1,7 @@
 # Install Imagine's Windows installer and check what a person would meet, on a
 # machine that has no Imagine, no Node and no ffmpeg.
 #
-#   pwsh -File scripts/check-windows.ps1 -Installer release\Imagine-0.2.0-windows-x64-setup.exe
+#   pwsh -File scripts/check-windows.ps1 -Installer <path>\Imagine-<version>-windows-x64-setup.exe
 #   pwsh -File scripts/check-windows.ps1 -Installer <this one> -UpgradeTo <the next build>
 #
 # The counterpart of `scripts/check-appimage.sh`, and the same rule applies: a

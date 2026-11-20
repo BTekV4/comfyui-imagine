@@ -3,7 +3,7 @@
 # Start Imagine's AppImage **without a screen** and check what a person would
 # see, not just that the process is alive.
 #
-#   scripts/check-appimage.sh release/Imagine-1.0.0-linux-x64.AppImage [work dir]
+#   scripts/check-appimage.sh <path>/Imagine-<version>-linux-x64.AppImage [work dir]
 #
 # What it proves, in order:
 #

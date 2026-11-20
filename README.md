@@ -332,13 +332,24 @@ the one package the launchers read the config with — so there is no
 `npm install` and no build step on your
 machine, and nothing to compile if your Node is not a compiler.
 
+The file name carries the version, so the command asks the release page which
+version is the latest one instead of hard-coding a number here:
+
 ```sh
-curl -LO https://github.com/BTekV4/comfyui-imagine/releases/latest/download/comfyui-imagine-0.1.0.tar.gz
-tar xzf comfyui-imagine-0.1.0.tar.gz
-cd comfyui-imagine-0.1.0
+VERSION=$(curl -fsSL https://api.github.com/repos/BTekV4/comfyui-imagine/releases/latest \
+  | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
+TARBALL=comfyui-imagine-$VERSION.tar.gz
+curl -LO "https://github.com/BTekV4/comfyui-imagine/releases/latest/download/$TARBALL"
+curl -LO "https://github.com/BTekV4/comfyui-imagine/releases/latest/download/$TARBALL.sha256"
+sha256sum -c "$TARBALL.sha256"
+tar xzf "$TARBALL"
+cd "comfyui-imagine-$VERSION"
 ./install.sh
 node dist/server.mjs
 ```
+
+(With the GitHub CLI installed, `VERSION=$(gh api repos/BTekV4/comfyui-imagine/releases/latest -q .tag_name | sed 's/^v//')`
+asks the same question; `sha256sum -c` is `shasum -a 256 -c` on macOS.)
 
 `install.sh` checks Node 24 or newer, `ffmpeg`/`ffprobe` and the ComfyUI address
 it is given, asks three questions (ComfyUI's address, the OpenAI-compatible text
