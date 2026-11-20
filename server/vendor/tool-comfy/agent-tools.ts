@@ -167,7 +167,9 @@ function queueRefusal(remaining: number, wanted = 1): string {
 async function galleryImage(deps: AgentToolDeps, name: string): Promise<GalleryItem | string> {
   const safe = safeBasename(name)
   if (safe === undefined || kindOf(safe) !== 'image') return `"${name}" is not a picture in the gallery`
-  const item = await galleryItemOf(deps.outputDir, safe)
+  // A name the folder does not hold is a refusal the model can correct, not
+  // an ENOENT thrown at the turn (measured: a reference named but not staged).
+  const item = await galleryItemOf(deps.outputDir, safe).catch(() => undefined)
   return item ?? `"${name}" is not in the gallery`
 }
 
@@ -219,6 +221,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
             aspect: { type: 'string', enum: [...IMAGINE_ASPECTS], description: 'Frame shape; omit for the studio default.' },
             resolution: { type: 'string', enum: [...IMAGE_RESOLUTIONS], description: 'Short side; the studio\'s default shape (9:16) when no aspect is named.' },
             count: { type: 'integer', minimum: 1, maximum: MAX_COUNT, description: 'How many variants.' },
+            reference: { type: 'string', description: 'A gallery picture whose style the user asked to take, when the studio\'s generate graph accepts one; the others\' look goes in the prompt.' },
           },
           required: ['prompt'],
           additionalProperties: false,
@@ -259,12 +262,18 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         : aspect as ImagineAspect
       const size = shape === undefined ? undefined : sizeFor(shape, (resolution ?? '1080p') as ImagineResolution)
       deps.say({ kind: 'step', step: 'tool', name: 'generate_image', detail: prompt, count })
+      const styleRef = str(args['reference'])
+      if (styleRef !== undefined) {
+        const other = await galleryImage(deps, styleRef)
+        if (typeof other === 'string') return refused(other)
+      }
       const jobs = await deps.start({
         action: 'generate',
         prompt,
         ...size === undefined ? {} : { size },
         ...aspect === undefined ? {} : { aspectRatio: aspect, canvasAsked: true },
         ...count > 1 ? { count } : {},
+        ...styleRef === undefined ? {} : { reference: styleRef },
         ...deps.projectId === undefined ? {} : { projectId: deps.projectId },
         ...deps.model === undefined ? {} : { model: deps.model },
       })
@@ -278,6 +287,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
           ...size === undefined ? {} : { size },
           ...aspect === undefined ? {} : { aspect },
           ...aspect === undefined && resolution !== undefined ? { resolution } : {},
+          ...styleRef === undefined ? {} : { reference: styleRef },
         },
         jobs,
         files: [],

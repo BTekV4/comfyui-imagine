@@ -189,6 +189,7 @@ export const MESSAGES = {
   'job.already4k': { it: "l'immagine è già in 4K", en: 'the image is already 4K' },
   'job.referencePhotoRequired': { it: 'serve la foto di riferimento', en: 'the reference photo is needed' },
   'job.referenceNotGallery': { it: 'il riferimento deve essere una foto della galleria', en: 'the reference must be a gallery photo' },
+  'job.referenceNotConfigured': { it: 'il grafo che disegna una foto nuova non legge una foto di riferimento: lo stile va scritto nel prompt, oppure serve un grafo con refImageNodeId', en: 'the graph that draws a new picture has no reference image input: describe the style in the prompt, or use a graph with refImageNodeId' },
   'job.objectReferenceRequired': { it: "serve la foto dell'oggetto da mettere nella scena", en: 'the photo of the object to put in the shot is needed' },
   'job.objectPhotoNotAllowed': { it: 'il modo «{mode}» non usa una foto: bastano la clip e la frase', en: 'the “{mode}” mode does not take a photo: the clip and the line are enough' },
   'job.placement': {
