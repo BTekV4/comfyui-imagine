@@ -149,6 +149,59 @@ function translatedPrompt(prompt: string, asked: string): string | undefined {
 }
 
 /**
+ * The names a line carries: two capitalised words in a row, which is how a
+ * person, a place or a thing the studio has to draw is named.
+ *
+ * The prompt is written by the model, and it is allowed to drop the words that
+ * are orders rather than things to see — but a name is the subject, not a
+ * choice. Measured on the production chat (2026-11-20): the user wrote a full
+ * name ("Marta Rossi", the neutral example these tests use), the model wrote
+ * only its first word in the prompt, and the graph's own switch, which looks
+ * for the full name in the text, never fired: the pictures came out with a
+ * generic face. Nothing here reads a graph; it only compares the line with the
+ * prompt.
+ * @param asked - the user's line.
+ * @returns the names, longest first, without duplicates.
+ */
+export function subjectNames(asked: string): readonly string[] {
+  const found = new Set<string>()
+  // A capitalised word at the start of the line is the verb ("Genera"), so a
+  // name is only taken after another word, not from the first token.
+  const re = /\b\p{Lu}[\p{L}'’-]+\s+\p{Lu}[\p{L}'’-]+\b/gu
+  for (const match of asked.matchAll(re)) {
+    const name = match[0].replace(/\s+/g, ' ').trim()
+    // "Genera Delle" is not a name: the first word of a sentence is a verb in
+    // every language this studio speaks, and the pair has to be real words.
+    if (/^(genera|crea|fai|fammi|voglio|vorrei|make|create|give|draw)\b/i.test(name)) continue
+    if (name.length > 60) continue
+    found.add(name)
+  }
+  return [...found].sort((a, b) => b.length - a.length)
+}
+
+/**
+ * Why a prompt lost part of a name the user wrote, or undefined when it kept
+ * every one.
+ *
+ * A name is copied in full: "Marta" for "Marta Rossi" is not the same
+ * subject, and a graph that switches something on from the text cannot see it.
+ * The refusal names the whole name, so the model writes it again as it was.
+ * @param asked - the user's line.
+ * @param prompt - the prompt the model wrote.
+ * @returns the refusal, or undefined when every name is in the prompt.
+ */
+export function lostNameRefusal(asked: string, prompt: string): string | undefined {
+  const drawn = prompt.toLowerCase()
+  for (const name of subjectNames(asked)) {
+    if (drawn.includes(name.toLowerCase())) continue
+    // A name whose words are all absent is a prompt about something else: the
+    // subject was dropped, and the same sentence applies.
+    return `the user's line names "${name}": keep that name in the prompt, word for word — do not shorten it, translate it or turn it into a description`
+  }
+  return undefined
+}
+
+/**
  * Why a call cannot queue what it asked for, said with the numbers.
  *
  * The sentence this replaces ("this turn has already queued all the runs it
@@ -330,6 +383,8 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       if (prompt.length > MAX_PROMPT) return refused(`prompt is longer than ${String(MAX_PROMPT)} characters`)
       const translated = translatedPrompt(prompt, deps.asked)
       if (translated !== undefined) return refused(translated)
+      const lost = lostNameRefusal(deps.asked, prompt)
+      if (lost !== undefined) return refused(lost)
       /*
        * A closed choice the user named (a ratio, a resolution) is recovered
        * from their line when the model leaves the argument out: measured on
@@ -1320,6 +1375,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
             customFields: { type: 'object', description: 'The card\'s exposed inputs, keyed "<node>.<field>".', additionalProperties: true },
             customFiles: { type: 'object', description: 'The card\'s file slots: node id → gallery file name.', additionalProperties: { type: 'string' } },
             tweaks: TWEAKS_SCHEMA,
+            count: { type: 'integer', minimum: 1, maximum: MAX_COUNT, description: 'How many runs of the card, when the user asked for several pictures.' },
           },
           required: ['customWorkflowId'],
           additionalProperties: false,
@@ -1346,24 +1402,42 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
           files[node] = item.name
         }
       }
+      /*
+       * A name the line carries stays literal: "Marta Rossi" shortened to
+       * "Marta" is a different subject, and a graph that switches a LoRA on
+       * from the text cannot see it.
+       */
+      const lost = lostNameRefusal(deps.asked, prompt)
+      if (lost !== undefined) return refused(lost)
       const checked = await checkedAgainstGraph(deps, card.id, prompt, args['tweaks'])
       if ('error' in checked) return refused(checked.error)
       // The card's exposed inputs win over a tweak of the same input: they are
       // the controls the user sees.
       const runFields = { ...checked.fields, ...fields }
-      if (deps.canQueue() < 1) return refused(queueRefusal(deps.canQueue()))
-      deps.say({ kind: 'step', step: 'tool', name: 'run_card', detail: card.title })
+      /*
+       * A card that draws a new picture takes the same batch as the studio's
+       * own generate: ten pictures are one call, not ten turns. Before this,
+       * `run_card` had no count at all, so a line asking for ten was answered
+       * with a series at a time.
+       */
+      const count = countOf(args, deps)
+      if (!Number.isInteger(count) || count < 1 || count > MAX_COUNT) {
+        return refused(`count must be an integer from 1 to ${String(MAX_COUNT)}`)
+      }
+      if (deps.canQueue() < count) return refused(queueRefusal(deps.canQueue(), count))
+      deps.say({ kind: 'step', step: 'tool', name: 'run_card', detail: card.title, count })
       const jobs = await deps.start({
         action: 'custom',
         prompt,
         customWorkflowId: card.id,
+        ...count > 1 ? { count } : {},
         ...Object.keys(runFields).length === 0 ? {} : { customFields: runFields },
         ...Object.keys(files).length === 0 ? {} : { customFiles: files },
         ...deps.projectId === undefined ? {} : { projectId: deps.projectId },
         ...deps.model === undefined ? {} : { model: deps.model },
       })
       for (const job of jobs) deps.say({ kind: 'step', step: 'queued', jobId: job.id, detail: job.action })
-      return { result: { ok: true, queued: jobs.map(job => job.id), state: 'queued', card: card.title }, jobs, files: [] }
+      return { result: { ok: true, queued: jobs.map(job => job.id), count: jobs.length, state: 'queued', card: card.title }, jobs, files: [] }
     },
   },
   {

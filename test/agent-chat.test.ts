@@ -1087,3 +1087,53 @@ test('tweaks change a LoRA weight for this run only, and never the prompt or the
   const refusal = JSON.parse(bad.model.requests[1]?.messages.at(-1)?.content ?? '{}') as { error?: string }
   assert.match(refusal.error ?? '', /tweaks refused/)
 })
+
+test('the names the user wrote stay literal in the prompt', async () => {
+  // A neutral fixture name: nobody's own pictures or person.
+  const { subjectNames, lostNameRefusal } = await import('../server/vendor/tool-comfy/agent-tools.ts')
+  assert.deepEqual(subjectNames('genera 10 foto di Nora Valle in stile fumetto'), ['Nora Valle'])
+  assert.deepEqual(subjectNames('genera una foto di un faro al tramonto'), [])
+  // A prompt that says "una donna" has lost the subject: the name is refused.
+  assert.match(lostNameRefusal('genera 10 foto di Nora Valle', 'una donna in stile fumetto') ?? '', /Nora Valle/)
+  // One word of the name is not the name either.
+  assert.match(lostNameRefusal('genera 10 foto di Nora Valle', 'Nora in stile fumetto') ?? '', /Nora Valle/)
+  assert.equal(lostNameRefusal('genera 10 foto di Nora Valle', 'Nora Valle in stile fumetto'), undefined)
+})
+
+test('a prompt that shortened the name is refused before any run, and the whole name runs', async () => {
+  const shortened = turn([
+    toolCall('generate_image', { prompt: 'una donna in stile fumetto', count: 10 }),
+    text('Dieci foto in coda.'),
+  ], { text: 'genera 10 foto di Nora Valle in stile fumetto' })
+  await readAgentChat(shortened.deps)
+  assert.equal(shortened.started.length, 0, 'nothing was queued with the wrong subject')
+  const refusal = JSON.parse(shortened.model.requests[1]?.messages.at(-1)?.content ?? '{}') as { ok?: boolean; error?: string }
+  assert.equal(refusal.ok, false)
+  assert.match(refusal.error ?? '', /"Nora Valle"/)
+
+  const kept = turn([
+    toolCall('generate_image', { prompt: 'Nora Valle in stile fumetto, 9:16', count: 10 }),
+    text('Dieci foto in coda.'),
+  ], { text: 'genera 10 foto di Nora Valle in stile fumetto, 9:16' })
+  const answer = await readAgentChat(kept.deps)
+  assert.equal(kept.started[0]?.prompt, 'Nora Valle in stile fumetto, 9:16')
+  assert.equal(answer.jobIds.length, 10)
+})
+
+test('a personal card takes ten pictures in one call and says ten', async () => {
+  const inventory = {
+    list: [],
+    cards: [{ id: 'card-1', title: 'Ritratto pulito', description: '', inputs: [] }],
+  } as unknown as import('../server/vendor/tool-comfy/imagine-chat.ts').WorkflowInventory
+  const { deps, started, model } = turn([
+    toolCall('run_card', { customWorkflowId: 'card-1', prompt: 'Nora Valle in stile fumetto', count: 10 }),
+    text('Dieci foto in coda.'),
+  ], { inventory, outputDir: mediaDir, text: 'genera 10 foto di Nora Valle con la card «Ritratto pulito»' })
+  const first = await readAgentChat(deps)
+  await readAgentChat({ ...deps, request: { ...deps.request, confirmation: { token: first.pending?.token ?? '', accept: true } } })
+  assert.equal(started.length, 1)
+  assert.equal(started[0]?.action, 'custom')
+  assert.equal(started[0]?.count, 10)
+  const result = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as { count?: number }
+  assert.equal(result.count, 10)
+})

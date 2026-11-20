@@ -938,6 +938,21 @@ export function useRunner(ctx: RunnerContext) {
      */
     const note = (event: Parameters<typeof thoughtOf>[0]): void => {
       if (event.kind === 'reasoning') thinking += event.text
+      /*
+       * A run joins the project the moment it is queued, not when the turn
+       * ends. The turn ends with the answer, and an answer the user cut short
+       * (a new line while the runs were still out) used to take the runs with
+       * it: the host had queued ten pictures, the project owned none of them,
+       * and the next turn — and the column — spoke of one (measured on the
+       * production chat, 2026-11-20: ten renders, one file on the board).
+       */
+      if (event.kind === 'step' && event.step === 'queued' && event.jobId !== undefined) {
+        const next = rememberJob(project, event.jobId)
+        if (next !== project) {
+          project = next
+          patch(project)
+        }
+      }
       trace.set((thoughts) => {
         if (event.kind === 'reasoning') {
           const last = thoughts[thoughts.length - 1]

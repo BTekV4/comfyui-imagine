@@ -4,7 +4,7 @@
  * @module imagine-projects
  */
 
-import type { ImagineJobView as ImagineJob } from '../../../shared/imagine-types.ts'
+import type { ImagineJobView as ImagineJob, MediaKind } from '../../../shared/imagine-types.ts'
 import {
   HISTORY_PROJECT_ID, SEED_MESSAGE_PREFIX, type CanvasRect, type ImagineMessage, type ImagineProject, type ImagineRemovals,
 } from '../../../shared/imagine-projects.ts'
@@ -224,10 +224,31 @@ function replaceInPlace(
  * @param notice - renders the line for a mid-run notice, said once per job.
  * @returns a new project when something changed, otherwise the same reference.
  */
+/**
+ * How many runs of a batch have landed, this job included.
+ *
+ * A batch is what one line queued ("dieci foto"): the runs share a `batchId`,
+ * and each landing on its own used to leave its own line behind — "I generated
+ * one image" ten times, which the column folded into "×10" only when the texts
+ * were identical and adjacent. The line for a batch speaks once, with the
+ * total, and grows as the rest arrive.
+ * @param jobs - the queue as the page last read it.
+ * @param batchId - the batch to count.
+ * @returns the runs of the batch that finished with at least one file.
+ */
+export function settledInBatch(jobs: readonly ImagineJob[], batchId: string): number {
+  return jobs.filter(job => job.batchId === batchId && job.status === 'done' && (job.files?.length ?? 0) > 0).length
+}
+
+/** The id of the one line a batch's results share. */
+export function batchLineId(batchId: string): string {
+  return `ok-batch-${batchId}`
+}
+
 export function absorbJobFiles(
   project: ImagineProject,
   jobs: readonly ImagineJob[],
-  confirm?: (job: ImagineJob) => string,
+  confirm?: (job: ImagineJob, count?: number) => string,
   notice?: (notice: string) => string,
   replaces: Readonly<Record<string, string>> = upscaleReplacements(jobs),
 ): ImagineProject {
@@ -261,6 +282,8 @@ export function absorbJobFiles(
    * projects computes it once; the default keeps single callers correct.
    */
   const told = new Set(project.messages.map(message => message.id))
+  /** The batch lines this pass rewrites: id → the sentence and the new files. */
+  const updates = new Map<string, { text: string; files: readonly { name: string; kind: MediaKind }[] }>()
   for (const job of jobs) {
     if (!owned.has(job.id)) continue
     /*
@@ -304,18 +327,41 @@ export function absorbJobFiles(
           extra.push(file.name)
         }
       }
-      if (confirm !== undefined && !spoken.has(job.id)) {
+      /*
+       * A batch speaks once. The first run of a batch opens the line with the
+       * number it has so far; every later run rewrites that same line, so the
+       * column says "I generated 10 images", not ten lines of one.
+       */
+      const batch = job.batchId
+      const lineId = batch === undefined ? `ok-${job.id}` : batchLineId(batch)
+      const key = batch ?? job.id
+      if (confirm !== undefined && !spoken.has(key)) {
+        const total = batch === undefined ? job.files.length : settledInBatch(jobs, batch)
         extraMessages.push({
-          id: `ok-${job.id}`,
+          id: lineId,
           role: 'status',
-          text: confirm(job),
+          text: confirm(job, total),
           createdAt: Date.now(),
-          jobId: job.id,
+          jobId: key,
           // The result goes into the chat as well, like Grok Imagine: a click
           // on it takes the canvas to the tile (asked 2026-10-17).
           ...job.files.length === 0 ? {} : { files: job.files.map(file => ({ name: file.name, kind: file.kind })) },
         })
-        spoken.add(job.id)
+        spoken.add(key)
+      } else if (confirm !== undefined && batch !== undefined && job.files.length > 0) {
+        // The batch's later runs: the same line, one number further.
+        const text = confirm(job, settledInBatch(jobs, batch))
+        const fresh = job.files.map(file => ({ name: file.name, kind: file.kind }))
+        const seen = updates.get(lineId)
+        const line = seen ?? extraMessages.find(message => message.id === lineId)
+          ?? project.messages.find(message => message.id === lineId)
+        const knownFiles = new Set((line?.files ?? []).map(file => file.name))
+        const files = [...line?.files ?? [], ...fresh.filter(file => !knownFiles.has(file.name))]
+        // A pass that changes nothing writes nothing: the queue is reread every
+        // second and a fresh object each time is the re-render loop this
+        // function has already caused once (React #185).
+        if (line !== undefined && line.text === text && files.length === (line.files?.length ?? 0)) continue
+        updates.set(lineId, { text, files })
       }
     }
     if ((job.status === 'error' || job.status === 'cancelled') && confirm !== undefined && !spoken.has(job.id)) {
@@ -345,13 +391,29 @@ export function absorbJobFiles(
    * the first one: returning a fresh array every time is what made the effect
    * that calls this re-run for ever — the React #185 the earlier attempt hit.
    */
+  /*
+   * A batch line already in the column is not a new line: it is the same
+   * sentence with a bigger number and one more file under it.
+   */
+  const grown = (message: ImagineMessage): ImagineMessage => {
+    const update = updates.get(message.id)
+    if (update === undefined) return message
+    const known = new Set((message.files ?? []).map(file => file.name))
+    return {
+      ...message,
+      text: update.text,
+      files: [...message.files ?? [], ...update.files.filter(file => !known.has(file.name))],
+    }
+  }
+  const grownOld = project.messages.map(grown)
+  const grew = grownOld.some((message, index) => message !== project.messages[index])
   const moved = !sameList(swapped, project.itemNames)
-  if (names.length === 0 && extraMessages.length === 0 && !moved) return project
+  if (names.length === 0 && extraMessages.length === 0 && !moved && !grew) return project
   const base = moved ? swapped : project.itemNames
   return {
     ...project,
     itemNames: names.length === 0 ? base : [...base, ...names],
-    messages: extraMessages.length === 0 ? project.messages : [...project.messages, ...extraMessages],
+    messages: extraMessages.length === 0 && !grew ? project.messages : [...grownOld, ...extraMessages.map(grown)],
   }
 }
 
