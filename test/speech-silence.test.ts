@@ -35,7 +35,7 @@ before(() => { keepAlive = setInterval(() => {}, 1000) })
 after(() => { clearInterval(keepAlive) })
 
 /** The speech endpoint a test talks to. */
-const target = { baseURL: 'http://fake/v1', model: 'pocket-tts', voice: 'meloni', format: 'mp3' }
+const target = { baseURL: 'http://fake/v1', model: 'pocket-tts', voice: 'voce-di-prova', format: 'mp3' }
 
 /**
  * An audio answer: one piece every `gapMs`, and a body that either closes or
@@ -68,7 +68,7 @@ function audioAnswer(pieces: readonly string[], gapMs: number, opts: { stall?: b
 async function say(windowMs: number, caller?: AbortSignal): Promise<{ bytes: Uint8Array; expired: boolean }> {
   const clock = speechClock(caller, windowMs)
   try {
-    const bytes = await speech(target, 'ciao', 'meloni', clock)
+    const bytes = await speech(target, 'ciao', 'voce-di-prova', clock)
     return { bytes, expired: clock.expired() }
   } finally {
     clock.stop()
@@ -96,7 +96,7 @@ test('a service that goes quiet is given up at the silence window', async () => 
   const started = Date.now()
   const clock = speechClock(undefined, 60)
   try {
-    await assert.rejects(speech(target, 'ciao', 'meloni', clock))
+    await assert.rejects(speech(target, 'ciao', 'voce-di-prova', clock))
     assert.equal(clock.expired(), true)
   } finally {
     clock.stop()
@@ -112,7 +112,7 @@ test('the user cancelling ends the request at once, and is not a timeout', async
   const started = Date.now()
   setTimeout(() => { caller.abort() }, 30)
   try {
-    await assert.rejects(speech(target, 'ciao', 'meloni', clock))
+    await assert.rejects(speech(target, 'ciao', 'voce-di-prova', clock))
     assert.equal(clock.expired(), false)
   } finally {
     clock.stop()
