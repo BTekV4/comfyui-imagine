@@ -543,7 +543,7 @@ export function useStudioSync(ctx: StudioSyncContext) {
     const next = projects.map(project => (done.has(project) ? project : absorbJobFiles(
       project,
       jobs,
-      job => jobDoneText(job),
+      (job, count) => jobDoneText(job, count),
       key => noticeText(key),
       upscaleReplaces,
     )))

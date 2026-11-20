@@ -166,9 +166,11 @@ export function noticeText(key: string): string {
  * each action's failure and its sentence for a finished run are in the action
  * table (`failedKey`, `doneKeys` in action-traits.ts).
  * @param job - the job, done, failed or cancelled.
+ * @param count - how many runs of the same batch have landed, for a line that
+ *   speaks for the batch and not one file ("I generated 10 images").
  * @returns the line.
  */
-export function jobDoneText(job: ImagineJob): string {
+export function jobDoneText(job: ImagineJob, count = job.files?.length ?? 1): string {
   if (job.status === 'cancelled') return translate('imagine.jobCancelled')
   if (job.status === 'error') {
     return translate('imagine.failedWith', {
@@ -187,7 +189,8 @@ export function jobDoneText(job: ImagineJob): string {
   const keys = job.action === 'voice'
     ? clip ? ['imagine.doneVoiceClipOne', 'imagine.doneVoiceClip'] as const : ['imagine.doneVoiceOne', 'imagine.doneVoice'] as const
     : ACTION_TRAITS[job.action]?.doneKeys ?? (clip ? ACTION_TRAITS.video.doneKeys : undefined) ?? ['imagine.doneGenerateOne', 'imagine.doneGenerate'] as const
-  return files.length === 1 ? translate(keys[0]) : translate(keys[1], { count: String(files.length) })
+  if (count <= 1) return translate(keys[0])
+  return translate(keys[1], { count: String(count) })
 }
 
 let lastThoughtId = 0
