@@ -80,7 +80,7 @@ win:
     - nsis
   icon: icon.png
   executableName: Imagine
-  # The file a person downloads: Imagine-0.2.0-windows-x64-setup.exe.
+  # The file a person downloads: Imagine-<version>-windows-x64-setup.exe.
   artifactName: Imagine-${version}-windows-${arch}-setup.exe
 
 nsis:

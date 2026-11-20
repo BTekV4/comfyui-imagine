@@ -99,6 +99,14 @@ test('release.yml: the publish job gates the downloaded packages, then attaches 
   }
 })
 
+test('ci.yml: the check job refuses a package name carrying another version', () => {
+  const steps = workflow('ci.yml').jobs?.check?.steps
+  assert.ok(steps, 'ci.yml has no check job')
+  const guard = steps.find((step) =>
+    typeof step.run === 'string' && step.run.includes('scripts/check-docs-versions.mjs'))
+  assert.ok(guard, 'the check job never runs scripts/check-docs-versions.mjs')
+})
+
 test('ci.yml: the release rehearsal runs the publish job\'s gate on the same folder', () => {
   const job = workflow('ci.yml').jobs?.['release-rehearsal']
   assert.ok(job?.steps, 'ci.yml has no release-rehearsal job')
