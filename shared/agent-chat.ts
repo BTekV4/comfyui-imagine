@@ -48,6 +48,16 @@ export interface AgentLimits {
   readonly confirmSeconds: number
 }
 
+/**
+ * The most runs one turn may queue, however many the user asked for.
+ *
+ * `maxJobs` is the ordinary budget: what a turn queues when the line asks for
+ * no particular number. A line that says "fai 10 foto" gets at least ten, so
+ * the budget follows the request instead of refusing a number the user named;
+ * this is the ceiling that keeps one sentence from filling a GPU for a day.
+ */
+export const AGENT_JOBS_CEILING = 24
+
 /** The confirmed limits: a normal user never has to touch them. */
 export const AGENT_LIMITS_DEFAULT: AgentLimits = {
   // A turn with three tools is typically four or five model calls.
@@ -222,4 +232,29 @@ export interface AgentChatAnswer {
   readonly pending?: AgentPending
   /** The classic lane's failure flag, kept so the page says the same thing. */
   readonly failed?: boolean
+}
+
+/**
+ * Whether one answer started anything: a run, a host-made file, a classic
+ * intent, or an offer waiting for a yes.
+ *
+ * The column prints "No work started" on a reading that only answered. That
+ * line is only true when nothing at all was queued: a turn that put ten runs
+ * in the queue must never be followed by it (2026-11-20, the agent chat of a
+ * project: the reply offered ten pictures and the line read "No work
+ * started"). The rule is here, not in the page, so it can be tested without
+ * one.
+ * @param answer - what the reading came back with.
+ * @returns true when the answer queued, made or offered something.
+ */
+export function answerStartedWork(answer: {
+  readonly pending?: unknown
+  readonly intents: readonly unknown[]
+  readonly jobIds: readonly unknown[]
+  readonly files: readonly unknown[]
+}): boolean {
+  return answer.pending !== undefined
+    || answer.intents.length > 0
+    || answer.jobIds.length > 0
+    || answer.files.length > 0
 }

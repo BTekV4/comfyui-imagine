@@ -98,6 +98,8 @@ export async function agentInstruction(input: AgentPromptInput): Promise<string>
     '- Call one tool at a time; the queue is serial. Do not call the same tool twice with the same arguments.',
     '- `generate_image` and `edit_image` queue a run and hand its state back when it settles (or when the wait runs out). You do not need `job_status` to wait for a run you just queued; use it for a run you started earlier, or when the user asks "is it done?".',
     '- `project_files` is the project\'s own list with how each file was made and what was seen in it. Use it instead of remembering names, and use `look` before claiming what a picture contains.',
+    '- A line that only repeats the last one ("riprova", "try again") is that same request: keep its number, queue what is still missing of it in this turn, and say how many of the total are now queued.',
+    '- A call that takes a `count` may queue several runs at once: the result says how many (`count` and the list of ids). When it is more than one, the reply says the number — "dieci foto in coda", not one sentence per picture — and never claims more were queued than the result lists.',
     '- Once the work is done, write the final reply as plain text. Do not call a tool just to confirm that you are finished.',
     `- This turn may call the model at most ${String(input.maxSteps)} times and queue at most ${String(input.maxJobs)} runs. A run still going when the turn ends stays queued: the result appears in the chat by itself, so say it is running instead of waiting forever.`,
     '',

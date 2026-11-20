@@ -17,6 +17,7 @@
 import { randomUUID } from 'node:crypto'
 import { message } from '../../src/messages.ts'
 import type { ImagineHost } from '../../src/host.ts'
+import { AGENT_JOBS_CEILING } from '../../../shared/agent-chat.ts'
 import type {
   AgentCapabilities, AgentChatAsk, AgentChatAnswer, AgentChatMessage, AgentChatMode, AgentLimits,
   AgentModelCapable, AgentModelEvent, AgentPending, AgentToolCall,
@@ -32,7 +33,7 @@ import { replyNeedsRewrite, rewriteAsk } from './reply-language.ts'
 import { join } from 'node:path'
 import { probeMedia } from './media-tools.ts'
 import {
-  agentToolSchemas, confirmationFor, runAgentTool, type AgentPendingOffer, type AgentToolDeps,
+  agentToolSchemas, confirmationFor, numbersInLine, runAgentTool, type AgentPendingOffer, type AgentToolDeps,
   type AgentToolOutcome,
 } from './agent-tools.ts'
 
@@ -322,6 +323,7 @@ function toolDepsOf(deps: AgentTurnDeps, state: TurnState): AgentToolDeps {
     ...state.model === undefined ? {} : { model: state.model },
     ...state.language === undefined ? {} : { language: state.language },
     asked: state.asked,
+    ...previousUserLine(deps.request.history) === undefined ? {} : { previous: previousUserLine(deps.request.history) as string },
     ...deps.signal === undefined ? {} : { signal: deps.signal },
     eraseTool: deps.eraseTool,
     ...deps.surface.selfURL === undefined ? {} : { selfURL: deps.surface.selfURL },
@@ -334,9 +336,44 @@ function toolDepsOf(deps: AgentTurnDeps, state: TurnState): AgentToolDeps {
     adoptFiles: deps.adoptFiles,
     cancelJob: deps.cancelJob,
     known: state.known,
-    canQueue: () => Math.max(0, deps.surface.limits().maxJobs - state.jobs.length),
+    canQueue: () => Math.max(0, jobBudgetFor(deps.surface.limits(), state.asked, previousUserLine(deps.request.history)) - state.jobs.length),
     say: deps.say,
   }
+}
+
+/**
+ * How many runs this turn may queue: the setting, or the number the line asked
+ * for when that is larger, up to {@link AGENT_JOBS_CEILING}.
+ *
+ * The budget used to be the setting alone (six by default), so "fai 10 foto"
+ * was refused with "this turn has already queued all the runs it may" while
+ * nothing at all was queued: the tool said a count above six could not fit a
+ * budget that had not been touched. A number the user names is a budget.
+ * @param limits - the turn's limits, as the settings hold them.
+ * @param asked - the user's line.
+ * @returns the runs this turn may queue.
+ */
+export function jobBudgetFor(limits: AgentLimits, asked: string, previous?: string): number {
+  const own = numbersInLine(asked).count
+  const repeated = own === undefined && previous !== undefined && isRetryLine(asked)
+    ? numbersInLine(previous).count
+    : undefined
+  return Math.min(AGENT_JOBS_CEILING, Math.max(limits.maxJobs, own ?? repeated ?? 0))
+}
+
+/** Whether the line asks for the previous request again. */
+function isRetryLine(asked: string): boolean {
+  return /^(riprova|rifallo|fallo (di nuovo|ancora)|try again|do it again)\b/i.test(asked.trim())
+}
+
+/**
+ * The last line the user wrote before this turn: a "riprova" repeats it, so
+ * its number is the number this turn has to finish.
+ * @param history - the conversation the page sent, oldest first.
+ * @returns that line, when there is one.
+ */
+function previousUserLine(history: readonly { readonly role: 'user' | 'assistant'; readonly text: string }[] | undefined): string | undefined {
+  return (history ?? []).filter(entry => entry.role === 'user').at(-1)?.text
 }
 
 /** A tool result with the language the reply has to be written in. */
@@ -363,7 +400,7 @@ async function runAgentTurn(deps: AgentTurnDeps, route: ModelRoute): Promise<Age
     working: deps.request.working ?? [],
     ...deps.language === undefined ? {} : { language: deps.language },
     maxSteps: limits.maxSteps,
-    maxJobs: limits.maxJobs,
+    maxJobs: jobBudgetFor(limits, deps.request.text, previousUserLine(deps.request.history)),
     ...deps.inventory?.cards === undefined ? {} : { cards: deps.inventory.cards },
     ...deps.request.voices === undefined ? {} : { voices: deps.request.voices },
   })

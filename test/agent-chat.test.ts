@@ -12,7 +12,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  probeTools, readAgentChat, type AgentTurnDeps,
+  jobBudgetFor, probeTools, readAgentChat, type AgentTurnDeps,
 } from '../server/vendor/tool-comfy/agent-loop.ts'
 import { putJob, type ImagineJob } from '../server/vendor/tool-comfy/job-queue.ts'
 import { asksOnlyForMusic, choicesInLine, numbersInLine, runAgentTool } from '../server/vendor/tool-comfy/agent-tools.ts'
@@ -24,6 +24,8 @@ import type {
 import type { ImagineChatEvent } from '../shared/imagine-chat.ts'
 import type { JobBody } from '../server/vendor/tool-comfy/job-start.ts'
 import { sizeFor } from '../shared/imagine-sizing.ts'
+import { AGENT_JOBS_CEILING, answerStartedWork } from '../shared/agent-chat.ts'
+import { MAX_JOB_COUNT } from '../server/vendor/tool-comfy/job-request.ts'
 
 const MODEL = { provider: 'fake', model: 'fake' } as const
 
@@ -109,6 +111,7 @@ function turn(
     selfURL?: string
     adopted?: string[]
     language?: string
+    history?: readonly { readonly role: 'user' | 'assistant'; readonly text: string }[]
   } = {},
 ) {
   const model = scriptedModel(scripts)
@@ -119,7 +122,7 @@ function turn(
   let serial = 0
   const request: AgentChatAsk = {
     text: options.text ?? 'una tazza rossa su un tavolo di legno',
-    history: [],
+    history: [...(options.history ?? [])],
     staged: [],
     recent: [],
     model: MODEL,
@@ -141,12 +144,18 @@ function turn(
     },
     start: async (body) => {
       started.push(body)
-      serial += 1
-      const job = finishedJob(`job-${String(serial)}`, typeof body.prompt === 'string' ? body.prompt : '')
-      jobs.set(job.id, job)
-      // What `startFromBody` hands back is the job as it was queued; only the
-      // map knows it has finished. The loop has to read the map.
-      return [{ ...job, status: 'queued', files: undefined }]
+      // A batch is one job per picture, as `startFromBody` makes it: a count of
+      // ten is ten runs, not one run that drew ten. The jobs come back as they
+      // were queued; only the map knows they finished, and the loop reads it.
+      const batch = typeof body.count === 'number' && body.count > 1 ? body.count : 1
+      const made: ImagineJob[] = []
+      for (let index = 0; index < batch; index++) {
+        serial += 1
+        const job = finishedJob(`job-${String(serial)}`, typeof body.prompt === 'string' ? body.prompt : '')
+        jobs.set(job.id, job)
+        made.push(job)
+      }
+      return made.map(job => ({ ...job, status: 'queued' as const, files: undefined }))
     },
     jobView: job => job,
     listJobs: () => [...jobs.values()],
@@ -889,4 +898,84 @@ test('a translated run_action prompt is replaced by the user\'s line too', async
   })
   assert.equal(outcome.result['ok'], true)
   assert.equal(started[0]?.prompt, 'come prima ma più scuro')
+})
+
+
+test('a line that asks for ten pictures gets a budget of ten, not the setting', async () => {
+  const limits = { maxSteps: 8, maxJobs: 6, waitSeconds: 300, turnSeconds: 900, confirmSeconds: 15 }
+  assert.equal(jobBudgetFor(limits, 'genera una foto di un faro'), 6)
+  assert.equal(jobBudgetFor(limits, 'genera 10 foto di un faro, 9:16, 1080p'), 10)
+  assert.equal(jobBudgetFor(limits, 'genera 30 immagini'), AGENT_JOBS_CEILING)
+  // The tool and the route agree on the batch ceiling: eight was one too few.
+  assert.equal(MAX_JOB_COUNT, 10)
+})
+
+test('ten pictures are all queued in one turn, and the result says ten', async () => {
+  const { deps, started, model } = turn([
+    toolCall('generate_image', { prompt: 'un faro al tramonto', aspect: '9:16', resolution: '1080p', count: 10 }),
+    text('Dieci foto in coda.'),
+  ], { text: 'genera 10 foto di un faro al tramonto, 9:16, 1080p' })
+  const answer = await readAgentChat(deps)
+  assert.equal(started.length, 1)
+  assert.equal(started[0]?.count, 10)
+  assert.equal(answer.pending, undefined)
+  assert.equal(answer.jobIds.length, 10)
+  const result = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as { count?: number; files?: unknown[] }
+  assert.equal(result.count, 10)
+  assert.equal(result.files?.length, 10)
+})
+
+test('twelve pictures go in two calls, and the budget follows the number', async () => {
+  const { deps, started } = turn([
+    toolCall('generate_image', { prompt: 'un faro', count: 10 }, 'call_1'),
+    toolCall('generate_image', { prompt: 'un faro', count: 2 }, 'call_2'),
+    text('Dodici foto in coda.'),
+  ], { text: 'genera 12 foto di un faro' })
+  const answer = await readAgentChat(deps)
+  assert.equal(started.length, 2)
+  assert.equal(answer.jobIds.length, 12)
+})
+
+test('a batch over the budget says how many fit, and never that everything is queued when nothing is', async () => {
+  const { deps, started, model } = turn([
+    toolCall('generate_image', { prompt: 'un faro', count: 10 }),
+    text('Ne posso fare sei.'),
+  ], { text: 'genera delle foto di un faro' })
+  const answer = await readAgentChat(deps)
+  assert.equal(started.length, 0, 'nothing was queued')
+  const result = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as { ok?: boolean; error?: string }
+  assert.equal(result.ok, false)
+  assert.match(result.error ?? '', /can still queue 6 runs, not 10/)
+  assert.doesNotMatch(result.error ?? '', /already queued all/)
+  assert.equal(answer.jobIds.length, 0)
+})
+
+test('a retry repeats the previous request number, not a part of it', async () => {
+  const limits = { maxSteps: 8, maxJobs: 6, waitSeconds: 300, turnSeconds: 900, confirmSeconds: 15 }
+  assert.equal(jobBudgetFor(limits, 'riprova', 'genera 10 foto di un faro'), 10)
+  assert.equal(jobBudgetFor(limits, 'riprova'), 6)
+  // The model asks a part of it: the request it repeats still says ten.
+  const { deps, started } = turn([
+    toolCall('generate_image', { prompt: 'un faro', count: 8 }),
+    text('Dieci foto in coda.'),
+  ], {
+    text: 'riprova',
+    history: [
+      { role: 'user', text: 'genera 10 foto di un faro in stile fumetto' },
+      { role: 'assistant', text: 'Nessuna generazione è partita.' },
+    ],
+  })
+  const answer = await readAgentChat(deps)
+  assert.equal(started.length, 1)
+  assert.equal(started[0]?.count, 10)
+  assert.equal(answer.jobIds.length, 10)
+})
+
+test('the reply that queued work is never followed by "no work started"', () => {
+  const empty = { intents: [], jobIds: [], files: [] }
+  assert.equal(answerStartedWork(empty), false)
+  assert.equal(answerStartedWork({ ...empty, jobIds: ['job-1'] }), true)
+  assert.equal(answerStartedWork({ ...empty, intents: [{}] }), true)
+  assert.equal(answerStartedWork({ ...empty, files: [{ name: 'erase.png', kind: 'image' }] }), true)
+  assert.equal(answerStartedWork({ ...empty, pending: { token: 't' } }), true)
 })

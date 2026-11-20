@@ -46,6 +46,7 @@ import { lookWith } from './imagine-models.ts'
 import type { ImagineJob } from './job-queue.ts'
 import { jobBodyProblem, type JobBody } from './job-start.ts'
 import { customFieldsOf, type WorkflowInventory } from './imagine-chat.ts'
+import { MAX_JOB_COUNT } from './job-request.ts'
 
 /** What one tool call produced: the result the model reads, and the runs to wait for. */
 export interface AgentToolOutcome {
@@ -71,6 +72,8 @@ export interface AgentToolDeps {
   readonly language?: string
   /** The user's line: a closed choice they named is recovered when the model drops it. */
   readonly asked: string
+  /** The last line they wrote before this one, for a "riprova" that repeats it. */
+  readonly previous?: string
   /** Stops a look when the chat closes. */
   readonly signal?: AbortSignal
   /** Whether «Remove object» is mounted (the request says so). */
@@ -142,6 +145,24 @@ function translatedPrompt(prompt: string, asked: string): string | undefined {
   return `the prompt is in ${drawnName} but the user wrote in ${userName}: copy their words into the prompt, do not translate it`
 }
 
+/**
+ * Why a call cannot queue what it asked for, said with the numbers.
+ *
+ * The sentence this replaces ("this turn has already queued all the runs it
+ * may") was shown with nothing queued at all, because the budget was the
+ * setting's six and the call asked for eight: "already" was false and the
+ * user had no way to tell. Nothing already queued is ever lost here.
+ * @param remaining - how many runs this turn can still queue.
+ * @param wanted - how many this call asked for, when it asked for more than one.
+ * @returns the refusal the model reads.
+ */
+function queueRefusal(remaining: number, wanted = 1): string {
+  if (remaining <= 0) {
+    return 'this turn has no room for another run: it has queued its whole budget, and those runs are untouched. Ask again for any work beyond it.'
+  }
+  return `this turn can still queue ${String(remaining)} run${remaining === 1 ? '' : 's'}, not ${String(wanted)}: queue ${String(remaining)} now and ask again for the rest. The runs already queued are untouched.`
+}
+
 /** The gallery image a tool names, or a refusal. */
 async function galleryImage(deps: AgentToolDeps, name: string): Promise<GalleryItem | string> {
   const safe = safeBasename(name)
@@ -153,8 +174,14 @@ async function galleryImage(deps: AgentToolDeps, name: string): Promise<GalleryI
 /** The longest prompt a tool takes: longer than any line a person writes. */
 const MAX_PROMPT = 4_000
 
-/** The batch ceiling the job route itself accepts. */
-const MAX_COUNT = 8
+/**
+ * The batch ceiling the job route itself accepts, not a smaller one.
+ *
+ * The tool stopped at eight while the route took ten (2026-11-20): "fai 10
+ * foto" was refused by the tool although a single call could have carried all
+ * ten.
+ */
+const MAX_COUNT = MAX_JOB_COUNT
 
 /**
  * The shape the studio draws when neither the line nor the arguments name one.
@@ -222,11 +249,11 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       }
       // A count the user named ("tre foto") is recovered when the model drops
       // it, as the ratio and the resolution already were (F1 fix, 2026-11-18).
-      const count = args['count'] === undefined ? numbersInLine(deps.asked).count ?? 1 : Number(args['count'])
+      const count = countOf(args, deps)
       if (!Number.isInteger(count) || count < 1 || count > MAX_COUNT) {
         return refused(`count must be an integer from 1 to ${String(MAX_COUNT)}`)
       }
-      if (deps.canQueue() < count) return refused('this turn has already queued all the runs it may')
+      if (deps.canQueue() < count) return refused(queueRefusal(deps.canQueue(), count))
       const shape: ImagineAspect | undefined = aspect === undefined
         ? (resolution === undefined ? undefined : DEFAULT_IMAGE_SHAPE)
         : aspect as ImagineAspect
@@ -246,6 +273,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         result: {
           ok: true,
           queued: jobs.map(job => job.id),
+          count: jobs.length,
           state: 'queued',
           ...size === undefined ? {} : { size },
           ...aspect === undefined ? {} : { aspect },
@@ -348,7 +376,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       if (resolution !== undefined && !(IMAGE_RESOLUTIONS as readonly string[]).includes(resolution)) {
         return refused(`resolution must be one of ${IMAGE_RESOLUTIONS.join(', ')}`)
       }
-      const count = args['count'] === undefined ? numbersInLine(deps.asked).count ?? 1 : Number(args['count'])
+      const count = countOf(args, deps)
       if (!Number.isInteger(count) || count < 1 || count > MAX_COUNT) {
         return refused(`count must be an integer from 1 to ${String(MAX_COUNT)}`)
       }
@@ -367,7 +395,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         ? (resolution === undefined ? undefined : sourceShape)
         : aspect as ImagineAspect
       const size = shape === undefined ? undefined : sizeFor(shape, (resolution ?? '1080p') as ImagineResolution)
-      if (deps.canQueue() < count) return refused('this turn has already queued all the runs it may')
+      if (deps.canQueue() < count) return refused(queueRefusal(deps.canQueue(), count))
       deps.say({ kind: 'step', step: 'tool', name: 'edit_image', detail: prompt, ...count > 1 ? { count } : {} })
       const jobs = await deps.start({
         action: 'remix',
@@ -389,6 +417,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         result: {
           ok: true,
           queued: jobs.map(job => job.id),
+          count: jobs.length,
           state: 'queued',
           source: item.name,
           ...aspect === undefined ? {} : { aspect },
@@ -713,7 +742,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       }
       const speed = str(args['speed']) ?? 'fast'
       if (speed !== 'fast' && speed !== 'slow') return refused('speed must be fast or slow')
-      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      if (deps.canQueue() < 1) return refused(queueRefusal(deps.canQueue()))
       deps.say({ kind: 'step', step: 'tool', name: 'make_video', detail: prompt })
       const jobs = await deps.start({
         action: 'video',
@@ -763,7 +792,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       if (prompt.length > MAX_PROMPT) return refused(`prompt is longer than ${String(MAX_PROMPT)} characters`)
       const seconds = args['seconds'] === undefined ? numbersInLine(deps.asked).seconds ?? 5 : Math.round(Number(args['seconds']))
       if (!Number.isFinite(seconds) || seconds < 2 || seconds > 60) return refused('seconds must be from 2 to 60')
-      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      if (deps.canQueue() < 1) return refused(queueRefusal(deps.canQueue()))
       deps.say({ kind: 'step', step: 'tool', name: 'extend_video', detail: prompt })
       const jobs = await deps.start({
         action: 'extend',
@@ -807,7 +836,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       if (prompt.length > MAX_PROMPT) return refused(`prompt is longer than ${String(MAX_PROMPT)} characters`)
       const seconds = args['seconds'] === undefined ? numbersInLine(deps.asked).seconds ?? 5 : Math.round(Number(args['seconds']))
       if (!Number.isFinite(seconds) || seconds < 5 || seconds > 60) return refused('a loop runs from 5 to 60 seconds')
-      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      if (deps.canQueue() < 1) return refused(queueRefusal(deps.canQueue()))
       deps.say({ kind: 'step', step: 'tool', name: 'loop_video', detail: prompt })
       const jobs = await deps.start({
         action: 'loop',
@@ -887,7 +916,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       if (seconds !== undefined && (!Number.isFinite(seconds) || seconds < 20 || seconds > 300)) {
         return refused('a story runs from 20 to 300 seconds')
       }
-      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      if (deps.canQueue() < 1) return refused(queueRefusal(deps.canQueue()))
       deps.say({ kind: 'step', step: 'tool', name: 'make_story', detail: prompt })
       const jobs = await deps.start({
         action: 'story',
@@ -941,7 +970,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       }
       const lyrics = str(args['lyrics'])
       if (lyrics !== undefined && lyrics.length > 8_000) return refused('lyrics are longer than 8000 characters')
-      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      if (deps.canQueue() < 1) return refused(queueRefusal(deps.canQueue()))
       deps.say({ kind: 'step', step: 'tool', name: 'make_music', detail: prompt })
       const jobs = await deps.start({
         action: 'music',
@@ -1027,7 +1056,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       const text = str(args['text'])
       if (text === undefined) return refused('text is required: the words to read aloud')
       if (text.length > MAX_PROMPT) return refused(`text is longer than ${String(MAX_PROMPT)} characters`)
-      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      if (deps.canQueue() < 1) return refused(queueRefusal(deps.canQueue()))
       deps.say({ kind: 'step', step: 'tool', name: 'speak', detail: text.slice(0, 80) })
       const jobs = await deps.start({
         action: 'speak',
@@ -1070,7 +1099,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       if (pitch !== undefined && (!Number.isFinite(pitch) || pitch < -24 || pitch > 24)) {
         return refused('pitch must be an integer from -24 to 24 semitones')
       }
-      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      if (deps.canQueue() < 1) return refused(queueRefusal(deps.canQueue()))
       deps.say({ kind: 'step', step: 'tool', name: 'change_voice', detail: item.name })
       const jobs = await deps.start({
         action: 'voice',
@@ -1112,7 +1141,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       if (asked !== undefined && !ladder.includes(asked)) {
         return refused(`a ${item.kind} goes to ${ladder.join(', ')}; ${String(asked)} is not on its ladder`)
       }
-      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      if (deps.canQueue() < 1) return refused(queueRefusal(deps.canQueue()))
       deps.say({ kind: 'step', step: 'tool', name: 'upscale', detail: item.name })
       const jobs = await deps.start({
         action: 'upscale',
@@ -1165,7 +1194,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
           files[node] = item.name
         }
       }
-      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      if (deps.canQueue() < 1) return refused(queueRefusal(deps.canQueue()))
       deps.say({ kind: 'step', step: 'tool', name: 'run_card', detail: card.title })
       const jobs = await deps.start({
         action: 'custom',
@@ -1271,7 +1300,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       if (action === 'objectSwap' && (body.objectMode ?? 'change') === 'change' && reference === undefined) {
         return refused('objectSwap in change mode needs the photo of the new object in reference')
       }
-      if (deps.canQueue() < 1) return refused('this turn has already queued all the runs it may')
+      if (deps.canQueue() < 1) return refused(queueRefusal(deps.canQueue()))
       deps.say({ kind: 'step', step: 'tool', name: 'run_action', detail: `${action}${prompt.length === 0 ? '' : `: ${prompt}`}` })
       const jobs = await deps.start({
         ...body,
@@ -1604,6 +1633,33 @@ function extrasOf(value: unknown): Readonly<Record<string, unknown>> | string {
     kept[key] = raw
   }
   return kept
+}
+
+/** Whether a line asks for the previous request again. */
+function isRetry(asked: string): boolean {
+  return /^(riprova|riprova\b|rifallo|fallo (di nuovo|ancora)|try again|do it again)\b/i.test(asked.trim())
+}
+
+/**
+ * How many pictures a call should queue.
+ *
+ * The model's count wins, except on a "riprova" that repeats a line naming a
+ * number: the request is still that one, so a smaller count is the model
+ * stopping halfway through it (measured: a 10-picture request retried as 8).
+ * @param args - the call's arguments.
+ * @param deps - the turn.
+ * @returns the count to queue.
+ */
+function countOf(args: Readonly<Record<string, unknown>>, deps: AgentToolDeps): number {
+  const asked = numbersInLine(deps.asked).count
+  const repeated = isRetry(deps.asked) && deps.previous !== undefined ? numbersInLine(deps.previous).count : undefined
+  const named = asked ?? repeated
+  const given = args['count'] === undefined ? undefined : Number(args['count'])
+  if (named === undefined) return given ?? 1
+  // A number the user named is recovered when the model drops it, and a retry
+  // never queues less than the request it is repeating.
+  if (given === undefined) return named
+  return repeated !== undefined && given < repeated && asked === undefined ? repeated : given
 }
 
 /** The gallery file of one of the kinds the tool accepts, or a refusal. */

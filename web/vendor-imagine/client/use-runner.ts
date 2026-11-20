@@ -11,7 +11,7 @@
 
 import type { Dispatch, SetStateAction } from 'react'
 import type { ImagineChatIntent, WorkflowProposal } from '../../../shared/imagine-chat.ts'
-import type { AgentPending } from '../../../shared/agent-chat.ts'
+import { answerStartedWork, type AgentPending } from '../../../shared/agent-chat.ts'
 import { aspectFor, upscaleBlocked, type ImagineAspect, type ImagineResolution } from '../../../shared/imagine-media.ts'
 import type { ImagineProject } from '../../../shared/imagine-projects.ts'
 import {
@@ -1088,7 +1088,7 @@ export function useRunner(ctx: RunnerContext) {
        * only answered" (2026-10-17). A status line, not the reply: the
        * reader's own words are not evidence of what it did.
        */
-      if (answer.pending === undefined && answer.intents.length === 0 && answer.jobIds.length === 0 && answer.files.length === 0) {
+      if (!answerStartedWork(answer)) {
         project = appendMessage(project, {
           id: `s-${String(Date.now())}`,
           role: 'status',
