@@ -44,6 +44,9 @@ import { sightInMemory } from './imagine-sight.ts'
 import { loadImagineStore } from './imagine-store.ts'
 import { lookWith } from './imagine-models.ts'
 import { explicitnessRefusal, specFor, specRefusals } from './edit-spec.ts'
+import { resolveStep } from './edit-levers.ts'
+import { recallEditState } from './edit-state.ts'
+import { localizedDefect } from './edit-attempts.ts'
 import type { ImagineJob } from './job-queue.ts'
 import { jobBodyProblem, type JobBody } from './job-start.ts'
 import { customFieldsOf, type WorkflowInventory } from './imagine-chat.ts'
@@ -509,6 +512,16 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       if (source === undefined) return refused('source is required: the picture to edit, by gallery name')
       const item = await galleryImage(deps, source)
       if (typeof item === 'string') return refused(item)
+      /*
+       * "più X" starts from the result the user accepted: the change is that
+       * change plus one delta from the closed list, built here and not guessed
+       * by the model. A "more" that is not on the list is refused: that is
+       * where "più sensuale" became a nude.
+       */
+      const filed = await recallEditState(item.name).catch(() => undefined)
+      const step = resolveStep(deps.asked, filed?.accepted?.change)
+      if (step !== undefined && 'error' in step) return refused(step.error)
+      if (step !== undefined) prompt = step.change
       const target = str(args['target'])
       let region = regionOf(args['region'])
       let grounded = false
@@ -578,6 +591,16 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         ...aspect === undefined ? {} : { aspect },
       })
       if (againstSpec.length > 0) return refused(againstSpec.join('; '))
+      /*
+       * A retry of the change that failed locally must name its zone: the
+       * rest of the photo was intact and the fix is one element, so redrawing
+       * everything again is what loses the lettering.
+       */
+      const lastVerdict = filed?.lastVerdict
+      const retried = filed?.failed.some(entry => entry.change === prompt) ?? false
+      if (retried && lastVerdict !== undefined && localizedDefect(lastVerdict) && target === undefined && region === undefined && aspect === undefined) {
+        return refused(`the last check on ${item.name} found a local fault (${[...lastVerdict.missing, ...lastVerdict.unrequestedChanges].join(', ')}): this is a local correction. Name the thing to change in target, or pass a region, so only that part is redrawn`)
+      }
       if (deps.canQueue() < count) return refused(queueRefusal(deps.canQueue(), count))
       deps.say({ kind: 'step', step: 'tool', name: 'edit_image', detail: prompt, ...count > 1 ? { count } : {} })
       const jobs = await deps.start({

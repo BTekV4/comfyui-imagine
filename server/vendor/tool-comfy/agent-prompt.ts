@@ -45,6 +45,8 @@ export interface AgentPromptInput {
   readonly graphs?: readonly string[]
   /** The LoRA the owner listed in Settings, when they listed any. */
   readonly loraCatalog?: readonly LoraCard[]
+  /** What the filed state says about the pictures this turn knows (`editStateNotes`). */
+  readonly editNotes?: readonly string[]
 }
 
 /** How many files the digest shows: the newest, which is what a line points at. */
@@ -134,6 +136,10 @@ export async function agentInstruction(input: AgentPromptInput): Promise<string>
       : `INSIDE THE GRAPHS (read from the files; a LoRA and a switch are read-only, \`inspect_workflow\` lists the sampler keys \`tweaks\` takes):\n${(input.graphs ?? []).join('\n')}`,
     '',
     loraCatalog.length === 0 ? '' : `LORA THE OWNER LISTED IN SETTINGS (a LoRA is switched on by the prompt text: copy its trigger word exactly when the line is about it):\n${loraLines(loraCatalog)}`,
+    '',
+    (input.editNotes ?? []).length === 0
+      ? ''
+      : `PICTURES ALREADY TRIED (the same parameters are refused: change the wording, the target or the zone; a "più X" starts from the accepted result):\n${(input.editNotes ?? []).join('\n')}`,
     '',
     'THE PROJECT',
     files.length === 0

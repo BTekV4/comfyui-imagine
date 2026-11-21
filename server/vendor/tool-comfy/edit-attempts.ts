@@ -52,6 +52,20 @@ export function signatureOf(name: string, args: Readonly<Record<string, unknown>
     .join('&')
 }
 
+/**
+ * Whether a verdict describes a fault in one element while the rest is intact.
+ *
+ * A lost text or an object nobody asked for is a local correction: the photo
+ * does not have to be redrawn whole, and a retry that names no zone would.
+ * @param verdict - what the check found.
+ * @returns true when the fix is local.
+ */
+export function localizedDefect(verdict: EditVerdict): boolean {
+  if (verdict.identicalToSource) return false
+  if (Object.values(verdict.preservedOk).some(ok => ok === false)) return false
+  return verdict.missing.length > 0 || verdict.unrequestedChanges.length > 0
+}
+
 /** Whether a verdict says the attempt did not deliver what was asked. */
 export function verdictFailed(verdict: EditVerdict): boolean {
   if (verdict.identicalToSource) return true
@@ -69,14 +83,18 @@ export function verdictFailed(verdict: EditVerdict): boolean {
  * @param attempts - what the turn has tried.
  * @param target - the picture the call is about.
  * @param signature - the signal of the call about to run.
+ * @param history - signatures that already failed on this picture in an
+ *   earlier turn, read from its filed state.
  * @returns the refusal, or undefined when the call may run.
  */
 export function attemptRefusal(
   attempts: readonly EditAttempt[],
   target: string,
   signature: string,
+  history: readonly string[] = [],
 ): string | undefined {
-  const same = attempts.some(attempt => attempt.target === target && attempt.signature === signature && attempt.verdict !== undefined && verdictFailed(attempt.verdict))
+  const repeated = history.includes(signature)
+  const same = repeated || attempts.some(attempt => attempt.target === target && attempt.signature === signature && attempt.verdict !== undefined && verdictFailed(attempt.verdict))
   if (same) {
     return 'these exact parameters were already tried and did not deliver the change: change one thing (the wording, the target, the zone) instead of running them again, and tell the user what you are changing'
   }

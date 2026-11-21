@@ -500,6 +500,54 @@ personal cards (their tools are unit-tested, not rendered); a cancel accepted
 (only its proposal and its refusal ran against a real job); and everything on
 Windows.
 
+## F4 — the LoRA lock, the spec and the verdict (2026-11-21)
+
+Measured on 2026-11-21: asked for a "more sensual" edit, the agent raised a
+LoRA weight by itself, the result carried nudity nobody had asked for, and the
+reply then denied it. In the same turn it denied losing the lettering of the
+photo, without ever comparing the result with the original. The reply was
+written from memory, so nothing in it was checked.
+
+- **The LoRAs and the switches are read-only.** `planRunTweaks` refuses any
+  change to a node whose class starts with `LoraLoader`, to any `strength_*`
+  or `lora_name` input on any node, to the text or number node a weight is
+  read from, and to the word test, the switch node and the word's own node
+  (`lockedRunSettings`). A run may change a sampler value and nothing else.
+  `inspect_workflow` marks the LoRAs read-only and lists `tweakable` sampler
+  keys alone, and the instruction says the chat never changes a LoRA and says
+  so once.
+- **A spec before every run.** `generate_image`, `edit_image` and `run_card`
+  build an `EditSpec` from the user's line: the change, what has to stay
+  (framing, visible text, subjects, style, format) and whether "più X" is one
+  step. A dimension the line names is not preserved. The code refuses a frame
+  the line did not ask to change, a denoise above 0.55 when the framing stays,
+  and a change that adds nudity or explicit content the line did not write.
+- **A verdict, with both pictures.** The vision client takes more pictures in
+  one request (`options.also`), so the pass sees the source and the result
+  together, against the spec. It answers `requested_change_done`,
+  `preserved_ok` per item, `text_found` read literally, `unrequested_changes`,
+  `identical_to_source`, `missing`, `description`. The bytes decide whether the
+  picture changed (`samePicture`), never the model. Tolerant on quality, strict
+  on adherence.
+- **Attempts and the report.** Each attempt is filed with the signature of the
+  arguments that decide the picture. The same parameters are not run again
+  after a failed verdict, three attempts are the limit, and the reply is
+  followed by the state built from the verdicts — completed, partial or
+  failed — with what is missing and the closest attempt. The report guard
+  reads the verdict fields, so a fact the model denied is still in the reply.
+- **Per-picture state.** The accepted result, its change and its verdict are
+  filed under `<data>/comfy/edits/<name>.json`, with the combinations that
+  failed. A "più X" starts from the accepted change plus one delta from a
+  closed list (light, warmth, colour, sharpness, contrast); an unknown "more"
+  — "più sensuale" first — is refused. A retry of a change whose fault is one
+  element must name a target or a zone, so the fix is local and the whole
+  photo is not redrawn again.
+
+Proved with fakes only: the vision client, the runs and the queue. The state
+files are written under a temporary `IMAGINE_HOME` in the tests
+(`test/helpers/test-home.ts`), never the studio's own data folder. Windows is
+not proved for the two-picture vision request.
+
 ## Open questions for the owner
 
 None left from the design. The next ones belong to F2 and F3: the wording of
