@@ -19,9 +19,11 @@ export interface TurnAttempts {
   /** Files one attempt, before or after it runs. */
   readonly add: (attempt: RunAttempt) => void
   /** Gives the last attempt of a key and fingerprint its outcome. */
-  readonly mark: (key: string, fingerprint: string, state: RunAttempt['state']) => void
+  readonly mark: (key: string, fingerprint: string, state: RunAttempt['state'], why?: string) => void
   /** The files earlier attempts of this key made. */
   readonly filesOf: (key: string) => readonly string[]
+  /** The last attempt of this key a check accepted, when there is one. */
+  readonly lastKept: (key: string) => RunAttempt | undefined
   /** Remembers that a file came from this key's attempt. */
   readonly keepFile: (key: string, file: string) => void
   /** The verdicts the checks produced, oldest first. */
@@ -41,15 +43,16 @@ export function createAttempts(): TurnAttempts {
   return {
     list: () => attempts,
     add: attempt => { attempts.push(attempt) },
-    mark: (key, fingerprint, state) => {
+    mark: (key, fingerprint, state, why) => {
       for (let index = attempts.length - 1; index >= 0; index -= 1) {
         const attempt = attempts[index]
         if (attempt === undefined || attempt.key !== key || attempt.fingerprint !== fingerprint) continue
-        attempts[index] = { ...attempt, state }
+        attempts[index] = { ...attempt, state, ...why === undefined ? {} : { why } }
         return
       }
     },
     filesOf: key => files.get(key) ?? [],
+    lastKept: key => [...attempts].reverse().find(attempt => attempt.key === key && attempt.state === 'kept'),
     keepFile: (key, file) => {
       const seen = files.get(key) ?? []
       if (!seen.includes(file)) files.set(key, [...seen, file])

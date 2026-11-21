@@ -156,6 +156,81 @@ export interface RunAttempt {
   readonly fingerprint: string
   /** What came of it. */
   readonly state: 'ran' | 'failed' | 'kept'
+  /** The prompt that was drawn, so a "più X" can start from it. */
+  readonly prompt?: string
+  /** The spec it carried, so the next attempt keeps what this one kept. */
+  readonly spec?: EditSpec
+  /** Why it failed, in the check's own words: the log the next call reads. */
+  readonly why?: string
+}
+
+/**
+ * The words a "più X" may push, and the words that say one step of it.
+ *
+ * A delta is one small, named step on the axis the user named — never a jump,
+ * and never anything about how much is shown. A word outside this list is not
+ * a delta the studio will invent: the tool says so and asks for the axis.
+ */
+export const MORE_DELTAS: Readonly<Record<string, string>> = {
+  caldo: 'una luce più calda, tonalità ambra',
+  calda: 'una luce più calda, tonalità ambra',
+  freddo: 'una luce più fredda, tonalità blu',
+  fredda: 'una luce più fredda, tonalità blu',
+  luminoso: 'più luce, esposizione un poco più alta',
+  luminosa: 'più luce, esposizione un poco più alta',
+  scuro: 'meno luce, ombre un poco più profonde',
+  scura: 'meno luce, ombre un poco più profonde',
+  contrastato: 'contrasto un poco più marcato',
+  contrastata: 'contrasto un poco più marcato',
+  saturo: 'colori un poco più saturi',
+  satura: 'colori un poco più saturi',
+  nitido: 'dettaglio un poco più nitido',
+  nitida: 'dettaglio un poco più nitido',
+  morbido: 'contorni un poco più morbidi',
+  morbida: 'contorni un poco più morbidi',
+  sensuale: 'atmosfera un poco più sensuale',
+  intenso: 'atmosfera un poco più intensa',
+  intensa: 'atmosfera un poco più intensa',
+}
+
+/**
+ * The word a line pushes, when it says "più X".
+ * @param asked - the user's line.
+ * @returns the axis word, in the studio's own spelling, or undefined.
+ */
+export function moreWord(asked: string): string | undefined {
+  const match = /\bpiù\s+([\p{L}]+)/iu.exec(asked)
+  const word = match?.[1]?.toLowerCase()
+  if (word === undefined) return undefined
+  return word in MORE_DELTAS ? word : undefined
+}
+
+/**
+ * The next run of a picture that was already accepted, one step further.
+ *
+ * The last accepted state is the base: its prompt, its spec, its preserved
+ * items. What changes is one small named step, appended to the prompt, with
+ * the intensity saying that it is one step — so a "più sensuale" after a
+ * accepted picture moves the mood and nothing else.
+ * @param last - the last accepted attempt for that picture.
+ * @param word - the axis the line pushes.
+ * @returns the prompt and the spec to run, or the reason there is no base.
+ */
+export function moreOf(last: RunAttempt | undefined, word: string | undefined): { readonly prompt: string; readonly spec: EditSpec } | { readonly error: string } {
+  if (last === undefined || last.prompt === undefined) {
+    return { error: 'no accepted result stands for this picture yet: run the change, check it with `check_result`, and only then ask for one step more' }
+  }
+  if (word === undefined) {
+    const axes = Object.keys(MORE_DELTAS).slice(0, 8).join(', ')
+    return { error: `"più X" needs an axis the studio can move one step on (${axes}, …): name it, or describe the change in words` }
+  }
+  const step = MORE_DELTAS[word]
+  if (step === undefined) return { error: `"più ${word}" is not a step the studio takes: name one of the axes it moves` }
+  const base = last.spec ?? readEditSpec(undefined, last.prompt)
+  return {
+    prompt: `${base.change}, ${step}`,
+    spec: { change: `${base.change}, ${step}`, preserve: base.preserve, intensity: 'one step' },
+  }
 }
 
 /**
@@ -197,11 +272,20 @@ export function attemptFingerprint(parts: Readonly<Record<string, unknown>>): st
  */
 export function attemptRefusal(attempts: readonly RunAttempt[], key: string, fingerprint: string): string | undefined {
   const mine = attempts.filter(attempt => attempt.key === key)
+  /*
+   * The log travels with the refusal: the model is told what was already
+   * tried, with the check's own reason, so it changes strategy instead of
+   * retyping the same run (2026-11-21).
+   */
+  const log = mine
+    .filter(attempt => attempt.state === 'failed')
+    .map(attempt => `"${attempt.prompt ?? 'the same words'}"${attempt.why === undefined ? '' : ` — ${attempt.why}`}`)
+  const tried = log.length === 0 ? '' : ` Already tried: ${log.slice(0, 3).join('; ')}.`
   if (mine.some(attempt => attempt.fingerprint === fingerprint && attempt.state !== 'kept')) {
-    return 'you already ran exactly these parameters and they did not give what was asked: change one thing that matters (the wording of the change, a zone, the shape) instead of repeating them'
+    return `you already ran exactly these parameters and they did not give what was asked: change one thing that matters (the wording of the change, a zone, the shape) instead of repeating them.${tried}`
   }
   if (mine.length >= MAX_ATTEMPTS) {
-    return `this request has had ${String(MAX_ATTEMPTS)} attempts: stop here, keep the best result, and say in the reply what is still missing`
+    return `this request has had ${String(MAX_ATTEMPTS)} attempts: stop here, keep the best result, and say in the reply what is still missing.${tried}`
   }
   return undefined
 }

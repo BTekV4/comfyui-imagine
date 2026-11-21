@@ -1329,3 +1329,86 @@ test('a result that repeats an earlier one of the same request fails the check w
   assert.equal(outcome.result['repeated'], 'earlier.png')
   assert.equal(outcome.result['state'], 'failed')
 })
+
+test('more_of turns a "più X" into one step from the last accepted picture', async () => {
+  const { createAttempts } = await import('../server/vendor/tool-comfy/run-attempts.ts')
+  const board = createAttempts()
+  board.add({
+    key: 'remix:photo.png',
+    fingerprint: 'f',
+    state: 'kept',
+    prompt: 'una tazza bianca su un tavolo, luce neutra',
+    spec: { change: 'una tazza bianca su un tavolo, luce neutra', preserve: ['format', 'framing'] },
+  })
+  const deps = {
+    ctx: classicHost(''),
+    outputDir: mediaDir,
+    model: MODEL,
+    language: 'it',
+    asked: 'rendila più calda',
+    eraseTool: false,
+    known: [],
+    canQueue: () => 1,
+    say: () => undefined,
+    start: async () => [],
+    jobView: (job: ImagineJob) => job,
+    listJobs: () => [],
+    getJob: () => undefined,
+    adoptFiles: async () => undefined,
+    cancelJob: async () => true,
+    lastKept: (key: string) => board.lastKept(key),
+  }
+  const step = await runAgentTool('more_of', { source: 'photo.png' }, deps)
+  assert.equal(step.result['ok'], true)
+  assert.match(String(step.result['prompt']), /luce neutra, una luce più calda/)
+  assert.deepEqual((step.result['spec'] as { preserve?: string[] }).preserve, ['format', 'framing'])
+  // Without an accepted picture there is nothing to be more of.
+  const empty = await runAgentTool('more_of', { source: 'photo.png' }, { ...deps, lastKept: () => undefined })
+  assert.equal(empty.result['ok'], false)
+  assert.match(String(empty.result['error']), /no accepted result stands for this picture/)
+})
+
+test('check_result puts source and result side by side, and points a localized fix at its region', async () => {
+  const { execFile } = await import('node:child_process')
+  const { promisify } = await import('node:util')
+  const run = promisify(execFile)
+  const dir = await mkdtemp(join(tmpdir(), 'imagine-agent-pair-'))
+  await run('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=black:s=64x64:d=1', '-frames:v', '1', join(dir, 'plain.png')])
+  await run('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=black:s=64x64:d=1', '-vf', 'drawbox=x=0:y=0:w=8:h=8:color=white:t=fill', '-frames:v', '1', join(dir, 'spotted.png')])
+  const looked: string[] = []
+  const host = {
+    auxiliary: {
+      async analyzeImage(path: string) {
+        looked.push(path)
+        return { text: '{"description":"Un riquadro chiaro in un angolo.","requested_change_done":true,"preserved_ok":{"framing":true},"text_found":[],"unrequested_changes":["un riquadro chiaro nell\'angolo"]}' }
+      },
+    },
+  } as unknown as ImagineHost
+  const outcome = await runAgentTool('check_result', {
+    file: 'spotted.png',
+    source: 'plain.png',
+    spec: { change: 'un riquadro chiaro', preserve: ['framing'] },
+  }, {
+    ctx: host,
+    outputDir: dir,
+    model: MODEL,
+    language: 'it',
+    asked: 'aggiungi un riquadro chiaro',
+    eraseTool: false,
+    known: [],
+    canQueue: () => 1,
+    say: () => undefined,
+    start: async () => [],
+    jobView: job => job,
+    listJobs: () => [],
+    getJob: () => undefined,
+    adoptFiles: async () => undefined,
+    cancelJob: async () => true,
+  })
+  // The look saw one composed image, not the result alone.
+  assert.equal(looked.length, 1)
+  assert.notEqual(looked[0], join(dir, 'spotted.png'))
+  assert.equal(outcome.result['state'], 'partial', 'the change is there, something else changed too')
+  assert.ok(outcome.result['changed_region'] !== undefined, 'the difference is in one place')
+  assert.match(String(outcome.result['note']), /fix that spot with `edit_image` and that `region`/)
+})

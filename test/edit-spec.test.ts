@@ -8,9 +8,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  MAX_ATTEMPTS, attemptFingerprint, attemptRefusal, asksExplicit, readEditSpec, specRefusal, type RunAttempt,
+  MAX_ATTEMPTS, attemptFingerprint, attemptRefusal, asksExplicit, moreOf, moreWord, readEditSpec, specRefusal,
+  type RunAttempt,
 } from '../server/vendor/tool-comfy/edit-spec.ts'
-import { parseVerdictJson, verdictNeedsState, verdictOf } from '../server/vendor/tool-comfy/edit-verify.ts'
+import { changedCells, parseVerdictJson, verdictNeedsState, verdictOf } from '../server/vendor/tool-comfy/edit-verify.ts'
 
 test('the spec keeps the owner\'s words for what stays, and falls back to the line', () => {
   const spec = readEditSpec({
@@ -126,4 +127,62 @@ test('a failed verdict is what makes the same parameters refuse to run again', a
   assert.match(attemptRefusal(board.list(), 'generate', 'f') ?? '', /already ran exactly these parameters/)
   board.keepFile('generate', 'a.webp')
   assert.deepEqual(board.filesOf('generate'), ['a.webp'], 'the files of an attempt are kept for the repeat check')
+})
+
+test('a "più X" is one named step on the last accepted picture, never a new idea', () => {
+  assert.equal(moreWord('rendila più calda'), 'calda')
+  assert.equal(moreWord('più scuro, per favore'), 'scuro')
+  assert.equal(moreWord('rendila più strana'), undefined, 'an axis the studio does not move')
+  assert.equal(moreWord('rifalla'), undefined)
+  const base: RunAttempt = {
+    key: 'remix:photo.png',
+    fingerprint: 'f',
+    state: 'kept',
+    prompt: 'una tazza bianca su un tavolo, luce neutra',
+    spec: { change: 'una tazza bianca su un tavolo, luce neutra', preserve: ['format', 'framing'] },
+  }
+  const next = moreOf(base, 'calda')
+  assert.ok(!('error' in next))
+  if ('error' in next) return
+  // The base's own words stay, one small step is added, and it says so.
+  assert.match(next.prompt, /^una tazza bianca su un tavolo, luce neutra, una luce più calda/)
+  assert.deepEqual(next.spec.preserve, ['format', 'framing'])
+  assert.equal(next.spec.intensity, 'one step')
+  // No accepted picture, no step: a "più" needs something to be more of.
+  assert.match((moreOf(undefined, 'calda') as { error: string }).error, /no accepted result stands for this picture/)
+  assert.match((moreOf(base, undefined) as { error: string }).error, /needs an axis the studio can move one step on/)
+})
+
+test('the refusal carries the log of what was already tried, with the check\'s reason', () => {
+  const log: RunAttempt[] = [
+    { key: 'remix:photo.png', fingerprint: 'a', state: 'failed', prompt: 'una luce più calda', why: 'lost: text' },
+    { key: 'remix:photo.png', fingerprint: 'b', state: 'kept', prompt: 'una luce dorata' },
+  ]
+  const refusal = attemptRefusal(log, 'remix:photo.png', 'a') ?? ''
+  assert.match(refusal, /Already tried: "una luce più calda" — lost: text/)
+})
+
+test('the difference from the source is measured, and a spot reads as a spot', async () => {
+  const { execFile } = await import('node:child_process')
+  const { mkdtemp } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const { promisify } = await import('node:util')
+  const run = promisify(execFile)
+  const dir = await mkdtemp(join(tmpdir(), 'imagine-changed-'))
+  const plain = join(dir, 'plain.png')
+  const spotted = join(dir, 'spotted.png')
+  await run('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=black:s=64x64:d=1', '-frames:v', '1', plain])
+  await run('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=black:s=64x64:d=1', '-vf', 'drawbox=x=0:y=0:w=8:h=8:color=white:t=fill', '-frames:v', '1', spotted])
+  const changed = await changedCells(plain, spotted, dir)
+  assert.ok(changed !== undefined)
+  if (changed === undefined) return
+  // One corner of sixteen: a spot, not a repaint.
+  assert.ok(changed.share > 0 && changed.share < 0.1, `share ${String(changed.share)}`)
+  // The corner, plus the one cell the downscale bleeds into.
+  assert.equal(changed.region?.x, 0)
+  assert.equal(changed.region?.y, 0)
+  assert.ok((changed.region?.w ?? 1) <= 0.25 && (changed.region?.h ?? 1) <= 0.25, JSON.stringify(changed.region))
+  // The same picture twice is no difference at all.
+  assert.deepEqual(await changedCells(plain, plain, dir), { share: 0 })
 })

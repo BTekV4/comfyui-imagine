@@ -15,7 +15,7 @@
  * @module tool-comfy/edit-verify
  */
 
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -48,6 +48,10 @@ export interface Verdict {
   readonly repeated?: string
   /** The look's own description, in the studio's language. */
   readonly description: string
+  /** Where the result differs from the source, when it differs in one place. */
+  readonly changed_region?: { readonly x: number; readonly y: number; readonly w: number; readonly h: number }
+  /** How much of the frame differs from the source, 0 to 1. */
+  readonly changed_share?: number
 }
 
 /** What the verdict is about. */
@@ -158,7 +162,7 @@ export function parseVerdictJson(raw: string): Record<string, unknown> | undefin
 export function verdictOf(
   answer: Record<string, unknown>,
   spec: EditSpec,
-  measured: { readonly identical_to_source: boolean; readonly repeated?: string },
+  measured: { readonly identical_to_source: boolean; readonly repeated?: string; readonly changed?: { readonly share: number; readonly region?: { readonly x: number; readonly y: number; readonly w: number; readonly h: number } } },
 ): Verdict {
   const requested = answer['requested_change_done'] === true && !measured.identical_to_source
   const preserved: Partial<Record<PreserveKey, boolean>> = {}
@@ -181,6 +185,76 @@ export function verdictOf(
     identical_to_source: measured.identical_to_source,
     ...measured.repeated === undefined ? {} : { repeated: measured.repeated },
     description: asText(answer['description']),
+    ...measured.changed === undefined || measured.changed.share === 0 ? {} : { changed_share: Number(measured.changed.share.toFixed(3)) },
+    // A difference that covers most of the frame is not a spot to mask.
+    ...measured.changed?.region === undefined || measured.changed.share >= 0.5 ? {} : { changed_region: measured.changed.region },
+  }
+}
+
+/** The grid the difference is measured on: coarse on purpose, so a spot reads as a spot. */
+const GRID = 32
+
+/** A picture as a GRID x GRID grid of grey values. */
+async function greyGrid(path: string, out: string): Promise<Uint8Array | undefined> {
+  try {
+    await ffmpegTo(out, [
+      '-v', 'error', '-y', '-i', path,
+      '-vf', `scale=${String(GRID)}:${String(GRID)}:force_original_aspect_ratio=disable,format=gray`,
+      '-frames:v', '1', '-f', 'rawvideo', out,
+    ], 30_000)
+    const bytes = new Uint8Array(await readFile(out))
+    return bytes.length === GRID * GRID ? bytes : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** The cell size, in fractions of the frame. */
+const CELL = 1 / GRID
+
+/**
+ * Where a result differs from its source, and how much of the frame that is.
+ *
+ * The two pictures are reduced to a small grey grid and compared cell by cell:
+ * a localized correction shows as a handful of cells in one place, a repaint
+ * as most of the grid. Coarse by design — it is a pointer for a masked edit,
+ * not a measure of quality.
+ * @param source - absolute path of the original.
+ * @param result - absolute path of the result.
+ * @param scratch - a folder to write the grids into.
+ * @returns the fraction of cells that differ, and the box around them.
+ */
+export async function changedCells(
+  source: string,
+  result: string,
+  scratch: string,
+): Promise<{ readonly share: number; readonly region?: { readonly x: number; readonly y: number; readonly w: number; readonly h: number } } | undefined> {
+  const [a, b] = await Promise.all([
+    greyGrid(source, join(scratch, 'grid-source.raw')),
+    greyGrid(result, join(scratch, 'grid-result.raw')),
+  ])
+  if (a === undefined || b === undefined) return undefined
+  let left = GRID
+  let top = GRID
+  let right = -1
+  let bottom = -1
+  let differing = 0
+  for (let row = 0; row < GRID; row += 1) {
+    for (let column = 0; column < GRID; column += 1) {
+      const index = row * GRID + column
+      if (Math.abs((a[index] ?? 0) - (b[index] ?? 0)) <= 10) continue
+      differing += 1
+      if (column < left) left = column
+      if (column > right) right = column
+      if (row < top) top = row
+      if (row > bottom) bottom = row
+    }
+  }
+  const share = differing / (GRID * GRID)
+  if (differing === 0) return { share: 0 }
+  return {
+    share,
+    region: { x: Number((left * CELL).toFixed(3)), y: Number((top * CELL).toFixed(3)), w: Number(((right - left + 1) * CELL).toFixed(3)), h: Number(((bottom - top + 1) * CELL).toFixed(3)) },
   }
 }
 
@@ -200,7 +274,7 @@ async function pairImage(source: string, result: string, out: string): Promise<s
   return await ffmpegTo(out, [
     '-v', 'error', '-y', '-i', source, '-i', result,
     '-filter_complex', `${fit(0)};${fit(1)};[s0][s1]hstack=inputs=2`,
-    '-frames:v', '1',
+    '-frames:v', '1', out,
   ], 60_000)
 }
 
@@ -232,6 +306,7 @@ export async function verifyRun(deps: VerifyDeps, request: VerifyRequest): Promi
   }
   const scratch = await mkdtemp(join(tmpdir(), 'imagine-verify-'))
   try {
+    const changed = sourcePath === undefined ? undefined : await changedCells(sourcePath, resultPath, scratch)
     const look = sourcePath === undefined
       ? resultPath
       : await pairImage(sourcePath, resultPath, join(scratch, 'pair.png'))
@@ -243,7 +318,13 @@ export async function verifyRun(deps: VerifyDeps, request: VerifyRequest): Promi
     if (seen === undefined) return { error: 'the vision model did not answer' }
     const answer = parseVerdictJson(seen.text)
     if (answer === undefined) return { error: `the vision model did not answer with the JSON the check asks for: ${seen.text.slice(0, 200)}` }
-    return { verdict: verdictOf(answer, request.spec, { identical_to_source: identical, ...repeated === undefined ? {} : { repeated } }) }
+    return {
+      verdict: verdictOf(answer, request.spec, {
+        identical_to_source: identical,
+        ...repeated === undefined ? {} : { repeated },
+        ...changed === undefined ? {} : { changed },
+      }),
+    }
   } finally {
     await rm(scratch, { recursive: true, force: true }).catch(() => undefined)
   }

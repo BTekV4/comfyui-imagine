@@ -51,7 +51,7 @@ import { loadCustomWorkflow } from './custom-workflows.ts'
 import type { RunnableGraph } from './imagine-chat.ts'
 import { droppedGateWords, planRunTweaks, readGraph, readingLines } from './graph-reading.ts'
 import {
-  attemptFingerprint, attemptRefusal, readEditSpec, runKey, specRefusal, type RunAttempt,
+  attemptFingerprint, attemptRefusal, moreOf, moreWord, readEditSpec, runKey, specRefusal, type RunAttempt,
 } from './edit-spec.ts'
 import { verifyRun, type Verdict } from './edit-verify.ts'
 
@@ -111,8 +111,10 @@ export interface AgentToolDeps {
   readonly attempts?: () => readonly RunAttempt[]
   /** Files one attempt, so a spent budget and a repeated run are seen. */
   readonly remember?: (attempt: RunAttempt) => void
-  /** Gives an attempt its outcome once the run settled. */
-  readonly markAttempt?: (key: string, fingerprint: string, state: RunAttempt['state']) => void
+  /** Gives an attempt its outcome once the run settled, with the check's reason. */
+  readonly markAttempt?: (key: string, fingerprint: string, state: RunAttempt['state'], why?: string) => void
+  /** The last accepted attempt of one picture, for a "più X". */
+  readonly lastKept?: (key: string) => RunAttempt | undefined
   /** The files earlier attempts of one request made, for the repeat check. */
   readonly attemptFiles?: (key: string) => readonly string[]
   /** Remembers that a file came from an attempt. */
@@ -406,7 +408,7 @@ function runChecks(
   const fingerprint = fingerprintOf(parts)
   const spent = attemptRefusal(deps.attempts?.() ?? [], key, fingerprint)
   if (spent !== undefined) return { error: spent }
-  deps.remember?.({ key, fingerprint, state: 'ran' })
+  deps.remember?.({ key, fingerprint, state: 'ran', prompt: context.prompt, spec })
   return { spec, fingerprint }
 }
 
@@ -428,6 +430,21 @@ function rememberRun(
 ): void {
   deps.markAttempt?.(key, attempt.fingerprint, jobs.some(job => job.status === 'error') ? 'failed' : 'ran')
   for (const job of jobs) for (const file of job.files ?? []) deps.keepAttemptFile?.(key, file.name)
+}
+
+/**
+ * Why a check refused a result, in one short line, for the attempt log.
+ * @param verdict - what the check found.
+ * @returns the reason, as the next call's refusal will show it.
+ */
+function verdictWhy(verdict: Verdict): string {
+  const lost = Object.entries(verdict.preserved_ok).filter(([, ok]) => ok === false).map(([key]) => key)
+  if (verdict.identical_to_source) return 'the result was the original again'
+  if (verdict.repeated !== undefined) return `it repeated ${verdict.repeated}`
+  if (!verdict.requested_change_done) return 'the change asked for is not there'
+  if (lost.length > 0) return `lost: ${lost.join(', ')}`
+  if (verdict.unrequested_changes.length > 0) return `changed unasked: ${verdict.unrequested_changes.join('; ')}`
+  return 'the check did not accept it'
 }
 
 /** The longest prompt a tool takes: longer than any line a person writes. */
@@ -904,6 +921,42 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
     schema: {
       type: 'function',
       function: {
+        name: 'more_of',
+        description: 'One step further on a picture a check already accepted. "Più X" is the last accepted state plus one small named step — never a new idea, never a jump. Answers the prompt and the spec to pass to `edit_image`.',
+        parameters: {
+          type: 'object',
+          properties: {
+            source: { type: 'string', description: 'The picture to push further, by gallery name. Omit for a generation.' },
+            axis: { type: 'string', description: 'The word after "più" ("caldo", "scuro", "saturo"…). Copied from the user\'s line when omitted.' },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async run(args, deps) {
+      const source = str(args['source'])
+      if (source !== undefined) {
+        const item = await galleryKind(deps, source, ['image'])
+        if (typeof item === 'string') return refused(item)
+      }
+      const key = runKey(source === undefined ? 'generate' : 'remix', source)
+      const axis = str(args['axis'])
+      const next = moreOf(deps.lastKept?.(key), axis === undefined ? moreWord(deps.asked) : axis.toLowerCase())
+      if ('error' in next) return refused(next.error)
+      deps.say({ kind: 'step', step: 'tool', name: 'more_of', detail: source ?? key })
+      return done({
+        ok: true,
+        key,
+        prompt: next.prompt,
+        spec: next.spec,
+        note: 'run this with `edit_image` (a generation goes through `generate_image`), then check the result before asking for another step',
+      })
+    },
+  },
+  {
+    schema: {
+      type: 'function',
+      function: {
         name: 'check_result',
         description: 'Check a result against the picture it came from and the spec it carried, and get the verdict the reply must be built from: the change done or not, each kept item, the written text read literally, what changed unasked, whether it is the original again or a repeat. Call it after every edit, before writing the reply.',
         parameters: {
@@ -965,12 +1018,17 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
        * failed check is what makes the same parameters refuse to run again.
        */
       const last = (deps.attempts?.() ?? []).filter(attempt => attempt.key === checkKey).at(-1)
-      if (last !== undefined) deps.markAttempt?.(checkKey, last.fingerprint, checked.verdict.state === 'completed' ? 'kept' : 'failed')
+      const why = verdictWhy(checked.verdict)
+      if (last !== undefined) {
+        deps.markAttempt?.(checkKey, last.fingerprint, checked.verdict.state === 'completed' ? 'kept' : 'failed', why)
+      }
       return done({
         ok: true,
         file: item.name,
         ...checked.verdict,
-        note: 'the reply opens with the word for this state and carries what this verdict found: never a denial of a loss it names, never "done" when it is partial or failed',
+        note: checked.verdict.changed_region === undefined
+          ? 'the reply opens with the word for this state and carries what this verdict found: never a denial of a loss it names, never "done" when it is partial or failed'
+          : `the difference from the original is in one place (x ${String(checked.verdict.changed_region.x)}, y ${String(checked.verdict.changed_region.y)}, w ${String(checked.verdict.changed_region.w)}, h ${String(checked.verdict.changed_region.h)}, in fractions of the frame): fix that spot with \`edit_image\` and that \`region\`, not with a whole repaint. The reply opens with the word for this state and carries what this verdict found`,
       })
     },
   },
