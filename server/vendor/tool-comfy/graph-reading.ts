@@ -42,6 +42,29 @@ const LORA_STRENGTH: Readonly<Record<string, readonly string[]>> = {
   LoraLoader: ['strength_model', 'strength_clip'],
 }
 
+/**
+ * The classes that load a LoRA, whose weight and file are the owner's.
+ *
+ * A run may not tune one: raising a LoRA's weight is how a line about a mood
+ * became a picture nobody asked for (2026-11-21), and the owner's rule is
+ * "do not touch the LoRA". The settings page still edits them, one at a time,
+ * with the owner's hand on the value.
+ */
+const LORA_CLASS = /^LoraLoader/
+
+/** The inputs of a LoRA node that name what it is and how hard it runs. */
+const LORA_INPUT = /^(?:strength_.*|lora_name)$/
+
+/** Whether a node and one of its inputs are the LoRA's own. */
+function isLoraChange(classType: string, field: string): boolean {
+  return LORA_CLASS.test(classType) || LORA_INPUT.test(field)
+}
+
+/** Whether a node decides which branch runs, so a run may not rewrite it. */
+function isGateChange(classType: string): boolean {
+  return TEXT_TESTS[classType] !== undefined || SWITCHES[classType] !== undefined
+}
+
 /** Sampler inputs worth naming to the agent: the ones a request can be about. */
 const SAMPLER_FIELDS = ['steps', 'cfg', 'denoise', 'sampler_name', 'scheduler'] as const
 
@@ -199,7 +222,7 @@ export function readingLines(reading: GraphReading): readonly string[] {
     const gate = lora.gate === undefined
       ? 'always on'
       : `ON ONLY WHEN the prompt ${lora.gate.when === 'contains' ? 'contains' : 'does not contain'} "${lora.gate.word}"${lora.gate.caseSensitive ? ' (case-sensitive)' : ''}`
-    lines.push(`LoRA "${lora.name}" weight ${String(lora.strength)} (${lora.strengthKey}), ${gate}`)
+    lines.push(`LoRA "${lora.name}" weight ${String(lora.strength)} (node ${lora.node}, the owner's: a run never changes it), ${gate}`)
   }
   for (const gate of reading.gates) {
     if (reading.loras.some(lora => lora.gate?.node === gate.node)) continue
@@ -282,7 +305,17 @@ export function planRunTweaks(
       errors.push(`${key} must be a text, a number or true/false`)
       continue
     }
-    changes.push({ node, field: key.slice(dot + 1), value })
+    const field = key.slice(dot + 1)
+    const target = graph[node]
+    if (target !== undefined && isLoraChange(target.class_type, field)) {
+      errors.push(`${key} is a LoRA: its file and its weight belong to the owner, and no run changes them (the rule is "do not touch the LoRA"). Say what the picture needs in the prompt, or tell the user what differs.`)
+      continue
+    }
+    if (target !== undefined && isGateChange(target.class_type)) {
+      errors.push(`${key} is a gate: it decides whether a branch or a LoRA runs at all, and a run never rewrites it. Write the word the branch needs in the prompt instead.`)
+      continue
+    }
+    changes.push({ node, field, value })
   }
   const factMap = new Map((facts ?? []).map(fact => [`${fact.node}.${fact.field}`, fact]))
   const plan = planWorkflowPatch(graph, changes, factMap)

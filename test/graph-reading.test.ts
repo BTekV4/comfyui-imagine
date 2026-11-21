@@ -48,8 +48,8 @@ test('a LoRA behind a word switch is read with its word, the others as always on
   assert.equal(reading.sampler['53.steps'], 8)
   assert.equal(reading.takesImage, false)
   const lines = readingLines(reading).join('\n')
-  assert.match(lines, /lantern-glow" weight 0\.6 \(76\.strength_model\), ON ONLY WHEN the prompt contains "lanterna"/)
-  assert.match(lines, /film-look" weight 0\.75 \(k2\.strength_model\), always on/)
+  assert.match(lines, /lantern-glow" weight 0\.6 \(node 76, the owner's: a run never changes it\), ON ONLY WHEN the prompt contains "lanterna"/)
+  assert.match(lines, /film-look" weight 0\.75 \(node k2, the owner's: a run never changes it\), always on/)
   assert.match(lines, /takes no picture in/)
 })
 
@@ -64,17 +64,17 @@ test('a switch word the user wrote and the prompt lost is reported, case aside',
 test('a run tweak is checked like a settings edit, and the prompt and the seed stay the studio\'s', () => {
   const graph = switchedGraph()
   const reserved = ['73', '53.seed']
-  const fine = planRunTweaks(graph, { 'k2.strength_model': 0.3, '76.strength_model': 0.9, '53.steps': 12 }, reserved)
+  const fine = planRunTweaks(graph, { '53.steps': 12, '53.cfg': 2 }, reserved)
   assert.deepEqual(fine.errors, [])
-  assert.deepEqual(fine.fields, { 'k2.strength_model': 0.3, '76.strength_model': 0.9, '53.steps': 12 })
+  assert.deepEqual(fine.fields, { '53.steps': 12, '53.cfg': 2 })
   const wrong = planRunTweaks(graph, {
-    'k2.strength_model': 'forte', '99.cfg': 2, 'k2.model': 1, '73.value': 'altro', '53.seed': 4,
+    '53.steps': 'forte', '99.cfg': 2, 'k2.model': 1, '73.value': 'altro', '53.seed': 4,
   }, reserved)
   assert.equal(wrong.errors.length, 5)
   assert.deepEqual(wrong.fields, {})
   // The node's bounds are checked when ComfyUI described them.
-  const bounded = planRunTweaks(graph, { 'k2.strength_model': 9 }, ['73', '53.seed'], [
-    { node: 'k2', field: 'strength_model', kind: 'number', min: -2, max: 2 },
+  const bounded = planRunTweaks(graph, { '53.cfg': 9 }, ['73', '53.seed'], [
+    { node: '53', field: 'cfg', kind: 'number', min: 0, max: 2 },
   ] as never)
   assert.equal(bounded.errors.length, 1)
 })

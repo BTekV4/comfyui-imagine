@@ -1050,10 +1050,10 @@ test('the instruction tells the agent which word switches a LoRA on, and inspect
   await readAgentChat(deps)
   const system = model.requests[0]?.messages.find(message => message.role === 'system')?.content ?? ''
   assert.match(system, /INSIDE THE GRAPHS/)
-  assert.match(system, /lantern-glow" weight 0\.6 \(76\.strength_model\), ON ONLY WHEN the prompt contains "lanterna"/)
-  const result = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as { ok?: boolean; loras?: { key: string; needsWord?: string }[] }
+  assert.match(system, /lantern-glow" weight 0\.6 \(node 76, the owner's: a run never changes it\), ON ONLY WHEN the prompt contains "lanterna"/)
+  const result = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as { ok?: boolean; loras?: { node: string; editable?: boolean; needsWord?: string }[] }
   assert.equal(result.ok, true)
-  assert.deepEqual(result.loras?.map(lora => [lora.key, lora.needsWord]), [['76.strength_model', 'lanterna'], ['k2.strength_model', undefined]])
+  assert.deepEqual(result.loras?.map(lora => [lora.node, lora.editable, lora.needsWord]), [['76', false, 'lanterna'], ['k2', false, undefined]])
 })
 
 test('a prompt that lost the word switching a LoRA on is sent back, and the run keeps it', async () => {
@@ -1074,18 +1074,51 @@ test('a prompt that lost the word switching a LoRA on is sent back, and the run 
   assert.equal(started[0]?.prompt, 'una Lanterna in stile poster')
 })
 
-test('tweaks change a LoRA weight for this run only, and never the prompt or the seed', async () => {
+test('a run may tune a sampler value, and never a LoRA, a gate, the prompt or the seed', async () => {
   const inventory = lanternInventory()
-  const ok = turn([toolCall('generate_image', { prompt: 'un faro', tweaks: { 'k2.strength_model': 0.3, '53.steps': 12 } }), text('Fatto.')], { inventory, text: 'un faro, con meno effetto pellicola' })
+  const ok = turn([toolCall('generate_image', { prompt: 'un faro', tweaks: { '53.steps': 12 } }), text('Fatto.')], { inventory, text: 'un faro, con meno effetto pellicola' })
   await readAgentChat(ok.deps)
-  assert.deepEqual(ok.started[0]?.customFields, { 'k2.strength_model': 0.3, '53.steps': 12 })
+  assert.deepEqual(ok.started[0]?.customFields, { '53.steps': 12 })
+
+  // The fault this guards: a mood was answered by raising a LoRA's weight.
+  const lora = turn([
+    toolCall('generate_image', { prompt: 'una donna in stile poster', tweaks: { 'k2.strength_model': 1.4, '76.lora_name': 'altra.safetensors' } }),
+    text('Fatto.'),
+  ], { inventory, text: 'rendila più sensuale' })
+  await readAgentChat(lora.deps)
+  assert.equal(lora.started.length, 0, 'nothing ran with a changed LoRA')
+  const loraRefusal = JSON.parse(lora.model.requests[1]?.messages.at(-1)?.content ?? '{}') as { error?: string }
+  assert.match(loraRefusal.error ?? '', /tweaks refused/)
+  assert.match(loraRefusal.error ?? '', /is a LoRA: its file and its weight belong to the owner/)
+
   const graph = inventory.graphOf?.('generate')?.graph as Record<string, { inputs: Record<string, unknown> }>
   assert.equal(graph['k2']?.inputs['strength_model'], 0.75, 'the stored graph is untouched')
+
+  const gate = turn([toolCall('generate_image', { prompt: 'un faro', tweaks: { '74.substring': 'alba' } }), text('No.')], { inventory, text: 'un faro' })
+  await readAgentChat(gate.deps)
+  assert.equal(gate.started.length, 0)
+  const gateRefusal = JSON.parse(gate.model.requests[1]?.messages.at(-1)?.content ?? '{}') as { error?: string }
+  assert.match(gateRefusal.error ?? '', /is a gate: it decides whether a branch or a LoRA runs at all/)
+
   const bad = turn([toolCall('generate_image', { prompt: 'un faro', tweaks: { '53.seed': 7, '73.value': 'altro' } }), text('No.')], { inventory, text: 'un faro' })
   await readAgentChat(bad.deps)
   assert.equal(bad.started.length, 0)
   const refusal = JSON.parse(bad.model.requests[1]?.messages.at(-1)?.content ?? '{}') as { error?: string }
   assert.match(refusal.error ?? '', /tweaks refused/)
+})
+
+test('the instruction forbids pushing the content further than the line, and forbids denials the eyes contradict', async () => {
+  const { deps, model } = turn([text('Fatto.')], { text: 'rendila più sensuale' })
+  await readAgentChat(deps)
+  const system = model.requests[0]?.messages.find(message => message.role === 'system')?.content ?? ''
+  // "Sensuale" is a mood, not a naked body, and no lever exists to push it.
+  assert.match(system, /"Sensuale", "sexy", "più attraente" ask for a mood, not for a naked body/)
+  assert.match(system, /never do it by moving a LoRA weight or any other lever/)
+  assert.match(system, /do not present it as the result they wanted/)
+  // The reply is the tools' report, and an edit is compared with its source.
+  assert.match(system, /built from what the tools reported and from what `look` saw, never from memory/)
+  assert.match(system, /never say nothing was removed without having looked at the source/)
+  assert.match(system, /never deny something the vision pass described/)
 })
 
 test('the names the user wrote stay literal in the prompt', async () => {

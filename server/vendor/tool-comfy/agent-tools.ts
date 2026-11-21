@@ -317,7 +317,7 @@ export async function graphNotes(deps: Pick<AgentToolDeps, 'inventory'>): Promis
 /** The `tweaks` argument, the same on every tool that runs a graph. */
 const TWEAKS_SCHEMA = {
   type: 'object',
-  description: 'Changes for THIS run only, keyed "<node>.<field>" exactly as `inspect_workflow` lists them: a LoRA weight, a sampler value. Never the prompt or the seed. Omit when the user asked for nothing the arguments do not already cover.',
+  description: 'A change for THIS run only, keyed "<node>.<field>": a sampler value the graph lists (steps, cfg, denoise). Never a LoRA (its weight or its file: "do not touch the LoRA"), never a gate, never the prompt or the seed. Omit when the line asked for nothing the arguments do not already cover.',
   additionalProperties: true,
 } as const
 
@@ -1353,7 +1353,8 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         loras: reading.loras.map(lora => ({
           name: lora.name,
           weight: lora.strength,
-          key: lora.strengthKey,
+          node: lora.node,
+          editable: false,
           ...lora.gate === undefined ? {} : { needsWord: lora.gate.word, when: lora.gate.when },
         })),
         sampler: reading.sampler,
