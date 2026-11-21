@@ -4,6 +4,52 @@ Notable changes, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project's
 versions follow [semantic versioning](https://semver.org/).
 
+## 0.4.1 — 2026-11-21
+
+The release where the chat keeps to what was asked: every run is built from a
+spec, the result is checked against it and against the source, and the reply
+says what the check saw. The chat reads inside a graph, but the LoRAs stay the
+owner's.
+
+### Added
+
+- **The agent reads inside a graph.** `inspect_workflow` and the instruction
+  carry each LoRA with its weight and the word that switches it on, the
+  sampler values, the frame and whether the graph takes a picture in.
+  `generate_image` and `run_card` take `tweaks`, values for one run, checked
+  like a settings edit.
+- **A spec for every run.** Generate, edit and card runs say what changes,
+  what has to stay (framing, visible text, subjects, style, format) and how
+  far a "more" goes: one step.
+- **A check against the source.** An edit is compared with its source by the
+  vision pass: what stayed, what went missing, what was added, which text is
+  there.
+- **One state per picture.** A "more X" starts from the last accepted state
+  with the smallest change, failed combinations are remembered and not run
+  again, and a local fault is fixed on its own spot.
+- **A LoRA catalog the owner writes.** Settings list each LoRA's purpose,
+  trigger word and weight; the chat reads it, the repository carries none.
+- **A style reference on a generation graph.** `dropRefBranch` puts the
+  sampler back on the graph's own text encode when no reference is given.
+- `run_card` takes a `count`, and a batch speaks once, as its files land.
+
+### Changed
+
+- The LoRAs are the owner's: `tweaks` refuse any LoRA weight, file or switch.
+- A run never adds nudity or explicit content the line did not ask for.
+- The reply is held to the vision pass: what the check reported is said, never
+  denied. At most three attempts per request, a repeated result counts as a
+  failure, and the reply says what is still missing.
+- A name the user wrote is kept whole in the prompt.
+- A turn gets the run budget its line asks for, up to ten pictures.
+
+### Fixed
+
+- The README install line reads the latest version instead of a fixed tarball.
+- A run joins its project as soon as it is queued, so an interrupted turn no
+  longer loses a batch.
+- The style comes from the references and the words, not from the word "foto".
+
 ## 0.4.0 — 2026-11-20
 
 The release where the chat does the work itself: it calls the studio's tools,
