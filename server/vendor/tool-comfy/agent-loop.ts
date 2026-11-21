@@ -29,7 +29,9 @@ import { textRoutes } from './imagine-models.ts'
 import { whenJobsSettle, type ImagineJob } from './job-queue.ts'
 import type { JobBody } from './job-start.ts'
 import { agentInstruction, finalReplyAsk } from './agent-prompt.ts'
-import { checkEdit, type EditCheck } from './edit-verify.ts'
+import { verifyEdit, type EditVerdict } from './edit-verify.ts'
+import { specFor, type EditSpec, PRESERVE_ITEMS } from './edit-spec.ts'
+import { attemptRefusal, editReport, signatureOf, type EditAttempt } from './edit-attempts.ts'
 import { reportGaps, withGaps } from './report-guard.ts'
 import type { LoraCard } from './lora-catalog.ts'
 import { replyNeedsRewrite, rewriteAsk } from './reply-language.ts'
@@ -290,8 +292,8 @@ interface TurnState {
   contained: boolean
   /** What the vision pass said about a file this turn looked at. */
   readonly looks: { readonly file: string; readonly seen: string }[]
-  /** Each edit compared with its source. */
-  readonly edits: { readonly file: string; readonly check: EditCheck }[]
+  /** Each edit tried this turn, with its verdict. */
+  readonly attempts: EditAttempt[]
   /** A queued run waits for the user to approve an install on ComfyUI. */
   setup?: { readonly what: string; readonly jobIds: readonly string[] }
   /** Calls of an assistant message already written, to run after a resume. */
@@ -454,7 +456,7 @@ async function runAgentTurn(deps: AgentTurnDeps, route: ModelRoute): Promise<Age
     gaveUpWaiting: false,
     contained: false,
     looks: [],
-    edits: [],
+    attempts: [],
   }
   return await driveTurn(deps, state)
 }
@@ -479,7 +481,7 @@ async function resumeAgentChat(deps: AgentTurnDeps): Promise<AgentChatAnswer> {
     jobs: [...session.state.jobs],
     files: [...session.state.files],
     looks: [...session.state.looks],
-    edits: [...session.state.edits],
+    attempts: [...session.state.attempts],
     deadline: Date.now() + session.remainingMs,
     reply: '',
     gaveUpWaiting: false,
@@ -495,7 +497,18 @@ async function resumeAgentChat(deps: AgentTurnDeps): Promise<AgentChatAnswer> {
       ? { all: true, anyRunning: false, setup: [] as readonly ImagineJob[] }
       : await waitForJobs(queued, deps, state.deadline, limits.waitSeconds)
     const lived = queued.map(job => deps.getJob(job.id) ?? job)
-    const result = await waitedResult(outcome, waited, lived, deps.outputDir)
+    const plain = await waitedResult(outcome, waited, lived, deps.outputDir)
+    // A confirmed card started from a picture is an edit too: it is compared
+    // with that picture and recorded like any other attempt.
+    const result = await checkedForReport(
+      deps,
+      state,
+      session.call,
+      session.args,
+      plain,
+      editTargetOf(session.call.name, session.args),
+      signatureOf(session.call.name, session.args),
+    )
     state.messages.push({ role: 'tool', toolCallId: session.call.id, content: JSON.stringify(forModel(result, state.language)) })
     if (waited.setup.length > 0) {
       state.setup = { what: setupWhat(waited.setup), jobIds: waited.setup.map(job => job.id) }
@@ -605,6 +618,20 @@ async function driveTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentCh
        * the turn ends with an offer, and the page's yes resumes it. Nothing is
        * queued and nothing is cancelled before that answer.
        */
+      const target = editTargetOf(call.name, parsed)
+      const signature = signatureOf(call.name, parsed)
+      if (target !== undefined) {
+        const already = attemptRefusal(state.attempts, target, signature)
+        if (already !== undefined) {
+          state.messages.push({
+            role: 'tool',
+            toolCallId: call.id,
+            content: JSON.stringify(forModel({ ok: false, error: already }, state.language)),
+          })
+          nextIndex = index + 1
+          continue
+        }
+      }
       const offer = confirmationFor(call.name, parsed, state.asked, limits.confirmSeconds, toolDepsOf(deps, state))
       if (offer !== undefined) {
         const token = randomUUID().replace(/-/g, '')
@@ -651,7 +678,7 @@ async function driveTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentCh
       const plain = await waitedResult(outcome, waited, lived, deps.outputDir)
       // What the checks found travels with the result: a look's sentence and,
       // for an edit, the comparison with the picture it came from.
-      const result = await checkedForReport(deps, state, call, parsed, plain)
+      const result = await checkedForReport(deps, state, call, parsed, plain, target, signature)
       state.messages.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify(forModel(result, state.language)) })
       // The wait is the turn's whole patience with a run: past it the reply
       // says "still running" and the result appears in the chat by itself.
@@ -678,6 +705,13 @@ async function driveTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentCh
     if (state.gaveUpWaiting) break
   }
   return await finishTurn(deps, state)
+}
+
+/** A reply with one paragraph appended, when there is one to append. */
+function addBlock(reply: string, block: string): string {
+  const body = reply.trim()
+  if (block.length === 0) return reply
+  return body.length === 0 ? block : `${body}\n\n${block}`
 }
 
 /**
@@ -743,10 +777,14 @@ async function finishTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentC
    * the source picture) is appended in the studio's own words, so the report
    * says what the vision pass actually reported.
    */
-  state.reply = withGaps(state.reply, reportGaps({
+  const report = editReport(state.attempts)
+  const edits = state.attempts.flatMap(attempt => attempt.file === undefined || attempt.verdict === undefined
+    ? []
+    : [{ file: attempt.file, verdict: attempt.verdict }])
+  state.reply = withGaps(addBlock(state.reply, report), reportGaps({
     asked: state.asked,
     looks: state.looks,
-    edits: state.edits,
+    edits,
     reply: state.reply,
   }))
   return {
@@ -927,20 +965,63 @@ function namesOf(result: Readonly<Record<string, unknown>>): readonly string[] {
   return typeof result['file'] === 'string' ? [result['file']] : []
 }
 
+/** Whether a value is an edit spec the tools wrote. */
+function isEditSpec(value: unknown): value is EditSpec {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return typeof record['change'] === 'string'
+    && Array.isArray(record['preserve'])
+    && record['preserve'].every(item => typeof item === 'string' && (PRESERVE_ITEMS as readonly string[]).includes(item))
+    && (record['intensity'] === 'as-asked' || record['intensity'] === 'one-step')
+}
+
+/**
+ * The picture a call edits, when it edits one: its source, or the picture a
+ * card starts from. A generation has no target: there is nothing to compare.
+ * @param name - the tool's name.
+ * @param args - its parsed arguments.
+ * @returns the source picture's name, or undefined.
+ */
+function editTargetOf(name: string, args: Readonly<Record<string, unknown>>): string | undefined {
+  if (name === 'edit_image' || name === 'erase') return typeof args['source'] === 'string' ? args['source'] : undefined
+  if (name !== 'run_card') return undefined
+  const files = args['customFiles']
+  if (typeof files !== 'object' || files === null) return undefined
+  const first = Object.values(files).find(value => typeof value === 'string')
+  return typeof first === 'string' ? first : undefined
+}
+
+/** The verdict as the model reads it, with the names the instruction uses. */
+function checkOf(verdict: EditVerdict): Readonly<Record<string, unknown>> {
+  return {
+    ...verdict.requestedChangeDone === undefined ? {} : { requested_change_done: verdict.requestedChangeDone },
+    preserved_ok: verdict.preservedOk,
+    text_found: verdict.textFound,
+    unrequested_changes: verdict.unrequestedChanges,
+    identical_to_source: verdict.identicalToSource,
+    missing: verdict.missing,
+    ...verdict.description === undefined ? {} : { description: verdict.description },
+  }
+}
+
 /**
  * The tool result with what the checks found.
  *
  * A `look` is remembered so the reply can be held to it. An edit is compared
- * with its source by the vision pass before the model writes a word about it:
- * measured on 2026-11-21, a reply denied losing lettering nobody had compared,
- * and another called an edit done while the result carried nudity nobody
- * asked for. Only edits that settled are checked, and only their first file,
- * so a batch of variants does not cost one look each.
+ * with its source and its spec by the vision pass before the model writes a
+ * word about it, and the attempt joins the turn's registry: the same failed
+ * parameters cannot be run again, and three attempts are the limit. Measured
+ * on 2026-11-21, a reply denied losing lettering nobody had compared, and
+ * another called an edit done while the result carried nudity nobody asked
+ * for. Only an edit that settled is checked, and only its first file, so a
+ * batch of variants does not cost one look each.
  * @param deps - the turn.
  * @param state - what the turn has seen so far.
  * @param call - the tool call being answered.
  * @param args - its parsed arguments.
  * @param result - what the tool and the wait produced.
+ * @param target - the picture the call edits, when it edits one.
+ * @param signature - the arguments that decide the picture.
  * @returns the result, with `check` on an edit the pass could compare.
  */
 async function checkedForReport(
@@ -949,6 +1030,8 @@ async function checkedForReport(
   call: AgentToolCall,
   args: Readonly<Record<string, unknown>>,
   result: Readonly<Record<string, unknown>>,
+  target: string | undefined,
+  signature: string,
 ): Promise<Readonly<Record<string, unknown>>> {
   if (call.name === 'look') {
     const file = result['file']
@@ -956,34 +1039,33 @@ async function checkedForReport(
     if (result['ok'] === true && typeof file === 'string' && typeof seen === 'string') state.looks.push({ file, seen })
     return result
   }
-  if (call.name !== 'edit_image' && call.name !== 'erase') return result
-  const settled = result['state'] === 'done' || result['ok'] === true
-  if (!settled) return result
-  const source = typeof result['source'] === 'string'
-    ? result['source']
-    : typeof args['source'] === 'string' ? args['source'] : undefined
+  if (target === undefined) return result
+  const prompt = typeof args['prompt'] === 'string' && args['prompt'].trim().length > 0 ? args['prompt'].trim() : state.asked
+  const spec = isEditSpec(result['spec']) ? result['spec'] : specFor(state.asked, { edit: true, change: prompt })
   const made = namesOf(result)[0]
-  if (source === undefined || made === undefined) return result
-  const asked = typeof args['prompt'] === 'string' && args['prompt'].trim().length > 0 ? args['prompt'].trim() : state.asked
-  const check = await checkEdit({
-    ctx: deps.ctx,
-    outputDir: deps.outputDir,
-    ...state.model === undefined ? {} : { model: state.model },
-    ...state.language === undefined ? {} : { language: state.language },
-    ...deps.signal === undefined ? {} : { signal: deps.signal },
-  }, source, made, asked).catch(() => undefined)
-  if (check === undefined) return result
-  state.edits.push({ file: made, check })
+  const errors = Array.isArray(result['errors']) ? result['errors'].filter((entry): entry is string => typeof entry === 'string') : []
+  const settled = result['state'] === 'done' || result['ok'] === true
+  const verdict = settled && made !== undefined
+    ? await verifyEdit({
+      ctx: deps.ctx,
+      outputDir: deps.outputDir,
+      ...state.model === undefined ? {} : { model: state.model },
+      ...state.language === undefined ? {} : { language: state.language },
+      ...deps.signal === undefined ? {} : { signal: deps.signal },
+    }, target, made, spec).catch(() => undefined)
+    : undefined
+  state.attempts.push({
+    target,
+    signature,
+    change: spec.change,
+    ...made === undefined ? {} : { file: made },
+    ...verdict === undefined ? {} : { verdict },
+    ...errors.length === 0 ? {} : { error: errors.join('; ') },
+  })
   return {
     ...result,
-    check: {
-      ...check.changeDone === undefined ? {} : { requested_change_done: check.changeDone },
-      same: check.same,
-      missing: check.missing,
-      added: check.added,
-      text: check.text,
-      ...check.description === undefined ? {} : { description: check.description },
-    },
+    spec,
+    ...verdict === undefined ? {} : { check: checkOf(verdict) },
   }
 }
 

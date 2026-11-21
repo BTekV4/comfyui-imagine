@@ -234,7 +234,7 @@ export interface VisionCapable {
     image: string,
     prompt?: string,
     route?: { provider: string; model: string },
-    options?: { signal?: AbortSignal; maxSide?: number },
+    options?: { signal?: AbortSignal; maxSide?: number; also?: readonly string[] },
   ): Promise<{ text: string; provider?: string; model?: string }>
 }
 
@@ -326,9 +326,10 @@ async function lookSlot(background: boolean): Promise<() => void> {
  * @param instruction - what to ask of it.
  * @param route - the model to look with.
  * @param options - `maxSide` for the still, forwarded to the service;
- *   `background` for a look nobody waits for, which runs in the capped lane;
- *   `signal` for a caller that may stop waiting (the look is then aborted, or
- *   never started when it was still queued for a slot).
+ *   `also` for more pictures to look at in the same request (an edit with the
+ *   picture it came from); `background` for a look nobody waits for, which
+ *   runs in the capped lane; `signal` for a caller that may stop waiting (the
+ *   look is then aborted, or never started when it was still queued for a slot).
  * @returns the reply, or undefined when the model failed or said nothing.
  */
 export async function lookWith(
@@ -336,7 +337,7 @@ export async function lookWith(
   path: string,
   instruction: string,
   route: ModelRoute,
-  options?: { maxSide?: number; background?: boolean; signal?: AbortSignal },
+  options?: { maxSide?: number; also?: readonly string[]; background?: boolean; signal?: AbortSignal },
 ): Promise<{ text: string; provider?: string; model?: string } | undefined> {
   const { background = false, signal, ...look } = options ?? {}
   const release = await lookSlot(background)

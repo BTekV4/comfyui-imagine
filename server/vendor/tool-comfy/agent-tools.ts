@@ -43,6 +43,7 @@ import { recallNotes, rememberSight } from './imagine-notes.ts'
 import { sightInMemory } from './imagine-sight.ts'
 import { loadImagineStore } from './imagine-store.ts'
 import { lookWith } from './imagine-models.ts'
+import { explicitnessRefusal, specFor, specRefusals } from './edit-spec.ts'
 import type { ImagineJob } from './job-queue.ts'
 import { jobBodyProblem, type JobBody } from './job-start.ts'
 import { customFieldsOf, type WorkflowInventory } from './imagine-chat.ts'
@@ -385,6 +386,10 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       if (translated !== undefined) return refused(translated)
       const lost = lostNameRefusal(deps.asked, prompt)
       if (lost !== undefined) return refused(lost)
+      // A run never widens the content: "sensuale" is not permission for nudity.
+      const spec = specFor(deps.asked, { edit: false, change: prompt })
+      const escalated = explicitnessRefusal(spec.change, deps.asked)
+      if (escalated !== undefined) return refused(escalated)
       /*
        * A closed choice the user named (a ratio, a resolution) is recovered
        * from their line when the model leaves the argument out: measured on
@@ -439,6 +444,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
           queued: jobs.map(job => job.id),
           count: jobs.length,
           state: 'queued',
+          spec,
           ...size === undefined ? {} : { size },
           ...aspect === undefined ? {} : { aspect },
           ...aspect === undefined && resolution !== undefined ? { resolution } : {},
@@ -561,6 +567,17 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         ? (resolution === undefined ? undefined : sourceShape)
         : aspect as ImagineAspect
       const size = shape === undefined ? undefined : sizeFor(shape, (resolution ?? '1080p') as ImagineResolution)
+      // The spec is built before the run and the run is checked against it:
+      // the frame the line did not ask to change stays, and the content never
+      // widens. The vision pass will check the result against the same spec.
+      const spec = specFor(deps.asked, { edit: true, change: prompt })
+      const escalated = explicitnessRefusal(spec.change, deps.asked)
+      if (escalated !== undefined) return refused(escalated)
+      const againstSpec = specRefusals(spec, {
+        ...sourceShape === undefined ? {} : { sourceShape },
+        ...aspect === undefined ? {} : { aspect },
+      })
+      if (againstSpec.length > 0) return refused(againstSpec.join('; '))
       if (deps.canQueue() < count) return refused(queueRefusal(deps.canQueue(), count))
       deps.say({ kind: 'step', step: 'tool', name: 'edit_image', detail: prompt, ...count > 1 ? { count } : {} })
       const jobs = await deps.start({
@@ -586,6 +603,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
           count: jobs.length,
           state: 'queued',
           source: item.name,
+          spec,
           ...aspect === undefined ? {} : { aspect },
           ...size === undefined ? {} : { size },
           ...reshaped && target !== undefined ? { note: 'a new frame shape redraws the whole photo: the target was not used as a zone' } : {},
@@ -1416,6 +1434,14 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       // The card's exposed inputs win over a tweak of the same input: they are
       // the controls the user sees.
       const runFields = { ...checked.fields, ...fields }
+      // A card started from a picture is an edit: its spec keeps what the line
+      // did not ask to change, and the content never widens.
+      const startedFrom = Object.keys(files).length > 0
+      const spec = specFor(deps.asked, { edit: startedFrom, change: prompt })
+      const escalated = explicitnessRefusal(spec.change, deps.asked)
+      if (escalated !== undefined) return refused(escalated)
+      const againstSpec = specRefusals(spec, { fields: runFields })
+      if (againstSpec.length > 0) return refused(againstSpec.join('; '))
       /*
        * A card that draws a new picture takes the same batch as the studio's
        * own generate: ten pictures are one call, not ten turns. Before this,
@@ -1439,7 +1465,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         ...deps.model === undefined ? {} : { model: deps.model },
       })
       for (const job of jobs) deps.say({ kind: 'step', step: 'queued', jobId: job.id, detail: job.action })
-      return { result: { ok: true, queued: jobs.map(job => job.id), count: jobs.length, state: 'queued', card: card.title }, jobs, files: [] }
+      return { result: { ok: true, queued: jobs.map(job => job.id), count: jobs.length, state: 'queued', card: card.title, spec }, jobs, files: [] }
     },
   },
   {

@@ -264,6 +264,35 @@ export const MESSAGES = {
     it: 'Il controllo visivo di «{file}» riporta: {seen}',
     en: 'The vision check of «{file}» reports: {seen}',
   },
+  'agent.editCompleted': {
+    it: 'Stato: completato — «{file}» ha la modifica chiesta e tiene tutto quello che c’era.',
+    en: 'State: completed — «{file}» has the requested change and keeps everything that was there.',
+  },
+  'agent.editPartial': {
+    it: 'Stato: parziale — «{file}» ha la modifica chiesta, ma non tiene tutto: {items}.',
+    en: 'State: partial — «{file}» has the requested change, but does not keep everything: {items}.',
+  },
+  'agent.editFailed': {
+    it: 'Stato: fallito — «{file}» non ha la modifica chiesta{why}.',
+    en: 'State: failed — «{file}» does not have the requested change{why}.',
+  },
+  'agent.editIdentical': {
+    it: ' il risultato è la foto di partenza, identica',
+    en: ' the result is the starting picture, unchanged',
+  },
+  'agent.editBest': {
+    it: 'Il tentativo migliore è «{file}» (tentativo {n} di {total}).',
+    en: 'The closest attempt is «{file}» (attempt {n} of {total}).',
+  },
+  'agent.editStop': {
+    it: 'Mi fermo dopo {total} tentativi: non rilancio la stessa richiesta.',
+    en: 'I stop after {total} attempts: the same request is not run again.',
+  },
+  'agent.preserveFraming': { it: 'inquadratura', en: 'framing' },
+  'agent.preserveText': { it: 'testo', en: 'text' },
+  'agent.preserveSubjects': { it: 'soggetti', en: 'subjects' },
+  'agent.preserveStyle': { it: 'stile', en: 'style' },
+  'agent.preserveFormat': { it: 'formato', en: 'format' },
   'agent.noLoraFromChat': {
     it: 'Il peso e il file di una LoRA, e la parola che accende un ramo del grafo, non si cambiano dalla chat: li decide chi ha fatto il grafo.',
     en: 'A LoRA’s weight and file, and the word that switches a branch of the graph on, are not changed from the chat: the graph’s owner decides them.',

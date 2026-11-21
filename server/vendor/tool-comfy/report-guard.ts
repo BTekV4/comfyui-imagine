@@ -3,9 +3,9 @@
  *
  * The model writes the reply from memory: on 2026-11-21 it denied nudity that
  * the result carried and denied losing lettering it had never compared. The
- * loop keeps what the checks found (a `look`'s own sentence, a comparison of
- * an edit with its source) and appends the facts the reply left out, so the
- * report reflects the pass even when the model contradicts it.
+ * loop keeps what the checks found (a `look`'s own sentence, a verdict on an
+ * edit) and appends the facts the reply left out, so the report reflects the
+ * pass even when the model contradicts it.
  *
  * The guard is a floor, not a censor: it adds a sentence a check supports and
  * never removes one the model wrote. A reply that already says the fact keeps
@@ -14,7 +14,9 @@
  */
 
 import { message } from '../../src/messages.ts'
-import type { EditCheck } from './edit-verify.ts'
+import type { EditVerdict } from './edit-verify.ts'
+import { preserveName } from './edit-attempts.ts'
+import type { PreserveItem } from './edit-spec.ts'
 import { deniesExplicitness, explicitLabels } from './explicitness.ts'
 
 /** One file a `look` was taken of, with the pass's sentence. */
@@ -23,10 +25,10 @@ export interface LookFact {
   readonly seen: string
 }
 
-/** One edited file with the comparison against its source. */
+/** One edited file with the verdict on it. */
 export interface EditFact {
   readonly file: string
-  readonly check: EditCheck
+  readonly verdict: EditVerdict
 }
 
 /** Everything the guard reads about a turn. */
@@ -75,11 +77,17 @@ function saysUnchanged(reply: string): boolean {
 export function reportGaps(input: ReportInput): readonly string[] {
   const gaps: string[] = []
   for (const edit of input.edits) {
-    const check = edit.check
-    if (check.same && !saysUnchanged(input.reply)) gaps.push(message('agent.checkSame', { file: edit.file }))
-    const lost = check.missing.filter(item => !mentions(input.reply, item))
+    const verdict = edit.verdict
+    if (verdict.identicalToSource && !saysUnchanged(input.reply)) gaps.push(message('agent.checkSame', { file: edit.file }))
+    const lost = [
+      ...verdict.missing.filter(item => !mentions(input.reply, item)),
+      ...Object.entries(verdict.preservedOk)
+        .filter(([, kept]) => kept === false)
+        .map(([item]) => preserveName(item as PreserveItem))
+        .filter(name => !mentions(input.reply, name)),
+    ]
     if (lost.length > 0) gaps.push(message('agent.checkLost', { file: edit.file, items: lost.join(', ') }))
-    const extra = check.added.filter(item => !mentions(input.reply, item))
+    const extra = verdict.unrequestedChanges.filter(item => !mentions(input.reply, item))
     if (extra.length > 0) gaps.push(message('agent.checkAdded', { file: edit.file, items: extra.join(', ') }))
   }
   const allowed = new Set(explicitLabels(input.asked))
