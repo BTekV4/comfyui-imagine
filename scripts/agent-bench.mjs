@@ -14,6 +14,11 @@
  * duration), whether that matches the line, the reply's language, the elapsed
  * time and any error. The report is written as Markdown and JSON.
  *
+ * One case runs a card the bench adds itself: its graph switches a LoRA on
+ * only when the prompt carries one word ("lanterna"), and the case reads the
+ * graph ComfyUI executed to see that the word arrived. It is skipped when the
+ * box holds no LoRA `--lora` names.
+ *
  *   node scripts/agent-bench.mjs \
  *     --gateway http://127.0.0.1:8080/v1 \
  *     --comfy   http://127.0.0.1:8188 \
@@ -52,6 +57,16 @@ const CARTOON_PROMPTS = [
 /** The prompt fixtures are drawn with: neutral, owned by the bench. */
 const STILL_PROMPT = 'una tazza di ceramica bianca su un tavolo di legno chiaro, una parete grigia sullo sfondo, luce naturale del giorno'
 const STILL_SIZE = '1080x720'
+
+/**
+ * The word the bench's own card switches its LoRA on.
+ *
+ * The production fault this repeats has a card whose graph carries a LoRA that
+ * only runs when the prompt contains a word (`StringContains` →
+ * `ComfySwitchNode`). The word here is the bench's own, so the case proves the
+ * chat keeps it without carrying anybody's name.
+ */
+const LANTERN_WORD = 'lanterna'
 
 /** How long a job may render before the bench stops waiting for it. */
 const JOB_TIMEOUT_MS = 15 * 60_000
@@ -106,7 +121,7 @@ const flag = key => cli.get(key) === true || cli.get(key) === 'true'
 if (flag('help')) {
   console.log(`agent-bench: ${DEFAULT_REPO}\n\n` +
     'Required: --gateway <url> (the OpenAI-compatible model endpoint) and --comfy <url>.\n' +
-    'Optional: --model, --port, --dir, --server-dir, --report, --json, --only, --no-build, --clean, --keep-server.')
+    'Optional: --model, --port, --dir, --server-dir, --report, --json, --only, --lora, --no-build, --clean, --keep-server.')
   process.exit(0)
 }
 
@@ -116,6 +131,8 @@ const gateway = arg('gateway', process.env['IMAGINE_BENCH_GATEWAY'] ?? '')
 const comfy = arg('comfy', process.env['IMAGINE_BENCH_COMFY'] ?? '')
 const modelId = arg('model', process.env['IMAGINE_BENCH_MODEL'] ?? 'qwen3.8-flash-next')
 const iopaint = arg('iopaint', process.env['IMAGINE_BENCH_IOPAINT'] ?? '')
+// The LoRA the bench's card switches on: any public one on the box will do.
+const loraName = arg('lora', process.env['IMAGINE_BENCH_LORA'] ?? 'krea2/krea2_darkbrush.safetensors')
 const providerName = arg('provider', 'bench')
 const language = arg('language', 'it')
 const port = Number(arg('port', '3091'))
@@ -312,7 +329,9 @@ function summarizeRequest(body, method) {
 
 /** One message's content: text kept, each image replaced by its size. */
 function summarizeContent(content) {
-  if (typeof content === 'string') return clip(content, 6_000)
+  // The instruction carries the graphs' own lines far past six thousand
+  // characters: the trace keeps enough of it to read what the chat was told.
+  if (typeof content === 'string') return clip(content, 40_000)
   if (!Array.isArray(content)) return ''
   return content.map((part) => {
     if (part?.type === 'text') return part.text ?? ''
@@ -573,6 +592,63 @@ async function probeMedia(path) {
   })
 }
 
+/** The LoRA files this ComfyUI holds, or none when it cannot be asked. */
+async function loraNames() {
+  const answer = await requestJSON(`${comfy.replace(/\/$/, '')}/object_info/LoraLoaderModelOnly`, { timeoutMs: 20_000 })
+  const names = answer?.LoraLoaderModelOnly?.input?.required?.lora_name?.[0]
+  return Array.isArray(names) ? names : []
+}
+
+/**
+ * The bench's own card graph: the shipped generation graph with a switch.
+ *
+ * The LoRA sits behind a `StringContains` → `ComfySwitchNode` pair, exactly as
+ * the production graph carried it, and the sampler draws from the switch. When
+ * the prompt loses the word the switch stays false and the LoRA never runs —
+ * the run still succeeds, which is what made the fault invisible.
+ * @param lora - the LoRA file the switch turns on.
+ * @returns the API graph the card is saved with.
+ */
+async function lanternCardGraph(lora) {
+  const shipped = JSON.parse(await readFile(join(serverDir, 'workflows', 'comfyui_generazione_krea2_API.json'), 'utf8'))
+  const unet = Object.keys(shipped).find(id => shipped[id]?.class_type === 'UNETLoader')
+  const sampler = Object.keys(shipped).find(id => shipped[id]?.class_type === 'KSampler')
+  if (unet === undefined || sampler === undefined) throw new Error('the shipped generation graph has no UNETLoader or KSampler to hang the switch on')
+  return {
+    ...shipped,
+    gate: { class_type: 'StringContains', inputs: { string: ['73', 0], substring: LANTERN_WORD, case_sensitive: false } },
+    'gate-lora': { class_type: 'LoraLoaderModelOnly', inputs: { lora_name: lora, strength_model: 0.6, model: [unet, 0] } },
+    'gate-switch': { class_type: 'ComfySwitchNode', inputs: { switch: ['gate', 0], on_false: [unet, 0], on_true: ['gate-lora', 0] } },
+    [sampler]: { ...shipped[sampler], inputs: { ...shipped[sampler].inputs, model: ['gate-switch', 0] } },
+  }
+}
+
+/** The card the lantern case runs, or undefined when the box has no such LoRA. */
+async function makeLanternCard(base) {
+  const names = await loraNames().catch(() => [])
+  if (!names.includes(loraName)) {
+    log(`card case skipped: this box has no LoRA "${loraName}" (pass --lora with one of the ${String(names.length)} it holds)`)
+    return undefined
+  }
+  log(`adding the bench's card, its LoRA switched on by "${LANTERN_WORD}"`)
+  const saved = await requestJSON(`${base}/comfy-custom-workflows`, {
+    method: 'POST',
+    body: JSON.stringify({
+      title: 'Lanterna',
+      description: 'Illustrazione a fumetto: accende la LoRA solo se il prompt dice "lanterna".',
+      graph: await lanternCardGraph(loraName),
+      output: 'image',
+      outputExt: 'png',
+      promptNodeId: '73',
+      seedNodeId: '53',
+    }),
+    timeoutMs: 120_000,
+  })
+  const id = saved?.workflow?.id
+  if (typeof id !== 'string' || id === '') throw new Error(`the card was not saved: ${JSON.stringify(saved).slice(0, 400)}`)
+  return { id, title: saved.workflow.title, lora: loraName }
+}
+
 /**
  * Build the neutral fixtures: one drawn still and the same photo with a printed
  * word, so the erase case has writing that was put there on purpose.
@@ -615,7 +691,14 @@ async function makeFixtures(base) {
     if (job.status !== 'done' || name === undefined) throw new Error(`illustrated fixture ${String(index + 1)} ended ${job.status}: ${job.error ?? ''}`)
     cartoon.push(name)
   }
-  return { still, sign, cartoon }
+  let lantern
+  try {
+    lantern = await makeLanternCard(base)
+  } catch (caught) {
+    // A card that could not be saved leaves the rest of the bench usable.
+    log(`card case skipped: ${caught instanceof Error ? caught.message : String(caught)}`)
+  }
+  return { still, sign, cartoon, ...lantern === undefined ? {} : { lantern } }
 }
 
 /* --------------------------------------------------------------- cases ---- */
@@ -697,6 +780,17 @@ function toolResultsOf(recording) {
     }
   }
   return results
+}
+
+/** The instruction the agent was given this turn: the system message of a call that carries tools. */
+function instructionOf(recording) {
+  for (const call of recording.calls) {
+    if (!call.path?.includes('/chat/completions')) continue
+    if (!Array.isArray(call.request?.tools) || call.request.tools.length === 0) continue
+    const system = (call.request.messages ?? []).find(message => message.role === 'system')
+    if (system !== undefined) return String(system.content ?? '')
+  }
+  return ''
 }
 
 /** The vision instructions this turn reached, with the images removed. */
@@ -1111,6 +1205,46 @@ function casesOf(fixtures) {
     },
   ]
 
+  /*
+   * A personal card whose graph switches a LoRA on from the prompt. This is
+   * the production shape: the switch looks for one word, the chat shortens it,
+   * and the run succeeds with the LoRA off — a generic result and no error.
+   * The word is the bench's own, so nobody's name is in the repo or in a run.
+   */
+  const lantern = fixtures.lantern
+  if (lantern !== undefined) {
+    cases.push({
+      id: 'card-lantern-gate',
+      text: 'genera 10 foto di una lanterna in stile fumetto con la card «Lanterna», 9:16, 1080p',
+      expectedTools: ['run_card'],
+      body: { ...base },
+      check: ({ tools, jobs, files, reply, instruction }) => {
+        const calls = tools.filter(tool => tool.name === 'run_card')
+        const asked = calls.reduce((total, tool) => total + (Number(tool.args.count) || 1), 0)
+        const onCard = calls.filter(tool => tool.args.customWorkflowId === lantern.id)
+        const prompts = onCard.map(tool => String(tool.args.prompt ?? ''))
+        const made = files.filter(file => file.kind === 'image')
+        // What the studio wrote into the graph's own prompt node, per run.
+        const drawn = jobs.map(job => String(job.prompt ?? ''))
+        return [
+          check('the card is the one that ran', onCard.length >= 1, JSON.stringify(tools.map(tool => [tool.name, tool.args.customWorkflowId ?? '']))),
+          check('ten runs were queued', jobs.length === 10, `${String(jobs.length)} runs (asked ${String(asked)})`),
+          check('all ten settled', jobs.length === 10 && jobs.every(job => job.status === 'done'), jobs.map(job => job.status).join(',')),
+          check('ten pictures exist', made.length === 10, `${String(made.length)} files`),
+          check('every picture is 9:16', made.length === 10 && made.every(file => shapeMatches(file.width, file.height, '9:16')), JSON.stringify(made.slice(0, 2))),
+          check('every picture is 1080p', made.length === 10 && made.every(file => Math.min(file.width ?? 0, file.height ?? 0) === 1080), JSON.stringify(made.slice(0, 2))),
+          check('the prompt keeps the word the switch looks for', prompts.length > 0 && prompts.every(prompt => prompt.toLowerCase().includes(LANTERN_WORD)), prompts.join(' | ')),
+          check('the instruction names the word that switches the card on',
+            instruction.includes(`ON ONLY WHEN the prompt contains "${LANTERN_WORD}"`),
+            instruction.split('\n').find(line => line.includes('ON ONLY WHEN') && line.includes(LANTERN_WORD)) ?? 'the instruction never names it'),
+          check('every run wrote that word into the prompt node', drawn.length === 10 && drawn.every(text => text.toLowerCase().includes(LANTERN_WORD)), drawn.slice(0, 2).join(' | ')),
+          check('the reply says how many', /\b10\b|dieci/i.test(reply), reply),
+          check('the reply never invents a limit about LoRAs', !/(no|nessun|nessuno|non ha|non hanno|manca)[^.]{0,60}\blora\b/i.test(reply), reply),
+        ]
+      },
+    })
+  }
+
   /** The result file a previous case made, for "come prima". */
   function previousResult(id) {
     return results.get(id)?.files?.[0]?.name
@@ -1274,6 +1408,7 @@ async function main() {
           tools,
           jobs,
           files,
+          instruction: instructionOf(recording),
           actionNames: jobs.map(job => job.action),
           reply,
           language: languageSeen,
@@ -1305,15 +1440,42 @@ async function main() {
 
 /** One agent turn, with the interface language and the model the composer shows. */
 async function ask(base, body) {
-  return await requestJSON(`${base}/comfy-imagine/agent`, {
+  /*
+   * Read the answer the way the page does: as server-sent events. The plain
+   * JSON lane sends its headers only when the turn is over, and a turn that
+   * waits for ten renders runs longer than the client's own five-minute
+   * header limit — the bench used to end "fetch failed" while the studio was
+   * still drawing, with the runs it had queued counted as none. The stream
+   * opens at once and keeps itself alive, so the wait is the turn's own.
+   */
+  const response = await fetch(`${base}/comfy-imagine/agent`, {
     method: 'POST',
-    headers: { 'x-app-language': language },
+    headers: { 'content-type': 'application/json', 'x-app-language': language },
     body: JSON.stringify({
       ...body,
+      stream: true,
       model: body.model ?? { provider: providerName, model: modelId },
     }),
-    timeoutMs: TURN_TIMEOUT_MS,
+    signal: AbortSignal.timeout(TURN_TIMEOUT_MS),
   })
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    throw new Error(`POST agent answered ${String(response.status)}: ${detail.slice(0, 500)}`)
+  }
+  const stream = await response.text()
+  let answer
+  for (const line of stream.split('\n')) {
+    if (!line.startsWith('data: ')) continue
+    let frame
+    try {
+      frame = JSON.parse(line.slice('data: '.length))
+    } catch {
+      continue
+    }
+    if (frame?.kind === 'done') answer = frame.answer
+  }
+  if (answer === undefined) throw new Error(`the answer stream ended without an answer: ${stream.slice(-400)}`)
+  return answer
 }
 
 /** What the report says the run was. */
