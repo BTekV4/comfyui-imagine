@@ -21,7 +21,7 @@ import type { ImagineHost } from '../server/src/host.ts'
 import type { ComfyGraph } from '../server/vendor/comfyui/index.ts'
 import { runWorkflow, type LoadedWorkflow } from '../server/vendor/tool-comfy/index.ts'
 import { configureComfySetup } from '../server/vendor/tool-comfy/comfy-setup.ts'
-import { detectRefBranch } from '../server/vendor/tool-comfy/ref-branch.ts'
+import { detectRefBranch, dropRefBranch } from '../server/vendor/tool-comfy/ref-branch.ts'
 import { loadWorkflows, workflowGaps } from '../server/vendor/tool-comfy/workflow-load.ts'
 import { graphEditor, workflowInventory } from '../server/vendor/tool-comfy/workflow-inventory.ts'
 import { writableOverlay } from '../server/vendor/tool-comfy/workflow-overlay.ts'
@@ -176,4 +176,40 @@ test('the settings page lists the missing keys with the stale pins', () => {
   )
   const warnings = inventory.warnings('edit') ?? []
   assert.ok(warnings.some(line => line.includes('refImageNodeId, refEncodeNodeId')), warnings.join(' | '))
+})
+
+test('a reference branch that took the sampler\'s conditioning leaves the graph as it was', () => {
+  /*
+   * A generation graph whose positive is groomed with a reference picture
+   * (Krea 2's own reference encoder) and whose own text encode is still in the
+   * file, unread. Without a reference the branch goes and the sample falls back
+   * to that encode: the picture is the one the graph made before the branch.
+   */
+  const graph: ComfyGraph = {
+    '73': { class_type: 'PrimitiveStringMultiline', inputs: { value: 'a bicycle' } },
+    '51': { class_type: 'CLIPTextEncode', inputs: { text: ['73', 0], clip: ['56', 0] } },
+    'ref-load': { class_type: 'LoadImage', inputs: { image: 'ref.png' } },
+    'ref-enc': { class_type: 'Krea2EditGroundedEncode', inputs: { clip: ['56', 0], prompt: ['73', 0], image: ['ref-load', 0] } },
+    '53': { class_type: 'KSampler', inputs: { model: ['55', 0], positive: ['ref-enc', 0], negative: ['58', 0], latent_image: ['52', 0] } },
+  } as unknown as ComfyGraph
+  dropRefBranch(graph, 'ref-load', 'ref-enc', '73')
+  assert.equal(graph['ref-load'], undefined, 'the loader went')
+  assert.equal(graph['ref-enc'], undefined, 'the encoder went')
+  assert.deepEqual(graph['53']?.inputs['positive'], ['51', 0], 'the sample is groomed by the graph\'s own text encode again')
+  assert.deepEqual(graph['51']?.inputs['text'], ['73', 0], 'the prompt still reaches it')
+})
+
+test('a branch nothing else can stand in for is left unwired, not guessed', () => {
+  // The reference encoder took the model input, not the conditioning: there is
+  // no stand-in for a model, so the field is simply gone.
+  const graph: ComfyGraph = {
+    '73': { class_type: 'PrimitiveStringMultiline', inputs: { value: 'a bicycle' } },
+    'ref-load': { class_type: 'LoadImage', inputs: { image: 'ref.png' } },
+    'ref-patch': { class_type: 'Krea2EditModelPatch', inputs: { model: ['55', 0], source_latent: ['ref-load', 0] } },
+    '53': { class_type: 'KSampler', inputs: { model: ['ref-patch', 0], positive: ['51', 0], latent_image: ['52', 0] } },
+  } as unknown as ComfyGraph
+  dropRefBranch(graph, 'ref-load', 'ref-patch', '73')
+  assert.equal(graph['ref-patch'], undefined)
+  assert.equal(graph['53']?.inputs['model'], undefined, 'nothing is invented for a model')
+  assert.deepEqual(graph['53']?.inputs['positive'], ['51', 0], 'a link into the branch and nothing else is untouched')
 })

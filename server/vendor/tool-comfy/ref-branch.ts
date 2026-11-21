@@ -98,21 +98,56 @@ export function detectRefBranch(graph: ComfyGraph, mainImageNodeId?: string): Re
 }
 
 /**
+ * The text encode a graph can groom its sample from when the reference is gone.
+ *
+ * Only the node the prompt is written into counts: a `CLIPTextEncode` (or
+ * another `…TextEncode` a graph carries) whose text comes from the prompt node.
+ * That is the node a reference encoder *replaced*, and it is still in the graph
+ * — a branch that took the sampler's `positive` over left it unread, not gone.
+ * @param graph - the graph, after the branch has been taken out.
+ * @param promptNodeId - the node the studio writes the prompt into, when pinned.
+ * @returns the encode's node id, or undefined when the graph has none.
+ */
+function ownEncode(graph: ComfyGraph, promptNodeId?: string): string | undefined {
+  for (const [id, node] of Object.entries(graph)) {
+    if (!node.class_type.includes('TextEncode')) continue
+    const text = linkOf(node.inputs['text'])
+    if (text === undefined) continue
+    if (promptNodeId !== undefined && text[0] === promptNodeId) return id
+  }
+  return undefined
+}
+
+/**
  * Take the reference branch out of a parameterized graph: both nodes and every
  * link that pointed into them.
  *
+ * A branch that replaced the sampler's `positive` would otherwise leave the
+ * sampler reading a removed node, and the run would draw with a conditioning
+ * nobody asked for: the sample goes back to the graph's own text encode, which
+ * is the picture the graph made before the branch existed (measured on a copy
+ * of a production graph: same seed, same prompt, same file).
  * The graph a run is handed is a copy, so this never touches the loaded one.
  * @param graph - the run's graph, edited in place.
  * @param refImageNodeId - the reference loader.
  * @param refEncodeNodeId - its encoder, when the branch has one.
+ * @param promptNodeId - the node the prompt is written into, when pinned.
  */
-export function dropRefBranch(graph: ComfyGraph, refImageNodeId: string, refEncodeNodeId?: string): void {
+export function dropRefBranch(graph: ComfyGraph, refImageNodeId: string, refEncodeNodeId?: string, promptNodeId?: string): void {
   const gone = new Set([refImageNodeId, ...refEncodeNodeId === undefined ? [] : [refEncodeNodeId]])
   for (const id of gone) delete graph[id]
+  // Only the conditioning a reference encoder took over has a stand-in.
+  const orphaned: ComfyGraph[string]['inputs'][] = []
   for (const node of Object.values(graph)) {
     for (const [field, value] of Object.entries(node.inputs)) {
       const link = linkOf(value)
-      if (link !== undefined && gone.has(link[0])) delete node.inputs[field]
+      if (link === undefined || !gone.has(link[0])) continue
+      delete node.inputs[field]
+      if (field === 'positive') orphaned.push(node.inputs)
     }
   }
+  if (orphaned.length === 0) return
+  const encode = ownEncode(graph, promptNodeId)
+  if (encode === undefined) return
+  for (const inputs of orphaned) inputs['positive'] = [encode, 0]
 }

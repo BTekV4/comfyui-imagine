@@ -737,7 +737,7 @@ function parameterize(
   const graph = structuredClone(workflow.graph)
   if (workflow.refImageNodeId !== undefined && refImage === undefined) {
     // No reference: the branch leaves, and the links that pointed into it.
-    dropRefBranch(graph, workflow.refImageNodeId, workflow.refEncodeNodeId)
+    dropRefBranch(graph, workflow.refImageNodeId, workflow.refEncodeNodeId, workflow.promptNodeId ?? promptNode(graph)?.id)
   }
   /*
    * The card's own controls, written before anything else parameterizes the
