@@ -6,6 +6,8 @@
  * No model, no GPU, no network. The only real pieces are the loop, the tool
  * checks and the small JSON shapes the page reads.
  */
+// The studio files per-picture state under IMAGINE_HOME: this file owns its own.
+import './helpers/test-home.ts'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, writeFile } from 'node:fs/promises'
@@ -1118,14 +1120,15 @@ test('an edit carries its spec and a verdict, and the report is built from the v
     description: 'the mug is blue',
   })])
   const { deps, model } = turn([
-    toolCall('edit_image', { prompt: 'cambia il colore della tazza', source: 'photo.png' }),
+    toolCall('edit_image', { prompt: 'cambia la tazza in blu', source: 'photo.png' }),
     text('Fatto: la tazza è blu.'),
-  ], { ctx, outputDir: mediaDir, text: 'cambia il colore della tazza' })
+  ], { ctx, outputDir: mediaDir, text: 'cambia la tazza in blu' })
   const answer = await readAgentChat(deps)
   const toolMessage = (model.requests[1]?.messages ?? []).filter(message => message.role === 'tool').at(-1)
   const result = JSON.parse(toolMessage?.content ?? '{}') as {
     spec?: { preserve?: string[] }
     check?: { preserved_ok?: Record<string, boolean>; unrequested_changes?: string[]; text_found?: string[] }
+    error?: string
   }
   assert.deepEqual(result.spec?.preserve, ['framing', 'text', 'subjects', 'style', 'format'])
   assert.deepEqual(result.check?.preserved_ok, { framing: true, text: false, subjects: true, style: true, format: true })
@@ -1148,9 +1151,9 @@ test('a clean edit is reported as completed, from the verdict', async () => {
     description: 'the mug is blue',
   })])
   const { deps } = turn([
-    toolCall('edit_image', { prompt: 'cambia il colore della tazza', source: 'photo.png' }),
+    toolCall('edit_image', { prompt: 'cambia la tazza in verde', source: 'photo.png' }),
     text('Fatto.'),
-  ], { ctx, outputDir: mediaDir, text: 'cambia il colore della tazza' })
+  ], { ctx, outputDir: mediaDir, text: 'cambia la tazza in verde' })
   const answer = await readAgentChat(deps)
   assert.match(answer.reply, /Stato: completato/)
 })
@@ -1165,12 +1168,12 @@ test('the same failed parameters are not run twice', async () => {
     missing: [],
     description: 'unchanged',
   })])
-  const edit = { prompt: 'cambia il colore della tazza', source: 'photo.png' }
+  const edit = { prompt: 'cambia la tazza in giallo', source: 'photo.png' }
   const { deps, started, model } = turn([
     toolCall('edit_image', edit, 'call_1'),
     toolCall('edit_image', edit, 'call_2'),
     text('Non è cambiata.'),
-  ], { ctx, outputDir: mediaDir, text: 'cambia il colore della tazza' })
+  ], { ctx, outputDir: mediaDir, text: 'cambia la tazza in giallo' })
   const answer = await readAgentChat(deps)
   assert.equal(started.length, 1, 'the same parameters were not queued a second time')
   const refusal = JSON.parse(((model.requests.at(-1)?.messages ?? []).filter(message => message.role === 'tool').at(-1)?.content) ?? '{}') as { error?: string }
@@ -1355,4 +1358,38 @@ test('a personal card takes ten pictures in one call and says ten', async () => 
   assert.equal(started[0]?.count, 10)
   const result = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as { count?: number }
   assert.equal(result.count, 10)
+})
+
+test('the instruction carries the pictures the studio already tried', async () => {
+  const { agentInstruction } = await import('../server/vendor/tool-comfy/agent-prompt.ts')
+  const text = await agentInstruction({
+    request: { text: 'x', history: [], staged: [], recent: [], model: MODEL },
+    known: [],
+    eraseTool: false,
+    working: [],
+    maxSteps: 8,
+    maxJobs: 6,
+    editNotes: ['- photo.png: last accepted «cambia il colore della tazza» as old.webp; failed and refused again: «scurisci lo sfondo» (the lettering is gone)'],
+  })
+  assert.match(text, /PICTURES ALREADY TRIED/)
+  assert.match(text, /the same parameters are refused/)
+  assert.match(text, /last accepted «cambia il colore della tazza»/)
+})
+
+test('a combination that already failed in an earlier turn is refused before the run', async () => {
+  const { signatureOf } = await import('../server/vendor/tool-comfy/edit-attempts.ts')
+  const { rememberEditState } = await import('../server/vendor/tool-comfy/edit-state.ts')
+  const signature = signatureOf('edit_image', { prompt: 'scurisci lo sfondo', source: 'photo.png' })
+  await rememberEditState('photo.png', {
+    failed: [{ signature, change: 'scurisci lo sfondo', reason: 'the lettering OPEN is gone' }],
+  })
+  const { deps, started, model } = turn([
+    toolCall('edit_image', { prompt: 'scurisci lo sfondo', source: 'photo.png' }),
+    text('Non riprovo la stessa combinazione.'),
+  ], { outputDir: mediaDir, text: 'scurisci lo sfondo' })
+  const answer = await readAgentChat(deps)
+  assert.equal(started.length, 0)
+  const refusal = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as { error?: string }
+  assert.match(refusal.error ?? '', /already tried/)
+  assert.match(answer.reply, /Non riprovo/)
 })

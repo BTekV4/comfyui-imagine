@@ -31,7 +31,8 @@ import type { JobBody } from './job-start.ts'
 import { agentInstruction, finalReplyAsk } from './agent-prompt.ts'
 import { verifyEdit, type EditVerdict } from './edit-verify.ts'
 import { specFor, type EditSpec, PRESERVE_ITEMS } from './edit-spec.ts'
-import { attemptRefusal, editReport, signatureOf, type EditAttempt } from './edit-attempts.ts'
+import { attemptRefusal, editReport, localizedDefect, signatureOf, verdictFailed, type EditAttempt } from './edit-attempts.ts'
+import { editStateNotes, recallEditState, rememberEditState } from './edit-state.ts'
 import { reportGaps, withGaps } from './report-guard.ts'
 import type { LoraCard } from './lora-catalog.ts'
 import { replyNeedsRewrite, rewriteAsk } from './reply-language.ts'
@@ -433,6 +434,7 @@ async function runAgentTurn(deps: AgentTurnDeps, route: ModelRoute): Promise<Age
     ...deps.inventory?.cards === undefined ? {} : { cards: deps.inventory.cards },
     ...deps.request.voices === undefined ? {} : { voices: deps.request.voices },
     graphs: await graphNotes({ ...deps.inventory === undefined ? {} : { inventory: deps.inventory } }).catch(() => []),
+    editNotes: await editStateNotes(known.map(file => file.name)).catch(() => []),
     ...surfaceLoras(deps.surface) === undefined ? {} : { loraCatalog: surfaceLoras(deps.surface) as readonly LoraCard[] },
   })
   deps.say({ kind: 'step', step: 'route', detail: `${route.provider}/${route.model}` })
@@ -621,12 +623,15 @@ async function driveTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentCh
       const target = editTargetOf(call.name, parsed)
       const signature = signatureOf(call.name, parsed)
       if (target !== undefined) {
-        const already = attemptRefusal(state.attempts, target, signature)
-        if (already !== undefined) {
+        const filed = await recallEditState(target).catch(() => undefined)
+        const already = attemptRefusal(state.attempts, target, signature, (filed?.failed ?? []).map(entry => entry.signature))
+        const localFault = localRetryRefusal(state, call.name, parsed, target)
+        const refusal = already ?? localFault
+        if (refusal !== undefined) {
           state.messages.push({
             role: 'tool',
             toolCallId: call.id,
-            content: JSON.stringify(forModel({ ok: false, error: already }, state.language)),
+            content: JSON.stringify(forModel({ ok: false, error: refusal }, state.language)),
           })
           nextIndex = index + 1
           continue
@@ -991,6 +996,50 @@ function editTargetOf(name: string, args: Readonly<Record<string, unknown>>): st
   return typeof first === 'string' ? first : undefined
 }
 
+/** Whether a call names the zone it changes. */
+function hasZone(args: Readonly<Record<string, unknown>>): boolean {
+  const region = args['region']
+  if (typeof region === 'object' && region !== null) return true
+  return typeof args['target'] === 'string' || typeof args['aspect'] === 'string'
+}
+
+/**
+ * Why a retry of a locally-failed change may not redraw the whole photo.
+ *
+ * The check found the fault in one element (a lost text, an object nobody
+ * asked for) and the rest of the photo is intact: the correction is local, so
+ * it goes through a name or a zone. Repeating the same change with no zone is
+ * refused here rather than redrawn whole, which is how the lettering of the
+ * photo disappeared in the first place.
+ * @param state - what the turn has tried.
+ * @param name - the tool's name.
+ * @param args - its parsed arguments.
+ * @param target - the picture the call edits.
+ * @returns the refusal, or undefined when the call may run.
+ */
+function localRetryRefusal(
+  state: TurnState,
+  name: string,
+  args: Readonly<Record<string, unknown>>,
+  target: string,
+): string | undefined {
+  if (name !== 'edit_image') return undefined
+  const previous = [...state.attempts].reverse().find(attempt => attempt.target === target)
+  if (previous?.verdict === undefined || !localizedDefect(previous.verdict)) return undefined
+  const prompt = typeof args['prompt'] === 'string' ? args['prompt'].trim() : ''
+  if (prompt.length === 0 || prompt !== previous.change) return undefined
+  if (hasZone(args)) return undefined
+  const fault = [...previous.verdict.missing, ...previous.verdict.unrequestedChanges].join(', ')
+  return `the last check on ${target} found a local fault (${fault}) while the rest of the photo is intact: this is a local correction. Name the thing to change in target, or pass a region, so only that part is redrawn`
+}
+
+/** Why an attempt that failed is filed, in the check's own words. */
+function reasonOf(verdict: EditVerdict): string {
+  const items = [...verdict.missing, ...verdict.unrequestedChanges]
+  const reason = items.length > 0 ? items.join('; ') : verdict.identicalToSource ? 'identical to the source' : 'the change did not land'
+  return reason.slice(0, 200)
+}
+
 /** The verdict as the model reads it, with the names the instruction uses. */
 function checkOf(verdict: EditVerdict): Readonly<Record<string, unknown>> {
   return {
@@ -1061,6 +1110,22 @@ async function checkedForReport(
     ...made === undefined ? {} : { file: made },
     ...verdict === undefined ? {} : { verdict },
     ...errors.length === 0 ? {} : { error: errors.join('; ') },
+  })
+  // The picture keeps what this attempt came to: the accepted result a step
+  // starts from, and the combination that must not be repeated, across turns.
+  const filed = await recallEditState(target).catch(() => undefined)
+  const failed = [...filed?.failed ?? []]
+  if (verdict !== undefined && verdictFailed(verdict)) {
+    failed.push({ signature, change: spec.change, reason: reasonOf(verdict) })
+  }
+  const accepted = verdict !== undefined && !verdictFailed(verdict) && made !== undefined
+    ? { file: made, change: spec.change, spec, verdict }
+    : filed?.accepted
+  const lastVerdict = verdict ?? filed?.lastVerdict
+  await rememberEditState(target, {
+    ...accepted === undefined ? {} : { accepted },
+    ...lastVerdict === undefined ? {} : { lastVerdict },
+    failed: failed.filter((entry, index) => failed.findIndex(other => other.signature === entry.signature) === index).slice(-12),
   })
   return {
     ...result,
