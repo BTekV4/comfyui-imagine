@@ -50,6 +50,10 @@ import { MAX_JOB_COUNT } from './job-request.ts'
 import { loadCustomWorkflow } from './custom-workflows.ts'
 import type { RunnableGraph } from './imagine-chat.ts'
 import { droppedGateWords, planRunTweaks, readGraph, readingLines } from './graph-reading.ts'
+import {
+  attemptFingerprint, attemptRefusal, readEditSpec, runKey, specRefusal, type RunAttempt,
+} from './edit-spec.ts'
+import { verifyRun, type Verdict } from './edit-verify.ts'
 
 /** What one tool call produced: the result the model reads, and the runs to wait for. */
 export interface AgentToolOutcome {
@@ -103,6 +107,20 @@ export interface AgentToolDeps {
   readonly cancelJob: (id: string) => Promise<boolean>
   /** How many more runs the turn may queue. */
   readonly canQueue: () => number
+  /** What this turn already tried, when the loop keeps a board (the code guard needs it). */
+  readonly attempts?: () => readonly RunAttempt[]
+  /** Files one attempt, so a spent budget and a repeated run are seen. */
+  readonly remember?: (attempt: RunAttempt) => void
+  /** Gives an attempt its outcome once the run settled. */
+  readonly markAttempt?: (key: string, fingerprint: string, state: RunAttempt['state']) => void
+  /** The files earlier attempts of one request made, for the repeat check. */
+  readonly attemptFiles?: (key: string) => readonly string[]
+  /** Remembers that a file came from an attempt. */
+  readonly keepAttemptFile?: (key: string, file: string) => void
+  /** Files a check's verdict, so the turn's report is built on it. */
+  readonly keepVerdict?: (verdict: Verdict) => void
+  /** The verdicts this turn's checks produced. */
+  readonly verdicts?: () => readonly Verdict[]
   /** Tells the page a step happened. */
   readonly say: (event: ImagineChatEvent) => void
 }
@@ -321,6 +339,97 @@ const TWEAKS_SCHEMA = {
   additionalProperties: true,
 } as const
 
+/**
+ * The spec every run carries: what it changes, what it keeps, how far it goes.
+ *
+ * Written before the call, it is what the code checks the arguments against and
+ * what the verification is asked about. `change` is the user's own words for
+ * the change only; `preserve` is the closed list of things that must not move.
+ */
+const SPEC_SCHEMA = {
+  type: 'object',
+  description: 'What this run changes and what it must leave alone, written BEFORE the call. change: only the change the user asked for. preserve: what must stay exactly as it is. intensity: "one step" when the line says "più X".',
+  properties: {
+    change: { type: 'string', description: 'Only the change the user asked for, in their words.' },
+    preserve: {
+      type: 'array',
+      items: { type: 'string', enum: ['format', 'framing', 'text', 'subjects', 'style'] },
+      description: 'What must stay: the frame shape, the framing and pose, the written text word for word, the subjects, the medium.',
+    },
+    intensity: { type: 'string', description: '"one step" when the line says "più X": one step, never a jump. Omit otherwise.' },
+  },
+  required: ['change'],
+  additionalProperties: false,
+} as const
+
+/** The denoise a call sets for itself, when it sets one. */
+function denoiseOf(tweaks: unknown): number | undefined {
+  if (typeof tweaks !== 'object' || tweaks === null) return undefined
+  for (const [key, value] of Object.entries(tweaks)) {
+    if (key.endsWith('.denoise') && typeof value === 'number') return value
+  }
+  return undefined
+}
+
+/** The fingerprint of one run: the values that decide what it makes. */
+function fingerprintOf(parts: Readonly<Record<string, unknown>>): string {
+  return attemptFingerprint(Object.fromEntries(Object.entries(parts).filter(([, value]) => value !== undefined)))
+}
+
+/**
+ * The checks a run goes through before anything is queued: its spec against
+ * its own arguments, and the attempts this request already spent.
+ * @param deps - the turn.
+ * @param args - the tool's arguments.
+ * @param context - what the call does, for the spec check.
+ * @param key - the request key the attempts are filed under.
+ * @param parts - the values that decide what the run makes.
+ * @returns the refusal, or the spec and the fingerprint to file afterwards.
+ */
+function runChecks(
+  deps: AgentToolDeps,
+  args: Readonly<Record<string, unknown>>,
+  context: { readonly prompt: string; readonly changesShape: boolean; readonly edit: boolean },
+  key: string,
+  parts: Readonly<Record<string, unknown>>,
+): { readonly spec: import('./edit-spec.ts').EditSpec; readonly fingerprint: string } | { readonly error: string } {
+  const spec = readEditSpec(args['spec'], deps.asked)
+  const denoise = denoiseOf(args['tweaks'])
+  const contradiction = specRefusal(spec, {
+    asked: deps.asked,
+    prompt: context.prompt,
+    changesShape: context.changesShape,
+    edit: context.edit,
+    ...denoise === undefined ? {} : { denoise },
+  })
+  if (contradiction !== undefined) return { error: contradiction }
+  const fingerprint = fingerprintOf(parts)
+  const spent = attemptRefusal(deps.attempts?.() ?? [], key, fingerprint)
+  if (spent !== undefined) return { error: spent }
+  deps.remember?.({ key, fingerprint, state: 'ran' })
+  return { spec, fingerprint }
+}
+
+/**
+ * Files what a queued attempt came to, and the files it made.
+ *
+ * A run that answered `error` is filed as failed, so the same parameters are
+ * not sent again: the next call has to change something that matters.
+ * @param deps - the turn.
+ * @param attempt - the spec and fingerprint of this run.
+ * @param key - the request key the attempt is filed under.
+ * @param jobs - the runs the call queued.
+ */
+function rememberRun(
+  deps: AgentToolDeps,
+  attempt: { readonly fingerprint: string },
+  key: string,
+  jobs: readonly ImagineJob[],
+): void {
+  deps.markAttempt?.(key, attempt.fingerprint, jobs.some(job => job.status === 'error') ? 'failed' : 'ran')
+  for (const job of jobs) for (const file of job.files ?? []) deps.keepAttemptFile?.(key, file.name)
+}
+
 /** The longest prompt a tool takes: longer than any line a person writes. */
 const MAX_PROMPT = 4_000
 
@@ -370,9 +479,10 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
             resolution: { type: 'string', enum: [...IMAGE_RESOLUTIONS], description: 'Short side; the studio\'s default shape (9:16) when no aspect is named.' },
             count: { type: 'integer', minimum: 1, maximum: MAX_COUNT, description: 'How many variants.' },
             reference: { type: 'string', description: 'A gallery picture whose style the user asked to take, when the studio\'s generate graph accepts one; the others\' look goes in the prompt.' },
+            spec: SPEC_SCHEMA,
             tweaks: TWEAKS_SCHEMA,
           },
-          required: ['prompt'],
+          required: ['prompt', 'spec'],
           additionalProperties: false,
         },
       },
@@ -421,6 +531,13 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       const checked = await checkedAgainstGraph(deps, GENERATE_KEY, prompt, args['tweaks'])
       if ('error' in checked) return refused(checked.error)
       const tweaked = Object.keys(checked.fields).length > 0
+      const attempt = runChecks(deps, args, { prompt, changesShape: false, edit: false }, runKey('generate', styleRef), {
+        prompt, aspect, resolution, count, reference: styleRef, tweaks: checked.fields,
+      })
+      if ('error' in attempt) {
+        deps.say({ kind: 'step', step: 'tool', name: 'generate_image', detail: prompt, count })
+        return refused(attempt.error)
+      }
       const jobs = await deps.start({
         action: 'generate',
         prompt,
@@ -433,12 +550,15 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         ...deps.model === undefined ? {} : { model: deps.model },
       })
       for (const job of jobs) deps.say({ kind: 'step', step: 'queued', jobId: job.id, detail: job.action })
+      rememberRun(deps, attempt, runKey('generate', styleRef), jobs)
       return {
         result: {
           ok: true,
           queued: jobs.map(job => job.id),
           count: jobs.length,
           state: 'queued',
+          spec: attempt.spec,
+          attemptKey: runKey('generate', styleRef),
           ...size === undefined ? {} : { size },
           ...aspect === undefined ? {} : { aspect },
           ...aspect === undefined && resolution !== undefined ? { resolution } : {},
@@ -461,6 +581,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
           properties: {
             prompt: { type: 'string', description: 'The one change, in the user\'s words.' },
             source: { type: 'string', description: 'The picture to edit, by gallery name.' },
+            spec: SPEC_SCHEMA,
             target: { type: 'string', description: 'The thing in the photo the change is about, in the photo\'s own words.' },
             region: {
               type: 'object',
@@ -476,7 +597,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
             resolution: { type: 'string', enum: [...IMAGE_RESOLUTIONS], description: 'Short side; with `aspect` it sets the new frame, alone it resizes the photo in its own shape.' },
             count: { type: 'integer', minimum: 1, maximum: MAX_COUNT, description: 'How many variants of the edit, when the user asked for more than one.' },
           },
-          required: ['prompt', 'source'],
+          required: ['prompt', 'source', 'spec'],
           additionalProperties: false,
         },
       },
@@ -562,6 +683,11 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         : aspect as ImagineAspect
       const size = shape === undefined ? undefined : sizeFor(shape, (resolution ?? '1080p') as ImagineResolution)
       if (deps.canQueue() < count) return refused(queueRefusal(deps.canQueue(), count))
+      const editKey = runKey('remix', item.name)
+      const attempt = runChecks(deps, args, { prompt, changesShape: aspect !== undefined, edit: true }, editKey, {
+        prompt, source: item.name, aspect, resolution, count, target, region, reference,
+      })
+      if ('error' in attempt) return refused(attempt.error)
       deps.say({ kind: 'step', step: 'tool', name: 'edit_image', detail: prompt, ...count > 1 ? { count } : {} })
       const jobs = await deps.start({
         action: 'remix',
@@ -579,12 +705,15 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         ...deps.model === undefined ? {} : { model: deps.model },
       })
       for (const job of jobs) deps.say({ kind: 'step', step: 'queued', jobId: job.id, detail: job.action })
+      rememberRun(deps, attempt, editKey, jobs)
       return {
         result: {
           ok: true,
           queued: jobs.map(job => job.id),
           count: jobs.length,
           state: 'queued',
+          spec: attempt.spec,
+          attemptKey: editKey,
           source: item.name,
           ...aspect === undefined ? {} : { aspect },
           ...size === undefined ? {} : { size },
@@ -769,6 +898,80 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       } finally {
         if (scratch !== undefined) await rm(scratch, { recursive: true, force: true }).catch(() => undefined)
       }
+    },
+  },
+  {
+    schema: {
+      type: 'function',
+      function: {
+        name: 'check_result',
+        description: 'Check a result against the picture it came from and the spec it carried, and get the verdict the reply must be built from: the change done or not, each kept item, the written text read literally, what changed unasked, whether it is the original again or a repeat. Call it after every edit, before writing the reply.',
+        parameters: {
+          type: 'object',
+          properties: {
+            file: { type: 'string', description: 'The result, by gallery name.' },
+            source: { type: 'string', description: 'The picture it was made from, for an edit: the check puts the two side by side.' },
+            spec: SPEC_SCHEMA,
+            previous: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Earlier results of the same request, to catch a repeat.',
+            },
+          },
+          required: ['file', 'spec'],
+          additionalProperties: false,
+        },
+      },
+    },
+    async run(args, deps) {
+      const file = str(args['file'])
+      if (file === undefined) return refused('file is required: the result, by gallery name')
+      const item = await galleryKind(deps, file, ['image'])
+      if (typeof item === 'string') return refused(item)
+      const source = str(args['source'])
+      if (source !== undefined) {
+        const from = await galleryKind(deps, source, ['image'])
+        if (typeof from === 'string') return refused(from)
+      }
+      const spec = readEditSpec(args['spec'], deps.asked)
+      const checkKey = runKey(source === undefined ? 'generate' : 'remix', source)
+      /*
+       * A repeat is looked for without the model having to remember: the files
+       * this request already made are the ones the new result is compared with.
+       */
+      const recalled = deps.attemptFiles?.(checkKey) ?? []
+      const previous = [...new Set([
+        ...(Array.isArray(args['previous']) ? args['previous'].filter((name): name is string => typeof name === 'string' && name !== '') : []),
+        ...recalled,
+      ])].filter(name => name !== item.name)
+      deps.say({ kind: 'step', step: 'tool', name: 'check_result', detail: item.name })
+      const checked = await verifyRun({
+        ctx: deps.ctx,
+        outputDir: deps.outputDir,
+        ...deps.model === undefined ? {} : { model: deps.model },
+        ...deps.language === undefined ? {} : { language: deps.language },
+        ...deps.signal === undefined ? {} : { signal: deps.signal },
+        say: deps.say,
+      }, {
+        file: item.name,
+        ...source === undefined ? {} : { source },
+        spec,
+        ...previous.length === 0 ? {} : { previous },
+      })
+      if ('error' in checked) return refused(checked.error)
+      deps.keepVerdict?.(checked.verdict)
+      /*
+       * The verdict decides how the attempt of that request is filed: a
+       * failed check is what makes the same parameters refuse to run again.
+       */
+      const last = (deps.attempts?.() ?? []).filter(attempt => attempt.key === checkKey).at(-1)
+      if (last !== undefined) deps.markAttempt?.(checkKey, last.fingerprint, checked.verdict.state === 'completed' ? 'kept' : 'failed')
+      return done({
+        ok: true,
+        file: item.name,
+        ...checked.verdict,
+        note: 'the reply opens with the word for this state and carries what this verdict found: never a denial of a loss it names, never "done" when it is partial or failed',
+      })
     },
   },
   {
@@ -1375,10 +1578,11 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
             prompt: { type: 'string', description: 'What to draw, in the user\'s words.' },
             customFields: { type: 'object', description: 'The card\'s exposed inputs, keyed "<node>.<field>".', additionalProperties: true },
             customFiles: { type: 'object', description: 'The card\'s file slots: node id → gallery file name.', additionalProperties: { type: 'string' } },
+            spec: SPEC_SCHEMA,
             tweaks: TWEAKS_SCHEMA,
             count: { type: 'integer', minimum: 1, maximum: MAX_COUNT, description: 'How many runs of the card, when the user asked for several pictures.' },
           },
-          required: ['customWorkflowId'],
+          required: ['customWorkflowId', 'spec'],
           additionalProperties: false,
         },
       },
@@ -1426,6 +1630,11 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         return refused(`count must be an integer from 1 to ${String(MAX_COUNT)}`)
       }
       if (deps.canQueue() < count) return refused(queueRefusal(deps.canQueue(), count))
+      const cardKey = runKey('custom', card.id)
+      const attempt = runChecks(deps, args, { prompt, changesShape: false, edit: false }, cardKey, {
+        prompt, card: card.id, count, fields: runFields, files,
+      })
+      if ('error' in attempt) return refused(attempt.error)
       deps.say({ kind: 'step', step: 'tool', name: 'run_card', detail: card.title, count })
       const jobs = await deps.start({
         action: 'custom',
@@ -1438,7 +1647,8 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         ...deps.model === undefined ? {} : { model: deps.model },
       })
       for (const job of jobs) deps.say({ kind: 'step', step: 'queued', jobId: job.id, detail: job.action })
-      return { result: { ok: true, queued: jobs.map(job => job.id), count: jobs.length, state: 'queued', card: card.title }, jobs, files: [] }
+      rememberRun(deps, attempt, cardKey, jobs)
+      return { result: { ok: true, queued: jobs.map(job => job.id), count: jobs.length, state: 'queued', card: card.title, spec: attempt.spec, attemptKey: cardKey }, jobs, files: [] }
     },
   },
   {

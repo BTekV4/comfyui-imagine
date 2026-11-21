@@ -1170,3 +1170,162 @@ test('a personal card takes ten pictures in one call and says ten', async () => 
   const result = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as { count?: number }
   assert.equal(result.count, 10)
 })
+
+test('a run whose spec contradicts its arguments is refused before anything is queued', async () => {
+  const inventory = lanternInventory()
+  // The spec says the frame shape stays, and the call asks for another one.
+  const { deps, started, model } = turn([
+    toolCall('edit_image', {
+      source: 'photo.png',
+      prompt: 'una luce più calda',
+      aspect: '16:9',
+      spec: { change: 'una luce più calda', preserve: ['format', 'framing'] },
+    }),
+    text('Fatto.'),
+  ], { inventory, outputDir: mediaDir, text: 'rendi la luce più calda' })
+  await readAgentChat(deps)
+  assert.equal(started.length, 0, 'nothing ran')
+  const refusal = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as { error?: string }
+  assert.match(refusal.error ?? '', /the spec says the format stays and the call changes it/)
+})
+
+test('a run that would push the content past the line is refused by the spec check', async () => {
+  const inventory = lanternInventory()
+  const { deps, started, model } = turn([
+    toolCall('generate_image', { prompt: 'una donna nuda sulla spiaggia', spec: { change: 'più sensuale' } }),
+    text('Fatto.'),
+  ], { inventory, text: 'rendila più sensuale' })
+  await readAgentChat(deps)
+  assert.equal(started.length, 0)
+  const refusal = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as { error?: string }
+  assert.match(refusal.error ?? '', /the line does not ask for nudity or explicit content/)
+})
+
+test('a request stops at three attempts, and the fourth call is refused', async () => {
+  const inventory = lanternInventory()
+  const { deps, started, model } = turn([
+    toolCall('generate_image', { prompt: 'un faro al tramonto', spec: { change: 'un faro' } }),
+    toolCall('generate_image', { prompt: 'un faro al tramonto, più rosso', spec: { change: 'un faro più rosso' } }, 'call_2'),
+    toolCall('generate_image', { prompt: 'un faro al tramonto, più viola', spec: { change: 'un faro più viola' } }, 'call_3'),
+    toolCall('generate_image', { prompt: 'un faro al tramonto, più arancio', spec: { change: 'un faro più arancio' } }, 'call_4'),
+    text('Ho fatto tre tentativi.'),
+  ], { inventory, text: 'prova a fare un faro al tramonto' })
+  await readAgentChat(deps)
+  assert.equal(started.length, 3, 'three runs, then stop')
+  const refusal = JSON.parse(model.requests.at(-1)?.messages.at(-1)?.content ?? '{}') as { error?: string }
+  assert.match(refusal.error ?? '', /has had 3 attempts/)
+})
+
+test('check_result asks about the spec, files the verdict and fails the attempt it judges', async () => {
+  const { createAttempts } = await import('../server/vendor/tool-comfy/run-attempts.ts')
+  const board = createAttempts()
+  board.add({ key: 'generate', fingerprint: 'f', state: 'ran' })
+  const asked: string[] = []
+  const host = {
+    auxiliary: {
+      async analyzeImage(_path: string, instruction: string) {
+        asked.push(instruction)
+        return {
+          text: '{"description":"Una tazza bianca, nessuna scritta.","requested_change_done":false,"preserved_ok":{"text":false},"text_found":[],"unrequested_changes":["la scritta è sparita"]}',
+        }
+      },
+    },
+  } as unknown as ImagineHost
+  const outcome = await runAgentTool('check_result', {
+    file: 'photo.png',
+    spec: { change: 'una luce più calda', preserve: ['text'] },
+  }, {
+    ctx: host,
+    outputDir: mediaDir,
+    model: MODEL,
+    language: 'it',
+    asked: 'rendi la luce più calda senza togliere la scritta',
+    eraseTool: false,
+    known: [],
+    canQueue: () => 1,
+    say: () => undefined,
+    start: async () => [],
+    jobView: job => job,
+    listJobs: () => [],
+    getJob: () => undefined,
+    adoptFiles: async () => undefined,
+    cancelJob: async () => true,
+    attempts: () => board.list(),
+    markAttempt: (key, fingerprint, state) => { board.mark(key, fingerprint, state) },
+    keepVerdict: verdict => { board.keepVerdict(verdict) },
+  })
+  assert.equal(outcome.result['ok'], true)
+  assert.equal(outcome.result['state'], 'failed', 'the change is not there')
+  assert.deepEqual(outcome.result['text_found'], [])
+  assert.deepEqual(outcome.result['unrequested_changes'], ['la scritta è sparita'])
+  assert.match(String(outcome.result['note']), /opens with the word for this state/)
+  // The instruction carries the spec and the text rule.
+  assert.match(asked[0] ?? '', /Declared to keep: text/)
+  assert.match(asked[0] ?? '', /quoted exactly as it reads/)
+  assert.equal(board.verdicts().length, 1)
+  assert.equal(board.list()[0]?.state, 'failed', 'the attempt is filed as failed')
+})
+
+test('a reply that does not say how it came out is rewritten once with the verdict', async () => {
+  const host = {
+    auxiliary: {
+      async analyzeImage() {
+        return {
+          text: '{"description":"La tazza bianca, il cielo com\'era.","requested_change_done":false,"preserved_ok":{},"text_found":[],"unrequested_changes":[]}',
+        }
+      },
+    },
+  } as unknown as ImagineHost
+  const { deps, model } = turn([
+    toolCall('check_result', { file: 'photo.png', spec: { change: 'un cielo più blu' } }),
+    text('Fatto, il cielo è più blu.'),
+    text('Non riuscito: il cielo è com\'era.'),
+  ], { ctx: host, outputDir: mediaDir, language: 'it', text: 'rendi il cielo più blu' })
+  const answer = await readAgentChat(deps)
+  // The verdict says failed, the reply said done: one rewrite, with the facts.
+  assert.equal(model.requests.length, 3)
+  const ask = model.requests[2]?.messages.at(-1)?.content ?? ''
+  assert.match(ask, /check on the result found: state: failed/)
+  assert.equal(answer.reply, 'Non riuscito: il cielo è com\'era.')
+})
+
+test('a result that repeats an earlier one of the same request fails the check without being asked', async () => {
+  const { createAttempts } = await import('../server/vendor/tool-comfy/run-attempts.ts')
+  const dir = await mkdtemp(join(tmpdir(), 'imagine-agent-verify-'))
+  await writeFile(join(dir, 'earlier.png'), ONE_PIXEL_PNG)
+  await writeFile(join(dir, 'again.png'), ONE_PIXEL_PNG)
+  const board = createAttempts()
+  board.keepFile('generate', 'earlier.png')
+  const host = {
+    auxiliary: {
+      async analyzeImage() {
+        return { text: '{"description":"La stessa tazza.","requested_change_done":true,"preserved_ok":{},"text_found":[],"unrequested_changes":[]}' }
+      },
+    },
+  } as unknown as ImagineHost
+  const outcome = await runAgentTool('check_result', {
+    file: 'again.png',
+    spec: { change: 'un cielo più blu' },
+  }, {
+    ctx: host,
+    outputDir: dir,
+    model: MODEL,
+    language: 'it',
+    asked: 'rendi il cielo più blu',
+    eraseTool: false,
+    known: [],
+    canQueue: () => 1,
+    say: () => undefined,
+    start: async () => [],
+    jobView: job => job,
+    listJobs: () => [],
+    getJob: () => undefined,
+    adoptFiles: async () => undefined,
+    cancelJob: async () => true,
+    attemptFiles: key => board.filesOf(key),
+  })
+  // The two files are the same pixels: the look may claim the change, the
+  // measure says the result repeats an earlier one, and that is a failure.
+  assert.equal(outcome.result['repeated'], 'earlier.png')
+  assert.equal(outcome.result['state'], 'failed')
+})

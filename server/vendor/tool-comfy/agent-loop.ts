@@ -31,6 +31,8 @@ import type { JobBody } from './job-start.ts'
 import { agentInstruction, finalReplyAsk } from './agent-prompt.ts'
 import type { LoraCard } from './lora-catalog.ts'
 import { replyNeedsRewrite, rewriteAsk } from './reply-language.ts'
+import { stateRewriteAsk, verdictNeedsState } from './edit-verify.ts'
+import { createAttempts, type TurnAttempts } from './run-attempts.ts'
 import { join } from 'node:path'
 import { probeMedia } from './media-tools.ts'
 import {
@@ -290,6 +292,8 @@ interface TurnState {
   setup?: { readonly what: string; readonly jobIds: readonly string[] }
   /** Calls of an assistant message already written, to run after a resume. */
   cursor?: { readonly calls: readonly AgentToolCall[]; readonly index: number }
+  /** What this turn already tried, and what its checks found. */
+  readonly attempts: TurnAttempts
 }
 
 /** One turn stopped before a confirmed action, kept in memory until answered. */
@@ -345,6 +349,13 @@ function toolDepsOf(deps: AgentTurnDeps, state: TurnState): AgentToolDeps {
     known: state.known,
     canQueue: () => Math.max(0, jobBudgetFor(deps.surface.limits(), state.asked, previousUserLine(deps.request.history)) - state.jobs.length),
     say: deps.say,
+    attempts: () => state.attempts.list(),
+    remember: attempt => { state.attempts.add(attempt) },
+    markAttempt: (key, fingerprint, outcome) => { state.attempts.mark(key, fingerprint, outcome) },
+    attemptFiles: key => state.attempts.filesOf(key),
+    keepAttemptFile: (key, file) => { state.attempts.keepFile(key, file) },
+    keepVerdict: verdict => { state.attempts.keepVerdict(verdict) },
+    verdicts: () => state.attempts.verdicts(),
   }
 }
 
@@ -447,6 +458,7 @@ async function runAgentTurn(deps: AgentTurnDeps, route: ModelRoute): Promise<Age
     reply: '',
     gaveUpWaiting: false,
     contained: false,
+    attempts: createAttempts(),
   }
   return await driveTurn(deps, state)
 }
@@ -486,6 +498,7 @@ async function resumeAgentChat(deps: AgentTurnDeps): Promise<AgentChatAnswer> {
       : await waitForJobs(queued, deps, state.deadline, limits.waitSeconds)
     const lived = queued.map(job => deps.getJob(job.id) ?? job)
     const result = await waitedResult(outcome, waited, lived, deps.outputDir)
+    fileAttemptFiles(state, outcome, lived)
     state.messages.push({ role: 'tool', toolCallId: session.call.id, content: JSON.stringify(forModel(result, state.language)) })
     if (waited.setup.length > 0) {
       state.setup = { what: setupWhat(waited.setup), jobIds: waited.setup.map(job => job.id) }
@@ -639,6 +652,7 @@ async function driveTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentCh
       // queued, and only the map knows what each of them made.
       const lived = queued.map(job => deps.getJob(job.id) ?? job)
       const result = await waitedResult(outcome, waited, lived, deps.outputDir)
+      fileAttemptFiles(state, outcome, lived)
       state.messages.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify(forModel(result, state.language)) })
       // The wait is the turn's whole patience with a run: past it the reply
       // says "still running" and the result appears in the chat by itself.
@@ -711,6 +725,17 @@ async function finishTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentC
     const rewritten = await rewriteReply(deps, state)
     if (rewritten !== undefined) state.reply = rewritten
   }
+  /*
+   * The reply says how the work came out, and the check is the one that knows:
+   * a failed or partial verdict, or a reply that claims a state the check did
+   * not find, is asked for once more with the verdict's own words. This is the
+   * last thing before the turn answers, so nothing overwrites it after.
+   */
+  const verdict = state.attempts.verdicts().at(-1)
+  if (state.reply.length > 0 && verdictNeedsState(state.reply, verdict) && verdict !== undefined) {
+    const rewritten = await rewriteWithVerdict(deps, state, verdict)
+    if (rewritten !== undefined) state.reply = rewritten
+  }
   // The queue's live copy, not the snapshot the start returned: it was queued
   // when the array was built and only the map knows it finished. A run waiting
   // for its install is not "running" here: its own sentence says that.
@@ -756,6 +781,34 @@ async function rewriteReply(deps: AgentTurnDeps, state: TurnState): Promise<stri
     const text = last.text.trim()
     if (text.length === 0) return undefined
     deps.say({ kind: 'step', step: 'rewrite', detail: state.language ?? '?' })
+    return text
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Ask the model for its reply again, with the check's verdict in the question.
+ * @param deps - the turn.
+ * @param state - the turn's state, with the reply to rewrite.
+ * @param verdict - what the check found.
+ * @returns the rewritten text, or undefined when the call failed or was empty.
+ */
+async function rewriteWithVerdict(deps: AgentTurnDeps, state: TurnState, verdict: Parameters<typeof stateRewriteAsk>[0]): Promise<string | undefined> {
+  try {
+    const last = await collect(deps.modelClient.chat({
+      provider: state.route.provider,
+      model: state.route.model,
+      messages: [
+        ...state.messages,
+        { role: 'assistant', content: state.reply },
+        { role: 'user', content: stateRewriteAsk(verdict) },
+      ],
+      ...deps.signal === undefined ? {} : { signal: deps.signal },
+    }), () => undefined)
+    const text = last.text.trim()
+    if (text.length === 0) return undefined
+    deps.say({ kind: 'step', step: 'rewrite', detail: verdict.state })
     return text
   } catch {
     return undefined
@@ -906,6 +959,21 @@ async function measured(
     ...width === undefined || height === undefined || width <= 0 || height <= 0 ? {} : { width, height, ratio: ratioName(width, height) },
     ...duration === undefined || duration <= 0 ? {} : { duration },
   }
+}
+
+/**
+ * Files the files a settled attempt made, under the request that asked for it.
+ *
+ * The tool files the attempt when it queues; the files only exist once the
+ * runs are done, and the repeat check needs them.
+ * @param state - the turn.
+ * @param outcome - the tool's own result, which carries the request key.
+ * @param lived - the runs as the queue has them after waiting.
+ */
+function fileAttemptFiles(state: TurnState, outcome: AgentToolOutcome, lived: readonly ImagineJob[]): void {
+  const key = outcome.result['attemptKey']
+  if (typeof key !== 'string') return
+  for (const job of lived) for (const file of job.files ?? []) state.attempts.keepFile(key, file.name)
 }
 
 /** The nearest common ratio, as the studio spells it. */
