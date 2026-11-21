@@ -317,7 +317,7 @@ export async function graphNotes(deps: Pick<AgentToolDeps, 'inventory'>): Promis
 /** The `tweaks` argument, the same on every tool that runs a graph. */
 const TWEAKS_SCHEMA = {
   type: 'object',
-  description: 'Changes for THIS run only, keyed "<node>.<field>" exactly as `inspect_workflow` lists them: a LoRA weight, a sampler value. Never the prompt or the seed. Omit when the user asked for nothing the arguments do not already cover.',
+  description: 'Changes for THIS run only, keyed "<node>.<field>" exactly as `inspect_workflow` lists them as tweakable: a sampler value (the steps, the cfg, the denoise). Never the prompt or the seed. A LoRA\'s weight or file name, and the word or switch that turns a branch on, are refused: the chat never changes them. Omit when the user asked for nothing the arguments do not already cover.',
   additionalProperties: true,
 } as const
 
@@ -1326,7 +1326,7 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
       type: 'function',
       function: {
         name: 'inspect_workflow',
-        description: 'Read what a graph does inside before running it: its LoRAs with their weights, the words in the prompt that switch a LoRA or a branch on, the sampler values, whether it takes a picture in. `workflow` is "generate" (what generate_image runs) or a personal card id. Use it when the user names a LoRA, a person, a style the graph may carry, or asks why a result came out as it did. The keys it lists are the ones `tweaks` takes.',
+        description: 'Read what a graph does inside before running it: its LoRAs with their weights, the words in the prompt that switch a LoRA or a branch on, the sampler values, whether it takes a picture in. `workflow` is "generate" (what generate_image runs) or a personal card id. Use it when the user names a LoRA, a person, a style the graph may carry, or asks why a result came out as it did. A LoRA (its weight and its file) and the switch words are read-only: `tweaks` refuses them. `tweakable` lists the sampler keys a run may change for itself.',
         parameters: {
           type: 'object',
           properties: {
@@ -1353,10 +1353,12 @@ export const AGENT_TOOLS: readonly AgentTool[] = [
         loras: reading.loras.map(lora => ({
           name: lora.name,
           weight: lora.strength,
-          key: lora.strengthKey,
+          readOnly: true,
           ...lora.gate === undefined ? {} : { needsWord: lora.gate.word, when: lora.gate.when },
         })),
+        gates: reading.gates.map(gate => ({ word: gate.word, node: gate.node, readOnly: true })),
         sampler: reading.sampler,
+        tweakable: Object.keys(reading.sampler),
         takesImage: reading.takesImage,
       })
     },

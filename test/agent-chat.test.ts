@@ -95,6 +95,20 @@ function classicHost(reply: string): ImagineHost {
   } as unknown as ImagineHost
 }
 
+/** A host whose vision pass answers with the next scripted JSON. */
+function seeingHost(answers: readonly string[]): ImagineHost {
+  let at = 0
+  return {
+    auxiliary: {
+      async analyzeImage(): Promise<{ text: string; provider: string; model: string }> {
+        const text = answers[Math.min(at, answers.length - 1)] ?? '{}'
+        at += 1
+        return { text, provider: 'fake', model: 'fake' }
+      },
+    },
+  } as unknown as ImagineHost
+}
+
 /** A turn with a fake model, a fake start and the events it said. */
 function turn(
   scripts: readonly (readonly AgentModelEvent[])[],
@@ -1018,6 +1032,65 @@ test('the instruction takes the style from the pictures and never invents photor
   assert.match(text, /Each file\'s `seen:` belongs to that file/)
 })
 
+test('the instruction keeps a LoRA out of the tools, and forbids pushing the content further', async () => {
+  const { agentInstruction } = await import('../server/vendor/tool-comfy/agent-prompt.ts')
+  const text = await agentInstruction({
+    request: { text: 'x', history: [], staged: [], recent: [], model: MODEL },
+    known: [],
+    eraseTool: false,
+    working: [],
+    maxSteps: 8,
+    maxJobs: 6,
+  })
+  // 8: a LoRA is read-only, and the chat says so once and moves on.
+  assert.match(text, /A LoRA is read-only/)
+  assert.match(text, /never changed by the chat/)
+  assert.match(text, /say once that the chat does not change it/)
+  // 12: "sensuale" is not "nudo", and no lever pushes the content further.
+  assert.match(text, /are not "nudo"/)
+  assert.match(text, /never adds nudity/)
+  assert.match(text, /do not present the result as what was asked/)
+  // 3: the check is the truth, and the reply cannot deny it.
+  assert.match(text, /never deny one of them/)
+  assert.match(text, /carries `check`/)
+  assert.match(text, /say which ones/)
+})
+
+test('an edit is compared with its source, and the reply carries what it lost', async () => {
+  const ctx = seeingHost([JSON.stringify({
+    requested_change_done: true,
+    missing: ['the lettering OPEN'],
+    added: [],
+    text: [],
+    description: 'the mug is blue',
+  })])
+  const { deps, model } = turn([
+    toolCall('edit_image', { prompt: 'cambia il colore della tazza', source: 'photo.png' }),
+    text('Fatto: la tazza ora è blu.'),
+  ], { ctx, outputDir: mediaDir, text: 'cambia il colore della tazza' })
+  const answer = await readAgentChat(deps)
+  const toolMessage = (model.requests[1]?.messages ?? []).filter(message => message.role === 'tool').at(-1)
+  const result = JSON.parse(toolMessage?.content ?? '{}') as { check?: { missing?: string[]; same?: boolean } }
+  assert.deepEqual(result.check?.missing, ['the lettering OPEN'])
+  assert.equal(result.check?.same, false)
+  // The reply did not say it: the studio appends the check's own sentence.
+  assert.match(answer.reply, /OPEN/)
+  assert.match(answer.reply, /perso|has lost/)
+})
+
+test('a reply that denies what the vision pass saw carries the pass sentence', async () => {
+  await writeFile(join(mediaDir, 'job-1.webp'), ONE_PIXEL_PNG)
+  const ctx = seeingHost(['the picture shows a woman, bare breast visible, no written text'])
+  const { deps } = turn([
+    toolCall('generate_image', { prompt: 'una donna in un campo' }),
+    toolCall('look', { file: 'job-1.webp', question: 'is she dressed?' }, 'call_2'),
+    text('Non l\'ho fatta nuda: la donna è vestita.'),
+  ], { ctx, outputDir: mediaDir, text: 'una donna in un campo, sensuale' })
+  const answer = await readAgentChat(deps)
+  assert.match(answer.reply, /job-1\.webp/)
+  assert.match(answer.reply, /bare breast/)
+})
+
 /** A generation graph with a LoRA that only runs when the prompt says "lanterna". */
 function lanternInventory() {
   const graph = {
@@ -1050,10 +1123,21 @@ test('the instruction tells the agent which word switches a LoRA on, and inspect
   await readAgentChat(deps)
   const system = model.requests[0]?.messages.find(message => message.role === 'system')?.content ?? ''
   assert.match(system, /INSIDE THE GRAPHS/)
-  assert.match(system, /lantern-glow" weight 0\.6 \(76\.strength_model\), ON ONLY WHEN the prompt contains "lanterna"/)
-  const result = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as { ok?: boolean; loras?: { key: string; needsWord?: string }[] }
+  assert.match(system, /lantern-glow" weight 0\.6 \(fixed: not a run setting\), ON ONLY WHEN the prompt contains "lanterna"/)
+  const result = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as {
+    ok?: boolean
+    loras?: { name: string; weight: number; readOnly?: boolean; needsWord?: string; key?: string }[]
+    tweakable?: string[]
+  }
   assert.equal(result.ok, true)
-  assert.deepEqual(result.loras?.map(lora => [lora.key, lora.needsWord]), [['76.strength_model', 'lanterna'], ['k2.strength_model', undefined]])
+  assert.deepEqual(result.loras?.map(lora => [lora.name, lora.weight, lora.readOnly, lora.needsWord]), [
+    ['lantern-glow', 0.6, true, 'lanterna'],
+    ['film-look', 0.75, true, undefined],
+  ])
+  // A LoRA has no tweak key; the sampler does.
+  assert.equal(result.loras?.some(lora => lora.key !== undefined), false)
+  assert.equal(result.tweakable?.includes('76.strength_model'), false)
+  assert.deepEqual(result.tweakable, ['53.steps', '53.cfg', '53.denoise', '53.sampler_name', '53.scheduler'])
 })
 
 test('a prompt that lost the word switching a LoRA on is sent back, and the run keeps it', async () => {
@@ -1074,13 +1158,26 @@ test('a prompt that lost the word switching a LoRA on is sent back, and the run 
   assert.equal(started[0]?.prompt, 'una Lanterna in stile poster')
 })
 
-test('tweaks change a LoRA weight for this run only, and never the prompt or the seed', async () => {
+test('tweaks change a sampler value for this run only, and a LoRA weight is refused', async () => {
   const inventory = lanternInventory()
-  const ok = turn([toolCall('generate_image', { prompt: 'un faro', tweaks: { 'k2.strength_model': 0.3, '53.steps': 12 } }), text('Fatto.')], { inventory, text: 'un faro, con meno effetto pellicola' })
+  const ok = turn([toolCall('generate_image', { prompt: 'un faro', tweaks: { '53.steps': 12 } }), text('Fatto.')], { inventory, text: 'un faro' })
   await readAgentChat(ok.deps)
-  assert.deepEqual(ok.started[0]?.customFields, { 'k2.strength_model': 0.3, '53.steps': 12 })
+  assert.deepEqual(ok.started[0]?.customFields, { '53.steps': 12 })
   const graph = inventory.graphOf?.('generate')?.graph as Record<string, { inputs: Record<string, unknown> }>
   assert.equal(graph['k2']?.inputs['strength_model'], 0.75, 'the stored graph is untouched')
+
+  // The defect of 2026-11-21: the agent raised a LoRA weight by itself.
+  for (const tweaks of [{ 'k2.strength_model': 0.3 }, { '76.lora_name': 'other.safetensors' }, { '74.substring': 'faro' }]) {
+    const lora = turn([toolCall('generate_image', { prompt: 'un faro', tweaks }), text('No.')], { inventory, text: 'un faro' })
+    await readAgentChat(lora.deps)
+    assert.equal(lora.started.length, 0, `nothing runs with ${JSON.stringify(tweaks)}`)
+    const refusal = JSON.parse(lora.model.requests[1]?.messages.at(-1)?.content ?? '{}') as { ok?: boolean; error?: string }
+    assert.equal(refusal.ok, false)
+    assert.match(refusal.error ?? '', /tweaks refused/)
+    assert.match(refusal.error ?? '', /never changes a LoRA from the chat|never changes a switch/)
+  }
+
+  // The prompt and the seed stay the studio's, as before.
   const bad = turn([toolCall('generate_image', { prompt: 'un faro', tweaks: { '53.seed': 7, '73.value': 'altro' } }), text('No.')], { inventory, text: 'un faro' })
   await readAgentChat(bad.deps)
   assert.equal(bad.started.length, 0)

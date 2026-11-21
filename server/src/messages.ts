@@ -248,6 +248,26 @@ export const MESSAGES = {
     it: 'Il lavoro non è riuscito: {error}',
     en: 'The run did not succeed: {error}',
   },
+  'agent.checkSame': {
+    it: 'Il confronto con la foto di partenza dice che «{file}» è identica a quella: la modifica non è avvenuta.',
+    en: 'The comparison with the starting picture says «{file}» is identical to it: the change did not happen.',
+  },
+  'agent.checkLost': {
+    it: 'Il confronto con l’originale dice che «{file}» ha perso: {items}.',
+    en: 'The comparison with the original says «{file}» has lost: {items}.',
+  },
+  'agent.checkAdded': {
+    it: 'Il confronto con l’originale trova in «{file}» qualcosa che non era stato chiesto: {items}.',
+    en: 'The comparison with the original finds in «{file}» something that was not asked for: {items}.',
+  },
+  'agent.visionExplicit': {
+    it: 'Il controllo visivo di «{file}» riporta: {seen}',
+    en: 'The vision check of «{file}» reports: {seen}',
+  },
+  'agent.noLoraFromChat': {
+    it: 'Il peso e il file di una LoRA, e la parola che accende un ramo del grafo, non si cambiano dalla chat: li decide chi ha fatto il grafo.',
+    en: 'A LoRA’s weight and file, and the word that switches a branch of the graph on, are not changed from the chat: the graph’s owner decides them.',
+  },
   'agent.confirmClip': {
     it: 'Un video di {seconds} secondi: vuoi che parta?',
     en: 'A {seconds}-second clip: shall I start it?',
