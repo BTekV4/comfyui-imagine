@@ -29,6 +29,8 @@ import { textRoutes } from './imagine-models.ts'
 import { whenJobsSettle, type ImagineJob } from './job-queue.ts'
 import type { JobBody } from './job-start.ts'
 import { agentInstruction, finalReplyAsk } from './agent-prompt.ts'
+import { checkEdit, type EditCheck } from './edit-verify.ts'
+import { reportGaps, withGaps } from './report-guard.ts'
 import type { LoraCard } from './lora-catalog.ts'
 import { replyNeedsRewrite, rewriteAsk } from './reply-language.ts'
 import { join } from 'node:path'
@@ -286,6 +288,10 @@ interface TurnState {
   reply: string
   gaveUpWaiting: boolean
   contained: boolean
+  /** What the vision pass said about a file this turn looked at. */
+  readonly looks: { readonly file: string; readonly seen: string }[]
+  /** Each edit compared with its source. */
+  readonly edits: { readonly file: string; readonly check: EditCheck }[]
   /** A queued run waits for the user to approve an install on ComfyUI. */
   setup?: { readonly what: string; readonly jobIds: readonly string[] }
   /** Calls of an assistant message already written, to run after a resume. */
@@ -447,6 +453,8 @@ async function runAgentTurn(deps: AgentTurnDeps, route: ModelRoute): Promise<Age
     reply: '',
     gaveUpWaiting: false,
     contained: false,
+    looks: [],
+    edits: [],
   }
   return await driveTurn(deps, state)
 }
@@ -470,6 +478,8 @@ async function resumeAgentChat(deps: AgentTurnDeps): Promise<AgentChatAnswer> {
     messages: [...session.state.messages],
     jobs: [...session.state.jobs],
     files: [...session.state.files],
+    looks: [...session.state.looks],
+    edits: [...session.state.edits],
     deadline: Date.now() + session.remainingMs,
     reply: '',
     gaveUpWaiting: false,
@@ -638,7 +648,10 @@ async function driveTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentCh
       // The queue's live copies: the start returned the jobs as they were
       // queued, and only the map knows what each of them made.
       const lived = queued.map(job => deps.getJob(job.id) ?? job)
-      const result = await waitedResult(outcome, waited, lived, deps.outputDir)
+      const plain = await waitedResult(outcome, waited, lived, deps.outputDir)
+      // What the checks found travels with the result: a look's sentence and,
+      // for an edit, the comparison with the picture it came from.
+      const result = await checkedForReport(deps, state, call, parsed, plain)
       state.messages.push({ role: 'tool', toolCallId: call.id, content: JSON.stringify(forModel(result, state.language)) })
       // The wait is the turn's whole patience with a run: past it the reply
       // says "still running" and the result appears in the chat by itself.
@@ -724,6 +737,18 @@ async function finishTurn(deps: AgentTurnDeps, state: TurnState): Promise<AgentC
       : failed?.error !== undefined ? message('agent.runFailed', { error: failed.error })
       : state.contained ? message('chat.agentFailed') : message('chat.agentEmpty')
   }
+  /*
+   * The reply is held to what the checks found: a fact the model left out or
+   * denied (nudity nobody asked for, lettering an edit lost, a result that is
+   * the source picture) is appended in the studio's own words, so the report
+   * says what the vision pass actually reported.
+   */
+  state.reply = withGaps(state.reply, reportGaps({
+    asked: state.asked,
+    looks: state.looks,
+    edits: state.edits,
+    reply: state.reply,
+  }))
   return {
     mode: 'agent',
     reply: state.reply,
@@ -890,6 +915,76 @@ async function waitedResult(
     return { ...outcome.result, state: 'running', waiting: 'the run is still going; the result appears in the chat when it is done' }
   }
   return outcome.result
+}
+
+/** The file names a tool result carries, whichever shape it wrote them in. */
+function namesOf(result: Readonly<Record<string, unknown>>): readonly string[] {
+  if (Array.isArray(result['files'])) {
+    return result['files']
+      .map((entry): string | undefined => typeof entry === 'object' && entry !== null ? (entry as { name?: unknown }).name as string | undefined : undefined)
+      .filter((name): name is string => typeof name === 'string')
+  }
+  return typeof result['file'] === 'string' ? [result['file']] : []
+}
+
+/**
+ * The tool result with what the checks found.
+ *
+ * A `look` is remembered so the reply can be held to it. An edit is compared
+ * with its source by the vision pass before the model writes a word about it:
+ * measured on 2026-11-21, a reply denied losing lettering nobody had compared,
+ * and another called an edit done while the result carried nudity nobody
+ * asked for. Only edits that settled are checked, and only their first file,
+ * so a batch of variants does not cost one look each.
+ * @param deps - the turn.
+ * @param state - what the turn has seen so far.
+ * @param call - the tool call being answered.
+ * @param args - its parsed arguments.
+ * @param result - what the tool and the wait produced.
+ * @returns the result, with `check` on an edit the pass could compare.
+ */
+async function checkedForReport(
+  deps: AgentTurnDeps,
+  state: TurnState,
+  call: AgentToolCall,
+  args: Readonly<Record<string, unknown>>,
+  result: Readonly<Record<string, unknown>>,
+): Promise<Readonly<Record<string, unknown>>> {
+  if (call.name === 'look') {
+    const file = result['file']
+    const seen = result['seen']
+    if (result['ok'] === true && typeof file === 'string' && typeof seen === 'string') state.looks.push({ file, seen })
+    return result
+  }
+  if (call.name !== 'edit_image' && call.name !== 'erase') return result
+  const settled = result['state'] === 'done' || result['ok'] === true
+  if (!settled) return result
+  const source = typeof result['source'] === 'string'
+    ? result['source']
+    : typeof args['source'] === 'string' ? args['source'] : undefined
+  const made = namesOf(result)[0]
+  if (source === undefined || made === undefined) return result
+  const asked = typeof args['prompt'] === 'string' && args['prompt'].trim().length > 0 ? args['prompt'].trim() : state.asked
+  const check = await checkEdit({
+    ctx: deps.ctx,
+    outputDir: deps.outputDir,
+    ...state.model === undefined ? {} : { model: state.model },
+    ...state.language === undefined ? {} : { language: state.language },
+    ...deps.signal === undefined ? {} : { signal: deps.signal },
+  }, source, made, asked).catch(() => undefined)
+  if (check === undefined) return result
+  state.edits.push({ file: made, check })
+  return {
+    ...result,
+    check: {
+      ...check.changeDone === undefined ? {} : { requested_change_done: check.changeDone },
+      same: check.same,
+      missing: check.missing,
+      added: check.added,
+      text: check.text,
+      ...check.description === undefined ? {} : { description: check.description },
+    },
+  }
 }
 
 /** One made file with its real measures, when ffprobe can read them. */

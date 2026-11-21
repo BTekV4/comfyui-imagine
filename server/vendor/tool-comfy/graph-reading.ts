@@ -42,6 +42,15 @@ const LORA_STRENGTH: Readonly<Record<string, readonly string[]>> = {
   LoraLoader: ['strength_model', 'strength_clip'],
 }
 
+/** Any node that loads a LoRA, whatever its pack spelt its class. */
+const LORA_CLASS = /^LoraLoader/i
+
+/** Any input that weights a LoRA, on any node. */
+const LORA_WEIGHT_INPUT = /^strength(_|$)/i
+
+/** The input that names a LoRA's file, on any node. */
+const LORA_FILE_INPUT = /^lora_name$/i
+
 /** Sampler inputs worth naming to the agent: the ones a request can be about. */
 const SAMPLER_FIELDS = ['steps', 'cfg', 'denoise', 'sampler_name', 'scheduler'] as const
 
@@ -199,11 +208,12 @@ export function readingLines(reading: GraphReading): readonly string[] {
     const gate = lora.gate === undefined
       ? 'always on'
       : `ON ONLY WHEN the prompt ${lora.gate.when === 'contains' ? 'contains' : 'does not contain'} "${lora.gate.word}"${lora.gate.caseSensitive ? ' (case-sensitive)' : ''}`
-    lines.push(`LoRA "${lora.name}" weight ${String(lora.strength)} (${lora.strengthKey}), ${gate}`)
+    // No key is printed: a LoRA is not a tweak, and the chat never changes it.
+    lines.push(`LoRA "${lora.name}" weight ${String(lora.strength)} (fixed: not a run setting), ${gate}`)
   }
   for (const gate of reading.gates) {
     if (reading.loras.some(lora => lora.gate?.node === gate.node)) continue
-    lines.push(`a branch runs when the ${gate.readsPrompt ? 'prompt' : 'text'} contains "${gate.word}" (node ${gate.node})`)
+    lines.push(`a branch runs when the ${gate.readsPrompt ? 'prompt' : 'text'} contains "${gate.word}" (node ${gate.node}, fixed)`)
   }
   const sampler = Object.entries(reading.sampler)
   if (sampler.length > 0) lines.push(`sampler: ${sampler.map(([key, value]) => `${key}=${String(value)}`).join(', ')}`)
@@ -242,12 +252,58 @@ export interface RunTweaks {
   readonly errors: readonly string[]
 }
 
+/** The sentence a locked LoRA setting is refused with. */
+const LORA_LOCK_REASON =
+  'a LoRA setting (its weight or its file name), and this studio never changes a LoRA from the chat, not even for one run: the LoRA is the graph owner\'s'
+
+/** The sentence a switch is refused with. */
+const GATE_LOCK_REASON =
+  'the word (or the switch) that turns a branch of the graph on, and the chat never changes a switch: the prompt is where that word is chosen'
+
+/**
+ * What one run may never change in a graph: its LoRAs and its switches.
+ *
+ * Measured on 2026-11-21: asked for a "more sensual" edit, the agent raised a
+ * LoRA weight by itself and the result carried nudity nobody asked for. The
+ * LoRA, its weight and the words that switch a branch on are the graph
+ * owner's, not a lever for a stronger result; a run gets the sampler values
+ * and nothing else. Keys are a node id (the whole node is locked) or
+ * `<node>.<field>` (one input is).
+ * @param graph - the workflow.
+ * @returns the locked node and input keys with the reason each is locked.
+ */
+export function lockedRunSettings(graph: ComfyGraph): ReadonlyMap<string, string> {
+  const locked = new Map<string, string>()
+  for (const [id, node] of Object.entries(graph)) {
+    if (LORA_CLASS.test(node.class_type)) locked.set(id, LORA_LOCK_REASON)
+    for (const [field, value] of Object.entries(node.inputs)) {
+      if (!LORA_WEIGHT_INPUT.test(field) && !LORA_FILE_INPUT.test(field)) continue
+      locked.set(`${id}.${field}`, LORA_LOCK_REASON)
+      // A weight or a file name read from a text or number node is that node's
+      // value: changing it upstream changes the LoRA just the same.
+      if (isLink(value)) for (const source of upstream(graph, value[0])) locked.set(source, LORA_LOCK_REASON)
+    }
+    const test = TEXT_TESTS[node.class_type]
+    if (test !== undefined) {
+      locked.set(id, GATE_LOCK_REASON)
+      // The word a gate looks for can come from its own node or from a text
+      // node upstream: both are the switch, so neither is a run setting.
+      const word = node.inputs[test.word]
+      if (isLink(word)) for (const source of upstream(graph, word[0])) locked.set(source, GATE_LOCK_REASON)
+    }
+    if (SWITCHES[node.class_type] !== undefined) locked.set(id, GATE_LOCK_REASON)
+  }
+  return locked
+}
+
 /**
  * Check changes the agent asked for one run.
  *
  * The prompt and the seed are the studio's: a change aimed at them is
  * refused, since the studio writes them after the run's fields and the change
- * would silently not happen.
+ * would silently not happen. A LoRA (its weight and its file) and the words
+ * or switches that turn a branch on are the graph owner's: a run may not
+ * change them, whatever the model thinks would make the picture stronger.
  * @param graph - the workflow.
  * @param raw - the model's `tweaks`, keyed `<node>.<field>`.
  * @param reserved - what the studio writes itself: a whole node (`73`, the
@@ -266,6 +322,7 @@ export function planRunTweaks(
     return { fields: {}, errors: ['tweaks must be an object keyed "<node>.<field>"'] }
   }
   const errors: string[] = []
+  const locked = lockedRunSettings(graph)
   const changes: { node: string; field: string; value: WorkflowScalar }[] = []
   for (const [key, value] of Object.entries(raw)) {
     const dot = key.indexOf('.')
@@ -276,6 +333,11 @@ export function planRunTweaks(
     const node = key.slice(0, dot)
     if (reserved.includes(node) || reserved.includes(key)) {
       errors.push(`${key} is written by the studio itself (prompt or seed): change it through the tool's own arguments`)
+      continue
+    }
+    const reason = locked.get(key) ?? locked.get(node)
+    if (reason !== undefined) {
+      errors.push(`${key} is ${reason}: run the graph as it is, and tell the user the chat does not change it`)
       continue
     }
     if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
