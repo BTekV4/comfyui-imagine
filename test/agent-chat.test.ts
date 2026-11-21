@@ -1059,9 +1059,11 @@ test('the instruction keeps a LoRA out of the tools, and forbids pushing the con
 test('an edit is compared with its source, and the reply carries what it lost', async () => {
   const ctx = seeingHost([JSON.stringify({
     requested_change_done: true,
+    preserved_ok: { text: false },
+    text_found: ['FRESH COFFEE'],
+    unrequested_changes: [],
+    identical_to_source: false,
     missing: ['the lettering OPEN'],
-    added: [],
-    text: [],
     description: 'the mug is blue',
   })])
   const { deps, model } = turn([
@@ -1070,12 +1072,132 @@ test('an edit is compared with its source, and the reply carries what it lost', 
   ], { ctx, outputDir: mediaDir, text: 'cambia il colore della tazza' })
   const answer = await readAgentChat(deps)
   const toolMessage = (model.requests[1]?.messages ?? []).filter(message => message.role === 'tool').at(-1)
-  const result = JSON.parse(toolMessage?.content ?? '{}') as { check?: { missing?: string[]; same?: boolean } }
+  const result = JSON.parse(toolMessage?.content ?? '{}') as {
+    check?: { missing?: string[]; preserved_ok?: Record<string, boolean>; identical_to_source?: boolean }
+  }
   assert.deepEqual(result.check?.missing, ['the lettering OPEN'])
-  assert.equal(result.check?.same, false)
+  assert.deepEqual(result.check?.preserved_ok, { text: false })
+  assert.equal(result.check?.identical_to_source, false)
   // The reply did not say it: the studio appends the check's own sentence.
   assert.match(answer.reply, /OPEN/)
   assert.match(answer.reply, /perso|has lost/)
+})
+
+test('a run that widens the content past the line is refused before it is queued', async () => {
+  const generated = turn([
+    toolCall('generate_image', { prompt: 'una donna nuda in un campo' }),
+    text('No.'),
+  ], { text: 'una donna in un campo, sensuale' })
+  await readAgentChat(generated.deps)
+  assert.equal(generated.started.length, 0)
+  const refusal = JSON.parse(generated.model.requests[1]?.messages.at(-1)?.content ?? '{}') as { ok?: boolean; error?: string }
+  assert.equal(refusal.ok, false)
+  assert.match(refusal.error ?? '', /nudity/)
+})
+
+test('an edit that changes the frame the line did not ask to change is refused', async () => {
+  // The fixture photo is 1:1; the line asks for no new shape.
+  const { deps, started, model } = turn([
+    toolCall('edit_image', { prompt: 'cambia il colore della tazza', source: 'photo.png', aspect: '9:16' }),
+    text('No.'),
+  ], { outputDir: mediaDir, text: 'cambia il colore della tazza' })
+  await readAgentChat(deps)
+  assert.equal(started.length, 0)
+  const refusal = JSON.parse(model.requests[1]?.messages.at(-1)?.content ?? '{}') as { error?: string }
+  assert.match(refusal.error ?? '', /did not ask to change the frame/)
+})
+
+test('an edit carries its spec and a verdict, and the report is built from the verdict', async () => {
+  const ctx = seeingHost([JSON.stringify({
+    requested_change_done: true,
+    preserved_ok: { framing: true, text: false, subjects: true, style: true, format: true },
+    text_found: ['FRESH COFFEE'],
+    unrequested_changes: ['a bare breast nobody asked for'],
+    identical_to_source: false,
+    missing: ['the lettering OPEN'],
+    description: 'the mug is blue',
+  })])
+  const { deps, model } = turn([
+    toolCall('edit_image', { prompt: 'cambia il colore della tazza', source: 'photo.png' }),
+    text('Fatto: la tazza è blu.'),
+  ], { ctx, outputDir: mediaDir, text: 'cambia il colore della tazza' })
+  const answer = await readAgentChat(deps)
+  const toolMessage = (model.requests[1]?.messages ?? []).filter(message => message.role === 'tool').at(-1)
+  const result = JSON.parse(toolMessage?.content ?? '{}') as {
+    spec?: { preserve?: string[] }
+    check?: { preserved_ok?: Record<string, boolean>; unrequested_changes?: string[]; text_found?: string[] }
+  }
+  assert.deepEqual(result.spec?.preserve, ['framing', 'text', 'subjects', 'style', 'format'])
+  assert.deepEqual(result.check?.preserved_ok, { framing: true, text: false, subjects: true, style: true, format: true })
+  assert.deepEqual(result.check?.unrequested_changes, ['a bare breast nobody asked for'])
+  assert.deepEqual(result.check?.text_found, ['FRESH COFFEE'])
+  // A change done, but not everything kept: partial, and the facts are named.
+  assert.match(answer.reply, /Stato: parziale/)
+  assert.match(answer.reply, /OPEN/)
+  assert.match(answer.reply, /bare breast/)
+})
+
+test('a clean edit is reported as completed, from the verdict', async () => {
+  const ctx = seeingHost([JSON.stringify({
+    requested_change_done: true,
+    preserved_ok: { framing: true, text: true, subjects: true, style: true, format: true },
+    text_found: [],
+    unrequested_changes: [],
+    identical_to_source: false,
+    missing: [],
+    description: 'the mug is blue',
+  })])
+  const { deps } = turn([
+    toolCall('edit_image', { prompt: 'cambia il colore della tazza', source: 'photo.png' }),
+    text('Fatto.'),
+  ], { ctx, outputDir: mediaDir, text: 'cambia il colore della tazza' })
+  const answer = await readAgentChat(deps)
+  assert.match(answer.reply, /Stato: completato/)
+})
+
+test('the same failed parameters are not run twice', async () => {
+  const ctx = seeingHost([JSON.stringify({
+    requested_change_done: false,
+    preserved_ok: { framing: true, text: true, subjects: true, style: true, format: true },
+    text_found: [],
+    unrequested_changes: [],
+    identical_to_source: false,
+    missing: [],
+    description: 'unchanged',
+  })])
+  const edit = { prompt: 'cambia il colore della tazza', source: 'photo.png' }
+  const { deps, started, model } = turn([
+    toolCall('edit_image', edit, 'call_1'),
+    toolCall('edit_image', edit, 'call_2'),
+    text('Non è cambiata.'),
+  ], { ctx, outputDir: mediaDir, text: 'cambia il colore della tazza' })
+  const answer = await readAgentChat(deps)
+  assert.equal(started.length, 1, 'the same parameters were not queued a second time')
+  const refusal = JSON.parse(((model.requests.at(-1)?.messages ?? []).filter(message => message.role === 'tool').at(-1)?.content) ?? '{}') as { error?: string }
+  assert.match(refusal.error ?? '', /already tried/)
+  assert.match(answer.reply, /Stato: fallito/)
+})
+
+test('a picture gets three attempts, then the turn stops and names the best', async () => {
+  const no = JSON.stringify({
+    requested_change_done: false,
+    preserved_ok: { framing: true, text: true, subjects: true, style: true, format: true },
+    text_found: [],
+    unrequested_changes: [],
+    identical_to_source: false,
+    missing: ['the blue colour'],
+    description: 'unchanged',
+  })
+  const ctx = seeingHost([no])
+  const calls = [1, 2, 3, 4].map(n => toolCall('edit_image', { prompt: `cambia la tazza in blu, tentativo ${String(n)}`, source: 'photo.png' }, `call_${String(n)}`))
+  const { deps, started, model } = turn([...calls, text('Mi fermo qui.')], { ctx, outputDir: mediaDir, text: 'cambia la tazza in blu' })
+  const answer = await readAgentChat(deps)
+  assert.equal(started.length, 3)
+  const refusal = JSON.parse(((model.requests.at(-1)?.messages ?? []).filter(message => message.role === 'tool').at(-1)?.content) ?? '{}') as { error?: string }
+  assert.match(refusal.error ?? '', /3 attempts/)
+  assert.match(answer.reply, /Stato: fallito/)
+  assert.match(answer.reply, /Il tentativo migliore/)
+  assert.match(answer.reply, /Mi fermo dopo 3 tentativi/)
 })
 
 test('a reply that denies what the vision pass saw carries the pass sentence', async () => {

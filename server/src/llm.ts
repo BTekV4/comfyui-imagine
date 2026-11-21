@@ -168,6 +168,12 @@ export interface AnalyzeOptions {
   readonly signal?: AbortSignal
   /** Longest side for a still; 0 sends the file as it is. */
   readonly maxSide?: number
+  /**
+   * More pictures to look at together with the first, for a comparison: an
+   * edit is checked against the picture it came from, and the pass has to see
+   * both to say what was kept and what was lost.
+   */
+  readonly also?: readonly string[]
 }
 
 export function keyOf(provider: ProviderConfig): string | undefined {
@@ -571,24 +577,16 @@ export function createLlm(
   }
 
   /**
+   * One picture, ready for the vision client: the media part and, when the
+   * still had to be shrunk, the scratch folder to remove afterwards.
    *
    * A large still is shrunk to {@link VISION_MAX_SIDE} as a JPEG first; a clip
-   * goes as it is. The request honours `options.signal`, so a caller that
-   * stopped waiting also stops the model.
+   * goes as it is.
    * @param path - absolute path of a still or a clip.
-   * @param prompt - the instruction.
-   * @param route - the model to look with; the configured eyes otherwise.
-   * @param options - abort signal and the still's longest side.
+   * @param maxSide - longest side for a still; 0 sends the file as it is.
+   * @returns the part to send and the scratch folder, when one was made.
    */
-  async function analyzeImage(
-    path: string,
-    prompt?: string,
-    route?: ModelRoute,
-    options?: AnalyzeOptions,
-  ): Promise<{ text: string; provider: string; model: string }> {
-    const target = route ?? fallbackVision()
-    if (target === undefined) throw new Error(message('llm.noVisionModel'))
-    const maxSide = options?.maxSide ?? VISION_MAX_SIDE
+  async function visionMedia(path: string, maxSide: number): Promise<{ part: Record<string, unknown>; scratch?: string }> {
     // One open for the type, the size and, when it goes as it is, the bytes:
     // until 2026-10-25 the file was opened three times.
     let mime: string
@@ -618,9 +616,45 @@ export function createLlm(
         }
       }
       const url = `data:${mime};base64,${bytes.toString('base64')}`
-      const media = mime.startsWith('video/')
-        ? { type: 'video_url', video_url: { url } }
-        : { type: 'image_url', image_url: { url } }
+      return {
+        part: mime.startsWith('video/') ? { type: 'video_url', video_url: { url } } : { type: 'image_url', image_url: { url } },
+        ...scratch === undefined ? {} : { scratch },
+      }
+    } catch (error: unknown) {
+      if (scratch !== undefined) await rmWithRetry(scratch, { recursive: true, force: true }).catch(() => undefined)
+      throw error
+    }
+  }
+
+  /**
+   * Look at a file, or at several together, and answer what the prompt asks.
+   *
+   * The request honours `options.signal`, so a caller that stopped waiting
+   * also stops the model. `options.also` sends more pictures in the same
+   * request: the comparison of an edit with its source needs to see both.
+   * @param path - absolute path of a still or a clip.
+   * @param prompt - the instruction.
+   * @param route - the model to look with; the configured eyes otherwise.
+   * @param options - abort signal, the still's longest side, the other pictures.
+   */
+  async function analyzeImage(
+    path: string,
+    prompt?: string,
+    route?: ModelRoute,
+    options?: AnalyzeOptions,
+  ): Promise<{ text: string; provider: string; model: string }> {
+    const target = route ?? fallbackVision()
+    if (target === undefined) throw new Error(message('llm.noVisionModel'))
+    const maxSide = options?.maxSide ?? VISION_MAX_SIDE
+    const scratchDirs: string[] = []
+    try {
+      const content: Record<string, unknown>[] = []
+      for (const one of [path, ...options?.also ?? []]) {
+        const media = await visionMedia(one, maxSide)
+        content.push(media.part)
+        if (media.scratch !== undefined) scratchDirs.push(media.scratch)
+      }
+      content.push({ type: 'text', text: prompt ?? 'Describe this image.' })
       const provider = providerOf(target.provider)
       const silence = silenceFor(provider, options?.signal)
       let response: Response
@@ -631,7 +665,7 @@ export function createLlm(
           // Vision says how much to think too: a photo asks for no less
           // reasoning than a text, and the two values are the same choice.
           ...thinkingBody(thinkingLevel()),
-          messages: [{ role: 'user', content: [media, { type: 'text', text: prompt ?? 'Describe this image.' }] }],
+          messages: [{ role: 'user', content }],
         }, silence)
         silence.touch()
         // A dead connection is stopped by the clock while the body is read.
@@ -647,7 +681,7 @@ export function createLlm(
       if (typeof text !== 'string' || text.trim() === '') throw new Error(message('llm.visionSilent'))
       return { text, provider: target.provider, model: target.model }
     } finally {
-      if (scratch !== undefined) await rmWithRetry(scratch, { recursive: true, force: true }).catch(() => undefined)
+      for (const dir of scratchDirs) await rmWithRetry(dir, { recursive: true, force: true }).catch(() => undefined)
     }
   }
 
