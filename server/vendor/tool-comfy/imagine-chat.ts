@@ -50,6 +50,7 @@ import type {
   ImagineChatAsk, ImagineChatEvent, ImagineChatIntent, ImagineChatReply, WorkflowField, WorkflowFieldFact,
   WorkflowPlan,
 } from '../../../shared/imagine-chat.ts'
+import { MAX_STAGED_FILES } from '../../../shared/imagine-chat.ts'
 
 /** Most runs one written line may queue, so a misread cannot fill the GPU. */
 const MAX_INTENTS = 4
@@ -64,7 +65,7 @@ const MAX_INTENTS = 4
  * again for the other four. What bounds the queue is the page's
  * own staging, up to this.
  */
-const MAX_INTENTS_PER_FILE = 24
+const MAX_INTENTS_PER_FILE = MAX_STAGED_FILES
 
 /** Most inputs one written line may propose changing. */
 const MAX_CHANGES = 8

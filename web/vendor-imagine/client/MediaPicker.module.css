@@ -1,0 +1,348 @@
+/* The media panel (MediaPicker.tsx): the two lists of the studio's own files
+   on the left, the thumbnails on the right, opened by the composer's "+".
+
+   The panel is mounted in `document.body` (a portal) and the composer hands it
+   the coordinates of the room it measured: above the composer when there is
+   room there, below it otherwise, and never on top of the composer itself. A
+   phone draws it as a sheet and the coordinates are not passed at all. */
+
+.picker {
+  /* The coordinates come from the composer, inline; these are the fallbacks
+     for the first paint and for a page that measured nothing. */
+  position: fixed;
+  top: 88px;
+  left: 16px;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: min(660px, calc(100vw - 24px));
+  max-height: 72vh;
+  border: 1px solid var(--imagine-line-2);
+  border-radius: var(--imagine-radius-card);
+  background: var(--imagine-surface);
+  color: var(--imagine-ink);
+  box-shadow: var(--imagine-shadow);
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 12px 8px 14px;
+}
+
+.title { font-size: 14px; font-weight: 600; }
+
+.counter {
+  font-size: 12px;
+  color: var(--imagine-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.counter[data-full] { color: var(--imagine-warn); }
+
+.close {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  background: transparent;
+  color: var(--imagine-muted);
+  font: inherit;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.close:hover,
+.close:focus-visible { background: var(--imagine-hover); color: var(--imagine-ink); }
+
+/* min-height: 0 is what lets the grid be the part that scrolls. */
+.body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: none;
+  width: 152px;
+  padding: 2px 8px 10px;
+  border-right: 1px solid var(--imagine-line);
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--imagine-muted);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tab:hover { background: var(--imagine-hover); color: var(--imagine-ink); }
+.tab[data-on] { background: var(--imagine-chip-on); color: var(--imagine-ink); }
+
+.tabLabel { flex: 1; min-width: 0; }
+
+.tabCount {
+  font-size: 11px;
+  color: var(--imagine-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.tab[data-on] .tabCount { color: var(--imagine-muted); }
+
+/* The rail's floor: what the panel can do that a list cannot. */
+.railFoot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.upload {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px dashed var(--imagine-line-3);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.upload:hover { background: var(--imagine-hover); }
+
+.hiddenFile { display: none; }
+
+.pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 34px;
+  margin: 8px 12px 2px;
+  padding: 0 10px;
+  border: 1px solid var(--imagine-line);
+  border-radius: var(--imagine-radius-pill);
+  background: var(--imagine-chip);
+  color: var(--imagine-muted);
+}
+
+.search[data-busy] { opacity: 0.7; }
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.search input::-webkit-search-cancel-button { display: none; }
+
+.searchClear {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  background: transparent;
+  color: var(--imagine-muted);
+  cursor: pointer;
+}
+
+.searchClear:hover { background: var(--imagine-hover); color: var(--imagine-ink); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+  min-height: 0;
+  padding: 10px 12px 12px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.tile {
+  position: relative;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid var(--imagine-line);
+  border-radius: 10px;
+  background: var(--imagine-media-bed);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+/* The picture fills the square: it is taken out of the flow, or its own
+   proportions set the tile's height and a 16:9 clip made the whole row short. */
+.tile .thumb {
+  position: absolute;
+  inset: 0;
+}
+
+.tile:hover { border-color: var(--imagine-line-4); }
+
+.tile[data-on] {
+  border-color: var(--imagine-send);
+  box-shadow: 0 0 0 2px var(--imagine-send);
+}
+
+.thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.audio {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--imagine-muted);
+  font-size: 20px;
+}
+
+/* A clip says so on its own first frame. */
+.videoMark {
+  position: absolute;
+  left: 6px;
+  bottom: 4px;
+  color: var(--imagine-on-media);
+  font-size: 9px;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.7);
+}
+
+.checkMark {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--imagine-radius-pill);
+  background: var(--imagine-send);
+  color: var(--imagine-on-media);
+  font-size: 11px;
+}
+
+.empty {
+  grid-column: 1 / -1;
+  margin: 20px 0;
+  color: var(--imagine-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  padding: 10px 12px;
+  border-top: 1px solid var(--imagine-line);
+}
+
+.hint {
+  flex: 1;
+  min-width: 0;
+  color: var(--imagine-muted);
+  font-size: 12px;
+}
+
+.done {
+  height: 32px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--imagine-radius-pill);
+  background: var(--imagine-ink);
+  color: var(--imagine-ink-fg);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.picker[data-dropping] { outline: 2px dashed var(--imagine-send); outline-offset: -6px; }
+
+.dropNote {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 0.55);
+  color: var(--imagine-ink);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+/* A phone: the panel is a sheet from the bottom and the lists become one row
+   of tabs above the grid, which is what a 390px screen can hold. */
+@media (max-width: 560px) {
+  .picker {
+    left: 8px;
+    right: 8px;
+    top: auto;
+    bottom: 8px;
+    width: auto;
+    max-height: 84vh;
+  }
+
+  .body { flex-direction: column; }
+
+  .rail {
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    width: auto;
+    padding: 2px 8px 8px;
+    border-right: none;
+    border-bottom: 1px solid var(--imagine-line);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .tab { flex: none; padding: 7px 10px; }
+
+  .railFoot {
+    flex-direction: row;
+    margin-top: 0;
+    margin-left: auto;
+    padding-top: 0;
+  }
+
+  .upload { height: 30px; }
+
+  .grid { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); }
+}

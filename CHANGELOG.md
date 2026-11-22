@@ -4,6 +4,19 @@ Notable changes, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project's
 versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **One place to pick what to send.** The composer's "+" opens a media panel:
+  **Creations** (what the studio drew, newest first) and **Uploads** (what came
+  in through the upload route), both searched with the Media page's own index,
+  a click per file, and a removable thumbnail above the field for each one.
+  **Upload media** takes files from the disk or a drop on the panel. On a phone
+  the panel is a sheet and the two lists become one row of tabs.
+- `MAX_STAGED_FILES` in `shared/imagine-chat.ts`: the composer's ceiling and
+  the number of runs one written line may queue, from one number.
+
 ## 0.4.1 — 2026-11-21
 
 The release where the chat keeps to what was asked: every run is built from a

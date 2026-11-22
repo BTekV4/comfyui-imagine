@@ -30,6 +30,17 @@ export const CHAT_HOST_ACTIONS = ['erase', 'addAudio'] as const
 /** One host edit the written lane may ask for. */
 export type ChatHostAction = typeof CHAT_HOST_ACTIONS[number]
 
+/**
+ * How many files the composer may hold at once.
+ *
+ * One line written over staged files is one run per file, so this is also the
+ * ceiling the chat's reader plans within (`MAX_INTENTS_PER_FILE` in
+ * `tool-comfy/imagine-chat.ts`, which reads this number). The media picker
+ * stops here rather than inventing a second limit: past it the studio would
+ * be counting files it then refuses to act on.
+ */
+export const MAX_STAGED_FILES = 24
+
 /** Everything one written line may queue or ask the host to do. */
 export type ImagineChatAction = ImagineAction | ChatHostAction
 
