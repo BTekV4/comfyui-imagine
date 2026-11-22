@@ -17,7 +17,7 @@
   flex-direction: column;
   box-sizing: border-box;
   width: min(660px, calc(100vw - 24px));
-  max-height: 72vh;
+  max-height: min(72vh, calc(100vh - 24px));
   border: 1px solid var(--imagine-line-2);
   border-radius: var(--imagine-radius-card);
   background: var(--imagine-surface);
@@ -184,11 +184,27 @@
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  /* The rows are the tiles' own height, never a share of the panel: with
+     hundreds of files the grid gets a definite height from the flex column,
+     and `align-items: stretch` (the default) made every row as tall as the
+     gap while the tiles kept their width — the "squashed" strip of tiles the
+     panel showed as soon as the content outgrew the box (2026-11-22). */
+  align-items: start;
+  align-content: start;
+  grid-auto-rows: max-content;
   gap: 8px;
   min-height: 0;
   padding: 10px 12px 12px;
   overflow-y: auto;
+  /* A scroll inside the grid must not carry on to the page behind it. */
+  overscroll-behavior: contain;
   scrollbar-width: thin;
+}
+
+/* A tile is a square whatever the picture's own shape, and says so here as
+   well as with the ratio: the ratio alone was not enough under `stretch`. */
+.tile {
+  align-self: start;
 }
 
 .tile {
@@ -256,6 +272,24 @@
   color: var(--imagine-on-media);
   font-size: 11px;
 }
+
+/* The end of a list's first page: the scroll grows it too, but a button is
+   what a keyboard and a screen reader reach. */
+.more {
+  grid-column: 1 / -1;
+  justify-self: center;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--imagine-line-2);
+  border-radius: var(--imagine-radius-pill);
+  background: var(--imagine-chip);
+  color: var(--imagine-ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.more:hover { background: var(--imagine-chip-on); }
 
 .empty {
   grid-column: 1 / -1;

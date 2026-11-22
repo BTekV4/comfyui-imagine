@@ -6,6 +6,16 @@ versions follow [semantic versioning](https://semver.org/).
 
 ## Unreleased
 
+### Fixed
+
+- **The media panel's tiles stayed square with hundreds of files.** The grid
+  rows were sized by `align-items: stretch`, so as soon as the tiles outgrew
+  the panel every row came out as tall as the gap and the pictures were
+  "squashed" strips; the rows now follow each tile's own height, and the grid
+  scrolls inside the panel, whose height stays inside the window. The list is
+  drawn a page at a time (60 tiles, grown by the scroll or by "Show more")
+  instead of laying out the whole gallery before the first tile is seen.
+
 ### Added
 
 - **One place to pick what to send.** The composer's "+" opens a media panel:

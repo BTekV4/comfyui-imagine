@@ -23,7 +23,7 @@ import { translate } from './locale-store.ts'
 import { searchMedia, THUMB_SMALL, thumbUrlOf } from './gallery-api.ts'
 import { Still } from './Still.tsx'
 import { AudioMark } from './imagine-bits.tsx'
-import { pickerTabs, type PickerTabs } from './media-picker-model.ts'
+import { moreShown, pageSlice, pickerTabs, PICKER_PAGE, type PickerTabs } from './media-picker-model.ts'
 import type { GalleryItem } from '../../../shared/imagine-types.ts'
 import css from './MediaPicker.module.css'
 
@@ -77,6 +77,7 @@ export function MediaPicker({ gallery, staged, limit, onToggle, onUpload, onClos
   const [hits, setHits] = useState<ReadonlySet<string> | undefined>(undefined)
   const [searching, setSearching] = useState(false)
   const [dropping, setDropping] = useState(false)
+  const [shown, setShown] = useState(PICKER_PAGE)
   const box = useRef<HTMLDivElement>(null)
   const search = useRef<HTMLInputElement>(null)
   const picker = useRef<HTMLInputElement>(null)
@@ -153,6 +154,10 @@ export function MediaPicker({ gallery, staged, limit, onToggle, onUpload, onClos
   const lists: PickerTabs = pickerTabs(gallery)
   const listed = (tab === 'creations' ? lists.creations : lists.uploads)
     .filter(item => hits === undefined || hits.has(item.name))
+  // A page of tiles at a time: a gallery of thousands is not thousands of
+  // nodes to lay out before the first one is seen.
+  const drawn = pageSlice(listed, shown)
+  const more = listed.length - drawn.length
   const stagedNames = new Set(staged.map(item => item.name))
   const full = staged.length >= limit
   const attached = `${String(staged.length)}/${String(limit)}`
@@ -160,6 +165,8 @@ export function MediaPicker({ gallery, staged, limit, onToggle, onUpload, onClos
   const take = (files: readonly File[]): void => {
     if (files.length > 0) onUpload(files)
   }
+  // Another list starts from its first page: the scroll is the list's own.
+  useEffect(() => { setShown(PICKER_PAGE) }, [tab, hits])
 
   /*
    * Into `document.body`, not where the composer sits: a project's chat column
@@ -255,8 +262,16 @@ export function MediaPicker({ gallery, staged, limit, onToggle, onUpload, onClos
               </button>
             )}
           </div>
-          <div className={css.grid}>
-            {listed.map(item => (
+          <div
+            className={css.grid}
+            data-picker-grid
+            onScroll={(event) => {
+              const node = event.currentTarget
+              if (node.scrollHeight - node.scrollTop - node.clientHeight > 240) return
+              setShown(current => moreShown(current, listed.length))
+            }}
+          >
+            {drawn.map(item => (
               <PickerTile
                 key={item.name}
                 item={item}
@@ -264,6 +279,16 @@ export function MediaPicker({ gallery, staged, limit, onToggle, onUpload, onClos
                 onPick={() => { onToggle(item) }}
               />
             ))}
+            {more > 0 && (
+              <button
+                type="button"
+                className={css.more}
+                data-picker-more
+                onClick={() => { setShown(current => moreShown(current, listed.length)) }}
+              >
+                {translate('imagine.showMore', { count: more })}
+              </button>
+            )}
             {listed.length === 0 && (
               <p className={css.empty}>
                 {query.trim() !== ''

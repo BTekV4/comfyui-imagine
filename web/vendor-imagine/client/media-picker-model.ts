@@ -53,6 +53,38 @@ export function pickerTabs(gallery: readonly GalleryItem[]): PickerTabs {
   return { creations, uploads }
 }
 
+/**
+ * How many tiles the panel draws before it asks for more.
+ *
+ * A gallery of a few thousand files is a page of tiles, not a page of
+ * thousands of nodes: the grid draws this many rows-worth and grows as the
+ * scroll reaches the end.
+ */
+export const PICKER_PAGE = 60
+
+/**
+ * The tiles to draw out of a longer list.
+ * @param list - the list the tab holds, newest first.
+ * @param shown - how many the panel has drawn so far.
+ * @param page - one page's worth.
+ * @returns at most `shown` entries, never more than the list holds.
+ */
+export function pageSlice<T>(list: readonly T[], shown: number, page = PICKER_PAGE): readonly T[] {
+  const limit = Math.min(list.length, Math.max(page, shown))
+  return list.slice(0, limit)
+}
+
+/**
+ * How many tiles to draw after one more page is asked for.
+ * @param shown - how many are drawn now.
+ * @param total - how many the tab holds.
+ * @param page - one page's worth.
+ * @returns the new count, never past the total.
+ */
+export function moreShown(shown: number, total: number, page = PICKER_PAGE): number {
+  return Math.min(total, Math.max(0, shown) + page)
+}
+
 /** What toggling one file did. */
 export interface ToggleResult {
   /** The staging after the click. */
