@@ -9,7 +9,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { isUploaded, pickerTabs, toggleStaged } from '../web/vendor-imagine/client/media-picker-model.ts'
+import { isUploaded, moreShown, pageSlice, pickerTabs, PICKER_PAGE, toggleStaged } from '../web/vendor-imagine/client/media-picker-model.ts'
 import { MAX_STAGED_FILES } from '../shared/imagine-chat.ts'
 import type { GalleryItem } from '../shared/imagine-types.ts'
 
@@ -66,4 +66,22 @@ test('every picker sentence exists in both languages, with the same placeholders
   const holes = (text: string): string[] => [...text.matchAll(/\{([A-Za-z][A-Za-z0-9]*)\}/g)].map(match => match[1] ?? '').sort()
   const wrong = keys.filter(([, key, text]) => holes(text ?? '').join(',') !== holes(pack[key ?? ''] ?? '').join(','))
   assert.deepEqual(wrong.map(([, key]) => key), [], 'a placeholder the other language does not fill')
+})
+
+test('the list is drawn a page at a time, and never past what it holds', () => {
+  const list = Array.from({ length: 505 }, (_, index) => item(`job-${String(index)}.webp`, 'image'))
+  // The first paint draws one page, not the whole gallery.
+  assert.equal(pageSlice(list, PICKER_PAGE).length, PICKER_PAGE)
+  assert.equal(PICKER_PAGE < list.length, true)
+  // The scroll asks for another page, and the count grows by one page.
+  assert.equal(moreShown(PICKER_PAGE, list.length), PICKER_PAGE * 2)
+  assert.equal(pageSlice(list, PICKER_PAGE * 2).length, PICKER_PAGE * 2)
+  // Past the end it stops at the list's own length.
+  assert.equal(moreShown(PICKER_PAGE * 8, list.length), list.length)
+  assert.equal(pageSlice(list, moreShown(PICKER_PAGE * 8, list.length)).length, list.length)
+  // A short list is drawn whole, and a count below zero is not a page.
+  const short = [item('job-1.webp', 'image')]
+  assert.equal(pageSlice(short, PICKER_PAGE).length, 1)
+  assert.equal(pageSlice(list, 0).length, PICKER_PAGE)
+  assert.equal(moreShown(-5, list.length), PICKER_PAGE)
 })
