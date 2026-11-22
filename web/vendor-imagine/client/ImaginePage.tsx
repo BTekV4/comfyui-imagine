@@ -850,11 +850,12 @@ export function ImaginePage({ useStore, actions }: ImaginePageProps) {
       store={composer}
       busy={composerBusy}
       docked={docked}
+      gallery={items}
       onMode={onComposerMode}
       onUpload={onComposerUpload}
       onSubmit={onComposerSubmit}
     />
-  ), [composer, composerBusy, docked, onComposerMode, onComposerUpload, onComposerSubmit])
+  ), [composer, composerBusy, docked, items, onComposerMode, onComposerUpload, onComposerSubmit])
 
   /** The selection bar's buttons; the board places the bar under the picked tiles. */
   const selectionTools = useMemo(() => (

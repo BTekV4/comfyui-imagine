@@ -240,6 +240,15 @@
   min-width: 40px;
 }
 
+/* The "+" and the media panel it opens: the panel is placed against this box
+   (MediaPicker.module.css), so it hangs from the button rather than from the
+   page. Losing this rule silently drops the panel off the top of the screen:
+   an unknown class in a CSS module is undefined, not an error. */
+.pickerWrap {
+  position: relative;
+  display: inline-flex;
+}
+
 .send {
   display: inline-flex;
   align-items: center;

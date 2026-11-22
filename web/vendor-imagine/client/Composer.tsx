@@ -15,7 +15,7 @@
 
 import type { ComfyLocaleKey } from './locales.ts'
 import { translate } from './locale-store.ts'
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState, type CSSProperties } from 'react'
 import {
   IconCheck, IconDots, IconPlusOutlineRegular, IconSendOutlineRegular,
 } from '../../shims/primitives/index.ts'
@@ -29,6 +29,9 @@ import {
   IMAGE_RESOLUTIONS, aspectFor, aspectName, aspectsFor, type ImagineAspect, type ImagineResolution,
 } from '../../../shared/imagine-media.ts'
 import { useComposer, type ComposerStore } from './composer-store.ts'
+import { MediaPicker } from './MediaPicker.tsx'
+import { toggleStaged } from './media-picker-model.ts'
+import { MAX_STAGED_FILES } from '../../../shared/imagine-chat.ts'
 import { ImagineModelSelect } from './ImagineModelSelect.tsx'
 import { Pills, Segmented, type PillClasses } from './Pills.tsx'
 import { Still } from './Still.tsx'
@@ -41,6 +44,15 @@ import css from './Composer.module.css'
 /** Tallest the prompt field grows before it scrolls; matches `.prompt`. */
 const PROMPT_MAX_HEIGHT = 120
 
+/** The widest the media panel gets; matches `.picker` in MediaPicker.module.css. */
+const PICKER_WIDTH = 660
+
+/** The room the panel needs to open on the side it is on. */
+const MIN_PICKER_ROOM = 300
+
+/** Below this width the panel is a sheet: the stylesheet places it, not a measurement. */
+const PHONE_WIDTH = 560
+
 /**
  * The modes behind the composer's "…", in the order the home's cards list
  * them: each has a card of its own, and until 2026-11-03 the only way in was
@@ -51,9 +63,9 @@ const MORE_MODES: readonly ImagineMode[] = ['loop', 'look', 'style', 'music', 's
 /** The prompt box with its mode seats, staged files and options. */
 function Composer({
   prompt, mode, aspect, resolution, seconds, lyrics,
-  sources, note, busy, docked, quality, speed,
+  gallery, sources, note, busy, docked, quality, speed,
   onPrompt, onModel, onMode, onAspect, onResolution, onSeconds, onLyrics, onQuality, onSpeed,
-  onClearSource, onDropSource, onUpload, onSubmit,
+  onClearSource, onDropSource, onToggleSource, onUpload, onSubmit,
 }: {
   prompt: string
   mode: ImagineMode
@@ -61,6 +73,8 @@ function Composer({
   resolution: ImagineResolution
   seconds: number
   lyrics: string
+  /** The whole inventory, for the "＋" panel. */
+  gallery: readonly GalleryItem[]
   sources: readonly GalleryItem[]
   note: string | undefined
   busy: boolean
@@ -80,6 +94,8 @@ function Composer({
   onSpeed: (value: ImagineSpeed) => void
   onClearSource: () => void
   onDropSource: (name: string) => void
+  /** Stage one file, or take it out: the picker's one click. */
+  onToggleSource: (item: GalleryItem) => void
   onUpload: (files: FileList | readonly File[]) => void
   onSubmit: () => void
 }) {
@@ -87,6 +103,63 @@ function Composer({
   const moreBox = useRef<HTMLDivElement>(null)
   const [more, setMore] = useState<'modes' | undefined>(undefined)
   useDismiss(moreBox, () => { setMore(undefined) }, more !== undefined)
+  /*
+   * The "＋" opens the media panel (2026-11-22): the studio's own files and
+   * the uploads in one place, a click per file, staged where the removable
+   * thumbnails above the field already are. The panel hangs from the button,
+   * on the side the page has room for: the composer sits at the left of the
+   * home hero and at the right of a project's chat column.
+   */
+  const pickerBox = useRef<HTMLDivElement>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerStyle, setPickerStyle] = useState<CSSProperties | undefined>(undefined)
+  // The panel closes itself (an outside press, Escape, "Done", the "+" again):
+  // `useDismiss` here would also close it on a press on the strip of removable
+  // thumbnails, which is the same staging the panel feeds.
+  /*
+   * Where the panel fits: measured once, when it opens. The "＋" sits in the
+   * home hero (mid-page, no room above) and at the foot of a project's chat
+   * (no room below), so the roomier side wins and the panel is capped to it —
+   * a panel taller than its room was cut off by the top of the window.
+   */
+  useEffect(() => {
+    if (!pickerOpen) return
+    const node = pickerBox.current
+    if (node === null) return
+    const measure = (): void => {
+      const rect = node.getBoundingClientRect()
+      // The whole composer, not just the button: a panel hung from the button
+      // landed on the strip of previews as soon as a few files were staged, and
+      // the strip could no longer be used while the panel was open.
+      const form = node.closest('form')?.getBoundingClientRect() ?? rect
+      const viewWidth = window.innerWidth
+      const viewHeight = window.innerHeight
+      // A phone draws the panel as a sheet: the stylesheet places it.
+      if (viewWidth <= PHONE_WIDTH) {
+        setPickerStyle(undefined)
+        return
+      }
+      const width = Math.min(PICKER_WIDTH, viewWidth - 24)
+      const above = form.top - 12
+      const below = viewHeight - form.bottom - 12
+      const side = above >= MIN_PICKER_ROOM || above >= below ? 'top' : 'bottom'
+      const room = Math.max(MIN_PICKER_ROOM, Math.floor(side === 'top' ? above : below))
+      setPickerStyle({
+        // Fixed, because the panel lives in `document.body` (see MediaPicker):
+        // the chat column is a stacking context, and a panel inside it went
+        // under the board.
+        position: 'fixed',
+        ...side === 'bottom' ? { top: Math.round(form.bottom + 8) } : { bottom: Math.round(viewHeight - form.top + 8) },
+        ...rect.left + width > viewWidth - 12
+          ? { right: Math.round(viewWidth - rect.right) }
+          : { left: Math.round(rect.left) },
+        maxHeight: Math.min(room, Math.round(viewHeight * 0.72)),
+      })
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => { window.removeEventListener('resize', measure) }
+  }, [pickerOpen])
   // A staged track sets the video's length: see the length group below.
   const track = sources.find(item => item.kind === 'audio')
   const trackSeconds = useTrackSeconds(track)
@@ -206,18 +279,31 @@ function Composer({
         */}
       <div className={css.toolbar}>
         <div className={css.toolbarRow}>
-          <button
-            type="button"
-            className={`${shared.iconBtn} ${css.upload}`}
-            aria-label={translate('imagine.upload')}
-            onClick={(event) => {
-              const form = (event.currentTarget.closest('form'))
-              const input = form?.querySelector('input[type="file"]')
-              if (input instanceof HTMLInputElement) input.click()
-            }}
-          >
-            <IconPlusOutlineRegular size={16} />
-          </button>
+          <div className={css.pickerWrap} ref={pickerBox}>
+            <button
+              type="button"
+              className={`${shared.iconBtn} ${css.upload}`}
+              aria-label={translate('imagine.pickerTitle')}
+              title={translate('imagine.pickerTitle')}
+              aria-expanded={pickerOpen}
+              data-on={pickerOpen || undefined}
+              onClick={() => { setPickerOpen(open => !open) }}
+            >
+              <IconPlusOutlineRegular size={16} />
+            </button>
+            {pickerOpen && (
+              <MediaPicker
+                gallery={gallery}
+                staged={sources}
+                limit={MAX_STAGED_FILES}
+                style={pickerStyle}
+                owner={() => pickerBox.current?.closest('form') ?? null}
+                onToggle={onToggleSource}
+                onUpload={(files) => { onUpload(files) }}
+                onClose={() => { setPickerOpen(false) }}
+              />
+            )}
+          </div>
           {/*
             * What decides WHAT to generate lives only on the home: here the
             * sentence decides. Attachment and send stay outside the block,
@@ -402,6 +488,8 @@ export interface ComposerBoxProps {
   readonly store: ComposerStore
   readonly busy: boolean
   readonly docked: boolean
+  /** The whole inventory, for the "＋" panel. */
+  readonly gallery: readonly GalleryItem[]
   /** Switch the mode: the page carries the fields only that mode has. */
   readonly onMode: (mode: ImagineMode) => void
   readonly onUpload: (files: FileList | readonly File[]) => void
@@ -415,7 +503,7 @@ export interface ComposerBoxProps {
  * the chat column and the home one in the hero, and neither redraws with the
  * page.
  */
-export const ComposerBox = memo(function ComposerBox({ store, busy, docked, onMode, onUpload, onSubmit }: ComposerBoxProps) {
+export const ComposerBox = memo(function ComposerBox({ store, busy, docked, gallery, onMode, onUpload, onSubmit }: ComposerBoxProps) {
   const prompt = useComposer(store, state => state.prompt)
   const mode = useComposer(store, state => state.mode)
   const aspect = useComposer(store, state => state.aspect)
@@ -442,8 +530,21 @@ export const ComposerBox = memo(function ComposerBox({ store, busy, docked, onMo
   const onDropSource = useEvent((name: string) => {
     store.set(state => ({ sources: state.sources.filter(entry => entry.name !== name) }))
   })
+  /*
+   * The picker's click: one file in or out of the staging, and nothing else.
+   * A refusal at the ceiling says so under the field instead of dropping the
+   * click silently; adding a file clears whatever note was there.
+   */
+  const onToggleSource = useEvent((item: GalleryItem) => {
+    store.set((state) => {
+      const next = toggleStaged(state.sources, item, MAX_STAGED_FILES)
+      if (next.full) return { note: translate('imagine.pickerFull', { max: String(MAX_STAGED_FILES) }) }
+      return { sources: next.list, ...(next.added ? { note: undefined } : {}) }
+    })
+  })
   return (
     <Composer
+      gallery={gallery}
       prompt={prompt}
       mode={mode}
       aspect={aspect}
@@ -467,6 +568,7 @@ export const ComposerBox = memo(function ComposerBox({ store, busy, docked, onMo
       onSpeed={onSpeed}
       onClearSource={onClearSource}
       onDropSource={onDropSource}
+      onToggleSource={onToggleSource}
       onUpload={onUpload}
       onSubmit={onSubmit}
     />
