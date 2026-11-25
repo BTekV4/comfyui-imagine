@@ -3,10 +3,18 @@ name = "comfyui-imagine"
 description = "Nodes and setup routes for ComfyUI Imagine: Segments (SAM 3), inpaint crop/stitch, lossless WebP save, and installing the node packs and models a graph needs."
 version = "1.0.0"
 license = { text = "MIT" }
+classifiers = [
+    "Operating System :: OS Independent",
+    "Environment :: GPU :: NVIDIA CUDA",
+]
 
 [project.urls]
 Repository = "https://github.com/BTekV4/comfyui-imagine"
+Documentation = "https://github.com/BTekV4/comfyui-imagine/tree/main/docs"
+"Bug Tracker" = "https://github.com/BTekV4/comfyui-imagine/issues"
 
 [tool.comfy]
 PublisherId = "btekv4"
 DisplayName = "ComfyUI Imagine"
+Icon = "https://raw.githubusercontent.com/BTekV4/comfyui-imagine/main/docs/assets/imagine-icon.svg"
+requires-comfyui = ">=0.45.0"
