@@ -1,0 +1,93 @@
+name: Something is broken
+description: A page, an action or a job that does not do what it should.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Two things before you post:
+        the server log around the failure is usually what makes a fix possible,
+        and **tokens, keys and personal pictures must stay out of it** —
+        replace anything private with `xxx`.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, and what the studio did instead.
+      placeholder: |
+        I dropped a photo on the composer and asked for "edit photo: make the dress red".
+        The job went to running, then failed with "graph error: node 12 has no input model".
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      placeholder: The edit to appear on the canvas.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Imagine version
+      description: The release you installed (the file you downloaded), or the commit if you ran it from source.
+      placeholder: v0.4.1 / main @ 0a2e0e4
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How it is installed
+      options:
+        - Windows installer (.exe)
+        - Linux AppImage
+        - Linux zip / portable folder
+        - Release tarball (install.sh, macOS or a server)
+        - Docker
+        - From source (git clone + npm run build)
+    validations:
+      required: true
+
+  - type: input
+    id: system
+    attributes:
+      label: System and card
+      description: OS and version, GPU, and how much VRAM ComfyUI has.
+      placeholder: Windows 11, RTX 4070 Ti Super 16 GB
+    validations:
+      required: true
+
+  - type: input
+    id: comfyui
+    attributes:
+      label: ComfyUI
+      description: Where it runs and its version if you know it (Settings → About in ComfyUI).
+      placeholder: another machine on the LAN, 0.3.70
+    validations:
+      required: false
+
+  - type: textarea
+    id: log
+    attributes:
+      label: The log around the failure
+      description: |
+        From the terminal the app was started in, or `journalctl -u imagine` with the systemd unit.
+        Paste the 20-40 lines around the error, not the whole file. Remove anything private.
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before posting
+      options:
+        - label: I looked for the same report in the open issues and in Discussions.
+          required: true
+        - label: There are no tokens, keys or personal pictures in this report.
+          required: true

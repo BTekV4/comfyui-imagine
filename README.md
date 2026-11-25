@@ -22,6 +22,12 @@
   <img src="docs/screenshots/home.jpg" alt="New generation: the composer and the action cards" width="900">
 </p>
 
+<p align="center">
+  <img src="docs/assets/demo.webp" alt="Six of the studio's recipes in motion: image to video, recreate a video, character swap, object swap, relight, an animated loop" width="900">
+</p>
+
+<p align="center"><sub>Six of the recipes, in motion — every frame rendered by the studio itself.</sub></p>
+
 A chat that turns a sentence into the right graph, a queue that runs it, a
 canvas and a gallery, and a set of ready-made recipes — image to video, character
 and object swap, relighting, animated loops, music, voice, upscaling.
@@ -102,11 +108,12 @@ Docker, the from-source checkout, and how updates work.
   model writes one prompt per scene. Make video, extend (up to 60 s), animated
   loops (the last scene lands back on the first frame) and both swaps work this
   way; the swaps render at 480p, 720p or 1080p.
-- **Ready-made models, one form each.** Sixteen templates in the home
-  page's grid, mixed in with the workflow cards and filtered by the same chips
-  (All, Photo, People, Product, Video, Graphics, Audio) (photo edit, background, headshot, profile picture, restyle, product
+- **Ready-made models, one form each.** Sixteen templates in the home page's
+  grid, mixed in with the workflow cards and filtered by the same chips (All,
+  Photo, People, Product, Video, Graphics, Audio): photo edit, background,
+  headshot, profile picture, restyle, product
   colour, smart resize, collage, e-commerce set, UGC photos, editorial poster,
-  icon maker, emoji pack, mascot, character sprite, hero reveal): fill in the
+  icon maker, emoji pack, mascot, character sprite, hero reveal. Fill in the
   few fields the model asks for and the studio queues the runs it needs — one
   per choice, one per style, each chained into what has to happen to its
   result (cut the subject out of every emoji, put the still on the ratio you
@@ -151,7 +158,7 @@ point at another graph — see [The workflows](#the-workflows).
 | Edit photo, precise edit (brush), reference image | **Krea 2 Turbo** + identity-edit LoRA | the three above + `krea2_identity_edit_v1_2` (LoRA) |
 | Compose a person with a reference (costume, setting) | **Qwen-Image 2.1** | `qwen_image_2.1_int8_convrot`, `qwen3vl_8b_int8_convrot`, `qwen_image_2.1_vae_bf16` |
 | Relight a photo | **FLUX.3 Klein** | `flux3-image-klein-int8-convrot` ([black-forest-labs](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy), gated), `qwen3vl_4b_int8_convrot` (the Krea 2 text encoder), `flux2-vae` |
-| Make video, loop, extend, video on a song, recreate video (chained scenes past 6 s) | **MiniMax H3** + **Pika H3 Flex** LoRAs ([Pika-Labs/Pika-H3-Flex](https://huggingface.co/Pika-Labs/Pika-H3-Flex): adapters on top of MiniMax H3, not a separate model) | `minimax_h3_fl2va` / `minimax_h3_ref2va` (int8), text encoder `qwen3vl_32b_minimax_h3_nvfp4_awq`, video and audio VAEs; fast recipe: `pika_h3_flex_turbo_4step_{fl2va,ref2va}` ([Pika-H3-Flex-Turbo-LoRA](https://huggingface.co/Pika-Labs/Pika-H3-Flex-Turbo-LoRA)), 4 steps; quality recipe: `pika_h3_flex_{fl2va,ref2va}_v1_bf16` (ComfyUI build in [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3)), 6 steps |
+| Make video, loop, extend, video on a song, recreate video (chained scenes past 6 s) | **MiniMax H3** + Pika H3 Flex LoRAs | `minimax_h3_fl2va` / `minimax_h3_ref2va` (int8), text encoder `qwen3vl_32b_minimax_h3_nvfp4_awq`, video and audio VAEs; the Pika adapters: `pika_h3_flex_turbo_4step_{fl2va,ref2va}` (fast recipe, 4 steps) and `pika_h3_flex_{fl2va,ref2va}_v1_bf16` (quality recipe, 6 steps) |
 | Edit object in a video: change, remove, background, add; character swap (lip-sync on or off) | **MiniMax H3** + **SAM 3.1** + Qwen3-VL 8B (describer) | `minimax_h3_ref2va` + the DMAD 4-step LoRA ([Kijai/MiniMax-H3-experimental](https://huggingface.co/Kijai/MiniMax-H3-experimental)) at 6 steps, `sam3.1_multiplex_fp16` — the masked-edit recipe Openjutsu uses |
 | Regenerate detail (video at 1.5×) | **MiniMax H3** | latent upscaler 3D + `minimax_h3_open_regenerate_2k` LoRA |
 | Segments (objects in a photo) | **SAM 3.1** + the vision model | `sam3.1_multiplex_fp16`, node in [comfyui-nodes/comfyui-imagine](comfyui-nodes/comfyui-imagine) |
@@ -160,6 +167,12 @@ point at another graph — see [The workflows](#the-workflows).
 | Music | **MiniMax Music 3** | `minimax_music3_dit_fp16`, its text encoder and `minimax_music3_dav` |
 | Change voice / extract vocals | **RVC** / **MelBand RoFormer** | your `voice-model.pth`; `MelBandRoformer_fp16` |
 | Remove object (photo) | **LaMa** in IOPaint | through the IOPaint plugin, outside ComfyUI |
+
+Two notes on the video rows: the Pika LoRAs are adapters on top of MiniMax H3,
+not a separate model ([Pika-Labs/Pika-H3-Flex](https://huggingface.co/Pika-Labs/Pika-H3-Flex),
+[Pika-H3-Flex-Turbo-LoRA](https://huggingface.co/Pika-Labs/Pika-H3-Flex-Turbo-LoRA)),
+and the ComfyUI builds of them come from
+[Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3).
 
 **Installed for you:** every action that runs in ComfyUI except the two voice
 ones. With the
@@ -560,11 +573,41 @@ specific model families (Krea 2 for images, MiniMax H3 for video; Qwen-Image,
 FLUX.3 Klein, SeedVR2 and MiniMax Music for single actions) because
 that is what the recipes were measured on. Other families work if you write the graph.
 
+## When it is not for you
+
+Say it early, so nobody installs 22 GB to find out:
+
+- **You want to build graphs by hand.** ComfyUI itself does that better: the
+  studio picks the graph. It is a front door, not an editor — you can point an
+  action at your own graph, but you will not wire nodes on a canvas here.
+- **You have 8 GB of VRAM.** Photos start at about 16 GB comfortably; the video
+  recipes want 24 GB and minutes per clip.
+- **You need Windows signing or a support contract.** The installer is not
+  signed yet, and this is a project, not a product: answers come when they come.
+- **You want a cloud service.** Nothing runs outside your machine except the
+  calls to the text model you configure; there is no hosted version and no
+  account to create.
+- **You want a model zoo.** A handful of families are wired, deliberately. A new
+  one is a graph and an adapter, not a checkbox.
+
+## Requests, ideas and help
+
+Bug reports and ideas go to
+[issues](https://github.com/BTekV4/comfyui-imagine/issues) — there is a form for
+each, and it asks for the version and the log, which is what makes a fix
+possible. Questions, half-formed ideas and "how do I…" belong in
+[Discussions](https://github.com/BTekV4/comfyui-imagine/discussions), where the
+[roadmap thread](https://github.com/BTekV4/comfyui-imagine/discussions/categories/ideas)
+collects what to build next and the votes for it. What you made with the studio
+is welcome in **Show and tell**.
+
 ## Contributing
 
 Help is welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for how to run it in
 development, the tests, and the few rules the code follows. Bugs and ideas go to
-[GitHub issues](https://github.com/BTekV4/comfyui-imagine/issues).
+the [issue forms](https://github.com/BTekV4/comfyui-imagine/issues/new/choose);
+questions and what to build next live in
+[Discussions](https://github.com/BTekV4/comfyui-imagine/discussions).
 
 ## Acknowledgements
 

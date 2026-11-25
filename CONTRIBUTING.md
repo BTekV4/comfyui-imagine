@@ -63,4 +63,21 @@ that is possible; the suite is plain `node:test`, one file per area in `test/`.
 
 Open an issue with what you did, what you expected, what happened, and the
 lines from the server log around it (`journalctl -u imagine` with the systemd
-unit). Leave out tokens, keys and anything personal in your media.
+unit). Leave out tokens, keys and anything personal in your media: replace them
+with `xxx`.
+
+The [bug form](.github/ISSUE_TEMPLATE/bug.yml) asks for exactly that — version,
+how it is installed, system, and the log. Two other forms cover an
+[idea](.github/ISSUE_TEMPLATE/idea.yml) and a
+[model or workflow](.github/ISSUE_TEMPLATE/model-or-workflow.yml).
+
+## Where to talk
+
+- **Issues** — something broken, or a change you are sure about. One topic each.
+- **Discussions → Q&A** — installing, configuring, a graph that will not load.
+- **Discussions → Ideas** — what to build next; the roadmap thread holds the list
+  and the votes.
+- **Discussions → Show and tell** — what you made.
+
+An idea that needs a decision (a new default, a change to how an action works)
+is better raised in Ideas first: it is cheaper to argue there than in a diff.

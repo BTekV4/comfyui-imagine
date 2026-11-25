@@ -1,0 +1,62 @@
+name: An idea
+description: Something the studio should do and does not, or does badly.
+title: "[idea] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are welcome, and a sentence about *what you are trying to do* is worth
+        more than a list of features: several requests usually turn out to be one
+        change to the chat.
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: What you are trying to do
+      description: The thing you want to end up with, in your own words.
+      placeholder: |
+        I make product photos for a shop: one shot per colour. Today I open the template
+        once per colour and fill the form again each time.
+    validations:
+      required: true
+
+  - type: textarea
+    id: today
+    attributes:
+      label: How you do it today
+      description: The steps you take now, and where they hurt.
+    validations:
+      required: true
+
+  - type: textarea
+    id: wanted
+    attributes:
+      label: What you would like instead
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the studio
+      options:
+        - The chat and the actions
+        - Templates and forms
+        - Canvas, viewer and Segments
+        - Library, media and projects
+        - Queue and jobs
+        - Models, workflows and weights
+        - Languages
+        - Plugins
+        - Not sure / somewhere else
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before posting
+      options:
+        - label: I looked for the same idea in the open issues and in the Roadmap discussion.
+          required: true
