@@ -1,0 +1,69 @@
+name: A model or a workflow
+description: A model family, a graph or a node the studio should drive.
+title: "[model] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The studio is tied to the model families its recipes were measured on
+        (Krea 2 for images, MiniMax H3 for video), but any action can point at
+        another graph. A graph that already runs in ComfyUI is the fastest path:
+        see `docs/workflows.md`.
+
+  - type: input
+    id: model
+    attributes:
+      label: The model family
+      placeholder: Qwen-Image 2.1 / Wan 2.5 / LTX-3 ...
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Where the weights come from
+      description: Hugging Face page or repository, and the licence if you know it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: action
+    attributes:
+      label: Which action it should serve
+      description: The card or action in the studio, and what it should produce.
+      placeholder: |
+        "Make video" — same feature as today, but rendered with Wan instead of MiniMax H3.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: runs
+    attributes:
+      label: Does it run in ComfyUI today, on your machine?
+      options:
+        - Yes, I have a working graph
+        - Yes, someone else's workflow works, I have not tried it here
+        - It should, I have not run it yet
+        - No
+    validations:
+      required: true
+
+  - type: textarea
+    id: graph
+    attributes:
+      label: The graph, if you have one
+      description: |
+        ComfyUI → Workflow → Export (API), pasted here or attached as a `.json` file.
+        Remove anything personal: a graph can carry file paths and model names.
+    validations:
+      required: false
+
+  - type: input
+    id: vram
+    attributes:
+      label: VRAM it needs
+      description: What you measured, or what the model's page says.
+      placeholder: about 14 GB at 1024×1024
+    validations:
+      required: false

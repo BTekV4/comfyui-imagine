@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: A question, or how to do something
+    url: https://github.com/BTekV4/comfyui-imagine/discussions/categories/q-a
+    about: Installing, configuring, a graph that will not load — ask in Discussions, not in an issue.
+  - name: What to build next
+    url: https://github.com/BTekV4/comfyui-imagine/discussions/categories/ideas
+    about: The roadmap discussion collects the ideas and their votes. Read it before opening one.
+  - name: Show what you made
+    url: https://github.com/BTekV4/comfyui-imagine/discussions/categories/show-and-tell
+    about: Pictures, clips, graphs and templates made with the studio.
